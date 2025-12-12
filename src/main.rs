@@ -1,5 +1,8 @@
 use core::fmt;
-use std::fs;
+use std::{
+    fs,
+    io::{Cursor, Error, ErrorKind, Read},
+};
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
@@ -78,6 +81,20 @@ struct SectionInfo {
     size: usize,
 }
 
+struct Reader<'a> {
+    cursor: Cursor<&'a [u8]>,
+}
+
+impl<'a> Reader<'a> {
+    fn from_module(module: &'a Module, offset: u64) -> Self {
+        let mut r = Reader {
+            cursor: Cursor::new(&module.bytes),
+        };
+        r.cursor.set_position(offset);
+        r
+    }
+}
+
 fn read_preamble(bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     if bytes.len() < 8 {
         return Err("file too short".into());
@@ -133,6 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let bytes = fs::read(&args[1])?;
     let m = Module { bytes };
+    let d = Reader::from_module(&m, 0);
 
     read_preamble(&m.bytes)?;
     let sections = get_sections(&m.bytes, 8);
