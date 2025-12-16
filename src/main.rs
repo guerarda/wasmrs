@@ -82,6 +82,80 @@ struct SectionInfo {
     end: u64,
     size: u32,
 }
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ValType {
+    I32 = 0x7f,
+    I64 = 0x7e,
+    F32 = 0x7d,
+    F64 = 0x7c,
+
+    V128 = 0x7b,
+    // Reference Types
+}
+
+impl TryFrom<u8> for ValType {
+    type Error = std::io::Error;
+
+    fn try_from(value: u8) -> std::io::Result<Self> {
+        match value {
+            0x7f => Ok(ValType::I32),
+            0x7e => Ok(ValType::I64),
+            0x7d => Ok(ValType::F32),
+            0x7c => Ok(ValType::F64),
+            0x7b => Ok(ValType::V128),
+            _ => Err(Error::new(ErrorKind::Other, "bad magic")),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for ValType {
+    fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<Self> {
+        reader.read_u8()?.try_into()
+    }
+}
+
+#[derive(Debug)]
+struct FuncType {
+    params: Vec<ValType>,
+    results: Vec<ValType>,
+}
+
+#[derive(Debug)]
+struct Section<T> {
+    id: SectionId,
+    offset: u64,
+    end: u64,
+    size: u32,
+    data: T,
+}
+
+type TypeSection = Vec<FuncType>;
+
+trait FromReader<'a>: Sized {
+    fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<Self>;
+}
+
+impl<'a> FromReader<'a> for FuncType {
+    fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<FuncType> {
+        let b = reader.read_u8()?;
+        if b != 0x60 {
+            dbg!(b);
+            dbg!(reader.cursor.position());
+            return Err(Error::new(ErrorKind::Other, "bad byte"));
+        }
+        Ok(FuncType {
+            params: reader.read_vec::<ValType>()?,
+            results: reader.read_vec::<ValType>()?,
+        })
+    }
+}
+
+impl<'a> FromReader<'a> for TypeSection {
+    fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<TypeSection> {
+        reader.read_vec::<FuncType>()
+    }
+}
 
 struct Reader<'a> {
     cursor: Cursor<&'a [u8]>,
@@ -102,6 +176,13 @@ impl<'a> Reader<'a> {
 
     fn read_u32(&mut self) -> std::io::Result<u32> {
         leb128::read_leb128_u32(&mut self.cursor)
+    }
+
+    fn read_vec<T: FromReader<'a>>(&mut self) -> std::io::Result<Vec<T>> {
+        let len = self.read_u32()?;
+        (0..len)
+            .map(|_| T::from_reader(self))
+            .collect::<std::io::Result<Vec<T>>>()
     }
 }
 
@@ -169,11 +250,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sections = r.read_all_sections()?;
 
     println!("Sections:");
-    for s in sections {
+    for s in &sections {
         println!(
             "{:>15}, start={:#010x}, end={:#010x} (size={:#010x})",
             s.id, s.start, s.end, s.size
         );
+    }
+
+    for item in sections.iter() {
+        if item.id == SectionId::Function {
+            let data = TypeSection::from_reader(&mut Reader::from_module(&m, item.start));
+            dbg!(&data);
+        }
     }
 
     Ok(())
