@@ -1,10 +1,12 @@
 use core::fmt;
 use std::{
     fs,
-    io::{Cursor, Error, ErrorKind, Read, Seek, SeekFrom},
+    io::{Error, ErrorKind},
 };
 
 mod leb128;
+mod reader;
+use reader::{FromReader, Reader};
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
@@ -132,16 +134,10 @@ struct Section<T> {
 
 type TypeSection = Vec<FuncType>;
 
-trait FromReader<'a>: Sized {
-    fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<Self>;
-}
-
 impl<'a> FromReader<'a> for FuncType {
     fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<FuncType> {
         let b = reader.read_u8()?;
         if b != 0x60 {
-            dbg!(b);
-            dbg!(reader.cursor.position());
             return Err(Error::new(ErrorKind::Other, "bad byte"));
         }
         Ok(FuncType {
@@ -157,35 +153,6 @@ impl<'a> FromReader<'a> for TypeSection {
     }
 }
 
-struct Reader<'a> {
-    cursor: Cursor<&'a [u8]>,
-}
-
-impl<'a> Reader<'a> {
-    fn from_module(module: &'a Module, offset: u64) -> Self {
-        let mut r = Reader {
-            cursor: Cursor::new(&module.bytes),
-        };
-        r.cursor.set_position(offset);
-        r
-    }
-
-    fn read_u8(&mut self) -> std::io::Result<u8> {
-        leb128::read_u8(&mut self.cursor)
-    }
-
-    fn read_u32(&mut self) -> std::io::Result<u32> {
-        leb128::read_leb128_u32(&mut self.cursor)
-    }
-
-    fn read_vec<T: FromReader<'a>>(&mut self) -> std::io::Result<Vec<T>> {
-        let len = self.read_u32()?;
-        (0..len)
-            .map(|_| T::from_reader(self))
-            .collect::<std::io::Result<Vec<T>>>()
-    }
-}
-
 struct ModuleReader<'a> {
     reader: Reader<'a>,
 }
@@ -193,19 +160,19 @@ struct ModuleReader<'a> {
 impl<'a> ModuleReader<'a> {
     fn from_module(module: &'a Module) -> Self {
         ModuleReader {
-            reader: Reader::from_module(module, 0),
+            reader: Reader::from_bytes(&module.bytes),
         }
     }
 
     fn read_preamble(&mut self) -> std::io::Result<()> {
         let mut buf = [0u8; 4];
 
-        self.reader.cursor.read_exact(&mut buf)?;
+        self.reader.read_exact(&mut buf)?;
         if buf != WASM_MAGIC {
             return Err(Error::new(ErrorKind::Other, "bad magic"));
         }
 
-        self.reader.cursor.read_exact(&mut buf)?;
+        self.reader.read_exact(&mut buf)?;
         if buf != WASM_VERSION {
             return Err(Error::new(ErrorKind::Other, "bad version"));
         }
@@ -218,8 +185,8 @@ impl<'a> ModuleReader<'a> {
 
         Ok(SectionInfo {
             id: id.try_into().unwrap(), // TODO: Errors
-            start: self.reader.cursor.position(),
-            end: self.reader.cursor.seek(SeekFrom::Current(size as i64))?,
+            start: self.reader.position(),
+            end: self.reader.position() + (size as u64),
             size,
         })
     }
@@ -259,7 +226,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for item in sections.iter() {
         if item.id == SectionId::Function {
-            let data = TypeSection::from_reader(&mut Reader::from_module(&m, item.start));
+            let start = item.start as usize;
+            let end = item.end as usize;
+            let data = TypeSection::from_reader(&mut Reader::from_bytes(&m.bytes[start..end]));
             dbg!(&data);
         }
     }
