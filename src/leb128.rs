@@ -1,12 +1,19 @@
-use std::io::{Error, ErrorKind};
+use core::fmt;
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+    io::{self},
+};
 
-pub fn read_u8<R: std::io::Read>(reader: &mut R) -> std::io::Result<u8> {
+pub fn read_u8<R: std::io::Read>(reader: &mut R) -> Result<u8, DecodeError> {
     let mut buf = [0u8; 1];
-    reader.read_exact(&mut buf)?;
+    reader.read_exact(&mut buf).map_err(|e| DecodeError {
+        kind: DecodeErrorKind::Read(e),
+    })?;
     Ok(buf[0])
 }
 
-pub fn read_leb128_u32<R: std::io::Read>(reader: &mut R) -> std::io::Result<u32> {
+pub fn read_leb128_u32<R: std::io::Read>(reader: &mut R) -> Result<u32, DecodeError> {
     const MAX_BYTES: u32 = u32::BITS / 7 + 1;
     const MAX_LAST_BYTE: u8 = (1 << (u32::BITS % 7)) - 1;
 
@@ -14,13 +21,19 @@ pub fn read_leb128_u32<R: std::io::Read>(reader: &mut R) -> std::io::Result<u32>
     let mut s = 0;
     let mut i = 0;
 
-    while let Ok(v) = read_u8(reader) {
+    loop {
+        let v = read_u8(reader)?;
+
         if i == MAX_BYTES {
-            return Err(Error::new(ErrorKind::Other, "too many bytes"));
+            return Err(DecodeError {
+                kind: DecodeErrorKind::TooManyBytes,
+            });
         }
         if v < 0x80 {
             if i == MAX_BYTES - 1 && v > MAX_LAST_BYTE {
-                return Err(Error::new(ErrorKind::Other, "overflow"));
+                return Err(DecodeError {
+                    kind: DecodeErrorKind::ValueOverflow,
+                });
             }
             x |= u32::from(v) << s;
             return Ok(x);
@@ -29,27 +42,31 @@ pub fn read_leb128_u32<R: std::io::Read>(reader: &mut R) -> std::io::Result<u32>
         s += 7;
         i += 1;
     }
-
-    return Err(Error::new(ErrorKind::Other, "unexpected end"));
 }
 
 #[allow(dead_code)]
-pub fn read_leb128_i32<R: std::io::Read>(reader: &mut R) -> std::io::Result<i32> {
+pub fn read_leb128_i32<R: std::io::Read>(reader: &mut R) -> Result<i32, DecodeError> {
     const MAX_BYTES: u32 = u32::BITS / 7 + 1;
 
     let mut x = 0;
     let mut s = 0;
     let mut i = 0;
 
-    while let Ok(v) = read_u8(reader) {
+    loop {
+        let v = read_u8(reader)?;
+
         if i == MAX_BYTES {
-            return Err(Error::new(ErrorKind::Other, "too many bytes"));
+            return Err(DecodeError {
+                kind: DecodeErrorKind::TooManyBytes,
+            });
         }
         if v < 0x80 {
             if i == MAX_BYTES - 1 {
                 const MASK: u8 = ((-1i8 << ((u32::BITS % 7) - 1)) & 0x7f) as u8;
                 if v & MASK != 0 && v < MASK {
-                    return Err(Error::new(ErrorKind::Other, "overflow"));
+                    return Err(DecodeError {
+                        kind: DecodeErrorKind::ValueOverflow,
+                    });
                 }
             }
 
@@ -64,8 +81,56 @@ pub fn read_leb128_i32<R: std::io::Read>(reader: &mut R) -> std::io::Result<i32>
         s += 7;
         i += 1;
     }
+}
 
-    return Err(Error::new(ErrorKind::Other, "unexpected end"));
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct DecodeError {
+    pub kind: DecodeErrorKind,
+}
+
+impl Display for DecodeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "error decoding byte sequence")
+    }
+}
+
+impl Error for DecodeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.kind)
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum DecodeErrorKind {
+    #[non_exhaustive]
+    TooManyBytes,
+
+    #[non_exhaustive]
+    ValueOverflow,
+
+    #[non_exhaustive]
+    Read(io::Error),
+}
+
+impl Display for DecodeErrorKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::TooManyBytes => f.write_str("too many bytes read"),
+            Self::ValueOverflow => f.write_str("value overflow"),
+            Self::Read { .. } => f.write_str("read error"),
+        }
+    }
+}
+
+impl Error for DecodeErrorKind {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]

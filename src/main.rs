@@ -1,12 +1,16 @@
 use core::fmt;
 use std::{
     fs,
-    io::{Error, ErrorKind},
+    io::{Seek, SeekFrom},
 };
+
+use anyhow;
 
 mod leb128;
 mod reader;
-use reader::{FromReader, Reader};
+use reader::{FromReader, ParseError, ReadError, Reader, Result};
+
+use crate::reader::{ParseErrorKind, ReadErrorKind};
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
@@ -51,9 +55,9 @@ impl fmt::Display for SectionId {
 }
 
 impl TryFrom<u8> for SectionId {
-    type Error = &'static str;
+    type Error = ParseError;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u8) -> std::result::Result<Self, ParseError> {
         match value {
             0x00 => Ok(SectionId::Custom),
             0x01 => Ok(SectionId::Type),
@@ -68,7 +72,12 @@ impl TryFrom<u8> for SectionId {
             0x0a => Ok(SectionId::Code),
             0x0b => Ok(SectionId::Data),
             0x0c => Ok(SectionId::DataCount),
-            _ => Err("unknown section id"),
+            _ => Err(ParseError {
+                kind: ParseErrorKind::UnexpectedValue {
+                    value: value.to_string(),
+                    expected: std::any::type_name::<SectionId>(),
+                },
+            }),
         }
     }
 }
@@ -97,23 +106,32 @@ enum ValType {
 }
 
 impl TryFrom<u8> for ValType {
-    type Error = std::io::Error;
+    type Error = ParseError;
 
-    fn try_from(value: u8) -> std::io::Result<Self> {
+    fn try_from(value: u8) -> std::result::Result<Self, ParseError> {
         match value {
             0x7f => Ok(ValType::I32),
             0x7e => Ok(ValType::I64),
             0x7d => Ok(ValType::F32),
             0x7c => Ok(ValType::F64),
             0x7b => Ok(ValType::V128),
-            _ => Err(Error::new(ErrorKind::Other, "bad magic")),
+            _ => Err(ParseError {
+                kind: ParseErrorKind::UnexpectedValue {
+                    value: value.to_string(),
+                    expected: std::any::type_name::<ValType>(),
+                },
+            }),
         }
     }
 }
 
 impl<'a> FromReader<'a> for ValType {
-    fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<Self> {
-        reader.read_u8()?.try_into()
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        let pos = reader.position() as usize;
+        reader.read_u8()?.try_into().map_err(|e| ReadError {
+            offset: pos,
+            kind: ReadErrorKind::Parse(e),
+        })
     }
 }
 
@@ -135,10 +153,20 @@ struct Section<T> {
 type TypeSection = Vec<FuncType>;
 
 impl<'a> FromReader<'a> for FuncType {
-    fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<FuncType> {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<FuncType> {
+        let pos = reader.position() as usize;
         let b = reader.read_u8()?;
+
         if b != 0x60 {
-            return Err(Error::new(ErrorKind::Other, "bad byte"));
+            return Err(ReadError {
+                offset: pos,
+                kind: ReadErrorKind::Parse(ParseError {
+                    kind: ParseErrorKind::UnexpectedValue {
+                        value: b.to_string(),
+                        expected: "0x60",
+                    },
+                }),
+            });
         }
         Ok(FuncType {
             params: reader.read_vec::<ValType>()?,
@@ -148,7 +176,7 @@ impl<'a> FromReader<'a> for FuncType {
 }
 
 impl<'a> FromReader<'a> for TypeSection {
-    fn from_reader(reader: &mut Reader<'a>) -> std::io::Result<TypeSection> {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<TypeSection> {
         reader.read_vec::<FuncType>()
     }
 }
@@ -160,38 +188,56 @@ struct ModuleReader<'a> {
 impl<'a> ModuleReader<'a> {
     fn from_module(module: &'a Module) -> Self {
         ModuleReader {
-            reader: Reader::from_bytes(&module.bytes),
+            reader: Reader::from_bytes(&module.bytes, 0),
         }
     }
 
-    fn read_preamble(&mut self) -> std::io::Result<()> {
+    fn read_preamble(&mut self) -> Result<()> {
         let mut buf = [0u8; 4];
 
         self.reader.read_exact(&mut buf)?;
         if buf != WASM_MAGIC {
-            return Err(Error::new(ErrorKind::Other, "bad magic"));
+            return Err(ReadError {
+                offset: 0,
+                kind: ReadErrorKind::Parse(ParseError {
+                    kind: ParseErrorKind::BadMagic,
+                }),
+            });
         }
 
         self.reader.read_exact(&mut buf)?;
         if buf != WASM_VERSION {
-            return Err(Error::new(ErrorKind::Other, "bad version"));
+            return Err(ReadError {
+                offset: 4,
+                kind: ReadErrorKind::Parse(ParseError {
+                    kind: ParseErrorKind::BadVersion,
+                }),
+            });
         }
         Ok(())
     }
 
-    fn read_section(&mut self) -> std::io::Result<SectionInfo> {
-        let id = self.reader.read_u8()?;
+    fn read_section(&mut self) -> Result<SectionInfo> {
+        let pos = self.reader.position() as usize;
+        let id: SectionId = self.reader.read_u8()?.try_into().map_err(|e| ReadError {
+            offset: pos,
+            kind: ReadErrorKind::Parse(e),
+        })?;
         let size = self.reader.read_u32()?;
 
         Ok(SectionInfo {
-            id: id.try_into().unwrap(), // TODO: Errors
+            id,
             start: self.reader.position(),
-            end: self.reader.position() + (size as u64),
+            end: self
+                .reader
+                .cursor
+                .seek(SeekFrom::Current(size as i64))
+                .unwrap(),
             size,
         })
     }
 
-    fn read_all_sections(&mut self) -> std::io::Result<Vec<SectionInfo>> {
+    fn read_all_sections(&mut self) -> Result<Vec<SectionInfo>> {
         let mut sections = Vec::new();
 
         while let Ok(section) = self.read_section() {
@@ -202,7 +248,7 @@ impl<'a> ModuleReader<'a> {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <input.wasm>", args[0]);
@@ -228,7 +274,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if item.id == SectionId::Function {
             let start = item.start as usize;
             let end = item.end as usize;
-            let data = TypeSection::from_reader(&mut Reader::from_bytes(&m.bytes[start..end]));
+            let data = TypeSection::from_reader(&mut Reader::from_bytes(&m.bytes[..end], start))?;
             dbg!(&data);
         }
     }
