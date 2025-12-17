@@ -20,8 +20,9 @@ impl<'a> Reader<'a> {
     }
 
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        let pos = self.cursor.position() as usize;
         self.cursor.read_exact(buf).map_err(|e| ReadError {
-            offset: self.cursor.position() as usize,
+            offset: pos,
             kind: ReadErrorKind::Read(e),
         })
     }
@@ -31,15 +32,17 @@ impl<'a> Reader<'a> {
     }
 
     pub fn read_u8(&mut self) -> Result<u8> {
+        let pos = self.cursor.position() as usize;
         leb128::read_u8(&mut self.cursor).map_err(|e| ReadError {
-            offset: self.cursor.position() as usize,
+            offset: pos,
             kind: ReadErrorKind::Decode(e),
         })
     }
 
     pub fn read_u32(&mut self) -> Result<u32> {
+        let pos = self.cursor.position() as usize;
         leb128::read_leb128_u32(&mut self.cursor).map_err(|e| ReadError {
-            offset: self.cursor.position() as usize,
+            offset: pos,
             kind: ReadErrorKind::Decode(e),
         })
     }
@@ -67,7 +70,26 @@ pub struct ReadError {
 
 impl Display for ReadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "reading byte at offset {}", self.offset)
+        match &self.kind {
+            ReadErrorKind::Decode(_) => {
+                write!(f, "decoding byte at offset {}", self.offset)
+            }
+            ReadErrorKind::Read(_) => {
+                write!(f, "reading byte at offset {}", self.offset)
+            }
+            ReadErrorKind::InvalidEnumValue(_) => {
+                write!(f, "converting byte at offset {} to enum value", self.offset)
+            }
+            ReadErrorKind::UnexpectedValue { value, expected } => {
+                write!(
+                    f,
+                    "byte at offset {}, expected {expected}, got {value} instead",
+                    self.offset
+                )
+            }
+            ReadErrorKind::BadMagic => f.write_str("bad magic"),
+            ReadErrorKind::BadVersion => f.write_str("bad version"),
+        }
     }
 }
 
@@ -76,7 +98,8 @@ impl Error for ReadError {
         match &self.kind {
             ReadErrorKind::Decode(e) => Some(e),
             ReadErrorKind::Read(e) => Some(e),
-            ReadErrorKind::Parse(e) => Some(e),
+            ReadErrorKind::InvalidEnumValue(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -85,41 +108,13 @@ impl Error for ReadError {
 #[non_exhaustive]
 pub enum ReadErrorKind {
     #[non_exhaustive]
-    Parse(ParseError),
-
-    #[non_exhaustive]
     Decode(DecodeError),
 
     #[non_exhaustive]
     Read(io::Error),
-}
-
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct ParseError {
-    pub kind: ParseErrorKind,
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "parse error")
-    }
-}
-
-impl Error for ParseError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(&self.kind)
-    }
-}
-
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum ParseErrorKind {
-    #[non_exhaustive]
-    BadMagic,
 
     #[non_exhaustive]
-    BadVersion,
+    InvalidEnumValue(InvalidEnumValueError),
 
     #[non_exhaustive]
     UnexpectedValue {
@@ -128,29 +123,10 @@ pub enum ParseErrorKind {
     },
 
     #[non_exhaustive]
-    InvalidEnumValue(InvalidEnumValueError),
-}
+    BadMagic,
 
-impl Display for ParseErrorKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BadMagic => f.write_str("bad magic number"),
-            Self::BadVersion => f.write_str("bad version number"),
-            Self::UnexpectedValue { value, expected } => {
-                write!(f, "unexpected value: expected {expected}, got {value}")
-            }
-            Self::InvalidEnumValue(_) => f.write_str("invalid enum value"),
-        }
-    }
-}
-
-impl Error for ParseErrorKind {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::InvalidEnumValue(e) => Some(e),
-            _ => None,
-        }
-    }
+    #[non_exhaustive]
+    BadVersion,
 }
 
 #[derive(Debug)]
@@ -165,8 +141,7 @@ impl Display for InvalidEnumValueError {
         write!(
             f,
             "{} is not a valid value for {}",
-            self.value.to_string(),
-            self.enum_name
+            self.value, self.enum_name
         )
     }
 }
@@ -174,5 +149,18 @@ impl Display for InvalidEnumValueError {
 impl Error for InvalidEnumValueError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
+    }
+}
+
+impl From<InvalidEnumValueError> for ReadErrorKind {
+    fn from(e: InvalidEnumValueError) -> ReadErrorKind {
+        ReadErrorKind::InvalidEnumValue(e)
+    }
+}
+
+impl ReadError {
+    pub fn at_offset(error: impl Into<ReadErrorKind>, offset: usize) -> Self {
+        let kind = error.into();
+        ReadError { offset, kind }
     }
 }

@@ -4,13 +4,11 @@ use std::{
     io::{Seek, SeekFrom},
 };
 
-use anyhow;
-
 mod leb128;
 mod reader;
-use reader::{FromReader, ParseError, ReadError, Reader, Result};
+use reader::{FromReader, ReadError, Reader, Result};
 
-use crate::reader::{InvalidEnumValueError, ParseErrorKind, ReadErrorKind};
+use crate::reader::{InvalidEnumValueError, ReadErrorKind};
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
@@ -124,12 +122,10 @@ impl TryFrom<u8> for ValType {
 impl<'a> FromReader<'a> for ValType {
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         let pos = reader.position() as usize;
-        reader.read_u8()?.try_into().map_err(|e| ReadError {
-            offset: pos,
-            kind: ReadErrorKind::Parse(ParseError {
-                kind: ParseErrorKind::InvalidEnumValue(e),
-            }),
-        })
+        reader
+            .read_u8()?
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))
     }
 }
 
@@ -156,15 +152,13 @@ impl<'a> FromReader<'a> for FuncType {
         let b = reader.read_u8()?;
 
         if b != 0x60 {
-            return Err(ReadError {
-                offset: pos,
-                kind: ReadErrorKind::Parse(ParseError {
-                    kind: ParseErrorKind::UnexpectedValue {
-                        value: b.to_string(),
-                        expected: "0x60",
-                    },
-                }),
-            });
+            return Err(ReadError::at_offset(
+                ReadErrorKind::UnexpectedValue {
+                    value: b.to_string(),
+                    expected: "0x60",
+                },
+                pos,
+            ));
         }
         Ok(FuncType {
             params: reader.read_vec::<ValType>()?,
@@ -195,34 +189,24 @@ impl<'a> ModuleReader<'a> {
 
         self.reader.read_exact(&mut buf)?;
         if buf != WASM_MAGIC {
-            return Err(ReadError {
-                offset: 0,
-                kind: ReadErrorKind::Parse(ParseError {
-                    kind: ParseErrorKind::BadMagic,
-                }),
-            });
+            return Err(ReadError::at_offset(ReadErrorKind::BadMagic, 0));
         }
 
         self.reader.read_exact(&mut buf)?;
         if buf != WASM_VERSION {
-            return Err(ReadError {
-                offset: 4,
-                kind: ReadErrorKind::Parse(ParseError {
-                    kind: ParseErrorKind::BadVersion,
-                }),
-            });
+            return Err(ReadError::at_offset(ReadErrorKind::BadVersion, 4));
         }
         Ok(())
     }
 
     fn read_section(&mut self) -> Result<SectionInfo> {
         let pos = self.reader.position() as usize;
-        let id: SectionId = self.reader.read_u8()?.try_into().map_err(|e| ReadError {
-            offset: pos,
-            kind: ReadErrorKind::Parse(ParseError {
-                kind: ParseErrorKind::InvalidEnumValue(e),
-            }),
-        })?;
+        let id: SectionId = self
+            .reader
+            .read_u8()?
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))?;
+
         let size = self.reader.read_u32()?;
 
         Ok(SectionInfo {
