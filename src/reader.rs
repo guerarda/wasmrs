@@ -3,8 +3,11 @@ use crate::leb128::{self, DecodeError};
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    io::{self, Cursor, Read},
+    io::{self, BufRead, Cursor, Read},
+    string::FromUtf8Error,
 };
+
+use crate::types::{FuncType, ValType};
 
 pub struct Reader<'a> {
     pub cursor: Cursor<&'a [u8]>,
@@ -20,9 +23,9 @@ impl<'a> Reader<'a> {
     }
 
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-        let pos = self.cursor.position() as usize;
+        let offset = self.cursor.position() as usize;
         self.cursor.read_exact(buf).map_err(|e| ReadError {
-            offset: pos,
+            offset,
             kind: ReadErrorKind::Read(e),
         })
     }
@@ -31,36 +34,113 @@ impl<'a> Reader<'a> {
         self.cursor.position()
     }
 
+    pub fn has_data_left(&mut self) -> Result<bool> {
+        let offset = self.cursor.position() as usize;
+        self.cursor
+            .fill_buf()
+            .map(|b| !b.is_empty())
+            .map_err(|e| ReadError {
+                offset,
+                kind: ReadErrorKind::Read(e),
+            })
+    }
+
     pub fn read_u8(&mut self) -> Result<u8> {
-        let pos = self.cursor.position() as usize;
+        let offset = self.cursor.position() as usize;
         leb128::read_u8(&mut self.cursor).map_err(|e| ReadError {
-            offset: pos,
+            offset,
             kind: ReadErrorKind::Decode(e),
         })
     }
 
     pub fn read_u32(&mut self) -> Result<u32> {
-        let pos = self.cursor.position() as usize;
+        let offset = self.cursor.position() as usize;
         leb128::read_leb128_u32(&mut self.cursor).map_err(|e| ReadError {
-            offset: pos,
+            offset,
             kind: ReadErrorKind::Decode(e),
         })
     }
 
-    pub fn read_vec<T: FromReader<'a>>(&mut self) -> Result<Vec<T>> {
-        let len = self.read_u32()?;
-        (0..len)
-            .map(|_| T::from_reader(self))
-            .collect::<Result<Vec<T>>>()
+    pub fn read<T: FromReader<'a>>(&mut self) -> Result<T> {
+        T::from_reader(self)
     }
-}
 
-pub trait FromReader<'a>: Sized {
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self>;
+    pub fn read_vec<T, F>(&mut self, mut f: F) -> Result<Vec<T>>
+    where
+        F: FnMut(&mut Self) -> Result<T>,
+    {
+        let len = self.read_u32()?;
+        (0..len).map(|_| f(self)).collect()
+    }
+
+    pub fn read_name(&mut self) -> Result<String> {
+        let offset = self.cursor.position() as usize;
+        let bytes: Vec<u8> = self.read()?;
+
+        String::from_utf8(bytes).map_err(|e| ReadError {
+            offset,
+            kind: ReadErrorKind::FromUtf8(e),
+        })
+    }
 }
 
 pub type Result<T> = std::result::Result<T, ReadError>;
 
+/// FromReader Trait
+pub trait FromReader<'a>: Sized {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self>;
+}
+
+impl<'a, T: FromReader<'a>> FromReader<'a> for Vec<T> {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        let len = reader.read_u32()?;
+        (0..len).map(|_| T::from_reader(reader)).collect()
+    }
+}
+
+impl<'a> FromReader<'a> for FuncType {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<FuncType> {
+        let pos = reader.position() as usize;
+        let b = reader.read_u8()?;
+
+        if b != 0x60 {
+            return Err(ReadError::at_offset(
+                ReadErrorKind::UnexpectedValue {
+                    value: b.to_string(),
+                    expected: "0x60",
+                },
+                pos,
+            ));
+        }
+        Ok(FuncType {
+            params: reader.read()?,
+            results: reader.read()?,
+        })
+    }
+}
+
+impl<'a> FromReader<'a> for ValType {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        let pos = reader.position() as usize;
+        reader
+            .read_u8()?
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
+
+impl<'a> FromReader<'a> for u8 {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        reader.read_u8()
+    }
+}
+impl<'a> FromReader<'a> for u32 {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        reader.read_u32()
+    }
+}
+
+/// Errors
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct ReadError {
@@ -87,6 +167,13 @@ impl Display for ReadError {
                     self.offset
                 )
             }
+            ReadErrorKind::FromUtf8(_) => {
+                write!(
+                    f,
+                    "converting byte sequence starting at offset {} to utf8 string",
+                    self.offset
+                )
+            }
             ReadErrorKind::BadMagic => f.write_str("bad magic"),
             ReadErrorKind::BadVersion => f.write_str("bad version"),
         }
@@ -99,6 +186,7 @@ impl Error for ReadError {
             ReadErrorKind::Decode(e) => Some(e),
             ReadErrorKind::Read(e) => Some(e),
             ReadErrorKind::InvalidEnumValue(e) => Some(e),
+            ReadErrorKind::FromUtf8(e) => Some(e),
             _ => None,
         }
     }
@@ -107,13 +195,9 @@ impl Error for ReadError {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ReadErrorKind {
-    #[non_exhaustive]
     Decode(DecodeError),
-
-    #[non_exhaustive]
     Read(io::Error),
-
-    #[non_exhaustive]
+    FromUtf8(FromUtf8Error),
     InvalidEnumValue(InvalidEnumValueError),
 
     #[non_exhaustive]
