@@ -10,7 +10,7 @@ mod leb128;
 mod reader;
 use reader::{FromReader, ParseError, ReadError, Reader, Result};
 
-use crate::reader::{ParseErrorKind, ReadErrorKind};
+use crate::reader::{InvalidEnumValueError, ParseErrorKind, ReadErrorKind};
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
@@ -55,9 +55,9 @@ impl fmt::Display for SectionId {
 }
 
 impl TryFrom<u8> for SectionId {
-    type Error = ParseError;
+    type Error = InvalidEnumValueError;
 
-    fn try_from(value: u8) -> std::result::Result<Self, ParseError> {
+    fn try_from(value: u8) -> std::result::Result<Self, InvalidEnumValueError> {
         match value {
             0x00 => Ok(SectionId::Custom),
             0x01 => Ok(SectionId::Type),
@@ -72,11 +72,9 @@ impl TryFrom<u8> for SectionId {
             0x0a => Ok(SectionId::Code),
             0x0b => Ok(SectionId::Data),
             0x0c => Ok(SectionId::DataCount),
-            _ => Err(ParseError {
-                kind: ParseErrorKind::UnexpectedValue {
-                    value: value.to_string(),
-                    expected: std::any::type_name::<SectionId>(),
-                },
+            _ => Err(InvalidEnumValueError {
+                value,
+                enum_name: std::any::type_name::<SectionId>(),
             }),
         }
     }
@@ -106,20 +104,18 @@ enum ValType {
 }
 
 impl TryFrom<u8> for ValType {
-    type Error = ParseError;
+    type Error = InvalidEnumValueError;
 
-    fn try_from(value: u8) -> std::result::Result<Self, ParseError> {
+    fn try_from(value: u8) -> std::result::Result<Self, InvalidEnumValueError> {
         match value {
             0x7f => Ok(ValType::I32),
             0x7e => Ok(ValType::I64),
             0x7d => Ok(ValType::F32),
             0x7c => Ok(ValType::F64),
             0x7b => Ok(ValType::V128),
-            _ => Err(ParseError {
-                kind: ParseErrorKind::UnexpectedValue {
-                    value: value.to_string(),
-                    expected: std::any::type_name::<ValType>(),
-                },
+            _ => Err(InvalidEnumValueError {
+                value,
+                enum_name: std::any::type_name::<ValType>(),
             }),
         }
     }
@@ -130,7 +126,9 @@ impl<'a> FromReader<'a> for ValType {
         let pos = reader.position() as usize;
         reader.read_u8()?.try_into().map_err(|e| ReadError {
             offset: pos,
-            kind: ReadErrorKind::Parse(e),
+            kind: ReadErrorKind::Parse(ParseError {
+                kind: ParseErrorKind::InvalidEnumValue(e),
+            }),
         })
     }
 }
@@ -221,7 +219,9 @@ impl<'a> ModuleReader<'a> {
         let pos = self.reader.position() as usize;
         let id: SectionId = self.reader.read_u8()?.try_into().map_err(|e| ReadError {
             offset: pos,
-            kind: ReadErrorKind::Parse(e),
+            kind: ReadErrorKind::Parse(ParseError {
+                kind: ParseErrorKind::InvalidEnumValue(e),
+            }),
         })?;
         let size = self.reader.read_u32()?;
 
@@ -271,7 +271,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     for item in sections.iter() {
-        if item.id == SectionId::Function {
+        if item.id == SectionId::Type {
             let start = item.start as usize;
             let end = item.end as usize;
             let data = TypeSection::from_reader(&mut Reader::from_bytes(&m.bytes[..end], start))?;

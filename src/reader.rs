@@ -126,6 +126,9 @@ pub enum ParseErrorKind {
         value: String,
         expected: &'static str,
     },
+
+    #[non_exhaustive]
+    InvalidEnumValue(InvalidEnumValueError),
 }
 
 impl Display for ParseErrorKind {
@@ -134,13 +137,41 @@ impl Display for ParseErrorKind {
             Self::BadMagic => f.write_str("bad magic number"),
             Self::BadVersion => f.write_str("bad version number"),
             Self::UnexpectedValue { value, expected } => {
-                write!(f, "unexpected value, expected {expected}, got {value}")
+                write!(f, "unexpected value: expected {expected}, got {value}")
             }
+            Self::InvalidEnumValue(_) => f.write_str("invalid enum value"),
         }
     }
 }
 
 impl Error for ParseErrorKind {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidEnumValue(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct InvalidEnumValueError {
+    pub value: u8,
+    pub enum_name: &'static str,
+}
+
+impl Display for InvalidEnumValueError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} is not a valid value for {}",
+            self.value.to_string(),
+            self.enum_name
+        )
+    }
+}
+
+impl Error for InvalidEnumValueError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
