@@ -65,6 +65,26 @@ impl<'a> Reader<'a> {
         T::from_reader(self)
     }
 
+    pub fn expect<T>(&mut self, expected: T) -> Result<T>
+    where
+        T: FromReader<'a> + PartialEq + fmt::Debug,
+    {
+        let offset = self.position() as usize;
+        let v = self.read()?;
+
+        if v == expected {
+            Ok(v)
+        } else {
+            Err(ReadError {
+                offset,
+                kind: ReadErrorKind::UnexpectedValue {
+                    value: format!("{:?}", v),
+                    expected: format!("{:?}", expected),
+                },
+            })
+        }
+    }
+
     pub fn read_vec<T, F>(&mut self, mut f: F) -> Result<Vec<T>>
     where
         F: FnMut(&mut Self) -> Result<T>,
@@ -100,18 +120,8 @@ impl<'a, T: FromReader<'a>> FromReader<'a> for Vec<T> {
 
 impl<'a> FromReader<'a> for FuncType {
     fn from_reader(reader: &mut Reader<'a>) -> Result<FuncType> {
-        let pos = reader.position() as usize;
-        let b = reader.read_u8()?;
+        let _: u8 = reader.expect(0x60)?; // TODO Enum or const
 
-        if b != 0x60 {
-            return Err(ReadError::at_offset(
-                ReadErrorKind::UnexpectedValue {
-                    value: b.to_string(),
-                    expected: "0x60",
-                },
-                pos,
-            ));
-        }
         Ok(FuncType {
             params: reader.read()?,
             results: reader.read()?,
@@ -203,7 +213,7 @@ pub enum ReadErrorKind {
     #[non_exhaustive]
     UnexpectedValue {
         value: String,
-        expected: &'static str,
+        expected: String,
     },
 
     #[non_exhaustive]
