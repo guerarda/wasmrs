@@ -44,7 +44,6 @@ pub fn read_leb128_u32<R: std::io::Read>(reader: &mut R) -> Result<u32, DecodeEr
     }
 }
 
-#[allow(dead_code)]
 pub fn read_leb128_i32<R: std::io::Read>(reader: &mut R) -> Result<i32, DecodeError> {
     const MAX_BYTES: u32 = u32::BITS / 7 + 1;
 

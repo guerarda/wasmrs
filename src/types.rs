@@ -47,36 +47,3 @@ pub struct FuncType {
     pub params: Vec<ValType>,
     pub results: Vec<ValType>,
 }
-
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ExportKind {
-    Func = 0x00,
-    Table = 0x01,
-    Memory = 0x02,
-    Global = 0x03,
-}
-
-impl TryFrom<u8> for ExportKind {
-    type Error = InvalidEnumValueError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0x00 => Ok(ExportKind::Func),
-            0x01 => Ok(ExportKind::Table),
-            0x02 => Ok(ExportKind::Memory),
-            0x03 => Ok(ExportKind::Global),
-            _ => Err(InvalidEnumValueError {
-                value,
-                enum_name: std::any::type_name::<ExportKind>(),
-            }),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Export {
-    pub name: String,
-    pub kind: ExportKind,
-    pub index: u32,
-}

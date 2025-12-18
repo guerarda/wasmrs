@@ -1,8 +1,9 @@
 use std::fmt;
 
 use crate::{
-    reader::{FromReader, ReadError, Reader, Result},
-    types::{Export, FuncType, TypeIdx},
+    instructions::{self, decode_instruction, Instruction, InstructionError, InstructionErrorKind},
+    reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
+    types::{FuncType, TypeIdx, ValType},
 };
 
 #[repr(u8)]
@@ -69,6 +70,31 @@ impl From<u8> for SectionId {
     }
 }
 
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct SectionError {
+    kind: SectionErrorKind,
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum SectionErrorKind {
+    Read(ReadError),
+    Instruction(InstructionError),
+}
+
+impl From<ReadError> for SectionErrorKind {
+    fn from(value: ReadError) -> Self {
+        SectionErrorKind::Read(value)
+    }
+}
+
+impl From<InstructionError> for SectionErrorKind {
+    fn from(value: InstructionError) -> Self {
+        SectionErrorKind::Instruction(value)
+    }
+}
+
 /// Type Section
 pub type TypeSection = Vec<FuncType>;
 
@@ -82,6 +108,39 @@ pub type TypeSection = Vec<FuncType>;
 pub type FunctionSection = Vec<TypeIdx>;
 
 /// Export Section
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExportKind {
+    Func = 0x00,
+    Table = 0x01,
+    Memory = 0x02,
+    Global = 0x03,
+}
+
+impl TryFrom<u8> for ExportKind {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(ExportKind::Func),
+            0x01 => Ok(ExportKind::Table),
+            0x02 => Ok(ExportKind::Memory),
+            0x03 => Ok(ExportKind::Global),
+            _ => Err(InvalidEnumValueError {
+                value,
+                enum_name: std::any::type_name::<ExportKind>(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Export {
+    pub name: String,
+    pub kind: ExportKind,
+    pub index: u32,
+}
+
 pub type ExportSection = Vec<Export>;
 
 impl<'a> FromReader<'a> for Export {
@@ -94,6 +153,59 @@ impl<'a> FromReader<'a> for Export {
                 .try_into()
                 .map_err(|e| ReadError::at_offset(e, offset))?,
             index: reader.read_u32()?,
+        })
+    }
+}
+
+/// Code Section
+#[derive(Debug)]
+pub struct FuncLocal {
+    pub count: u32,
+    pub valtype: ValType,
+}
+
+#[derive(Debug)]
+pub struct CodeEntry {
+    pub size: usize,
+    pub locals: Vec<FuncLocal>,
+    pub body: Vec<Instruction>,
+}
+
+pub type CodeSection = Vec<CodeEntry>;
+
+pub fn read_code_section<'a>(
+    reader: &mut Reader,
+) -> std::result::Result<CodeSection, SectionError> {
+    let len: u32 = reader.read().map_err(|e| SectionError {
+        kind: SectionErrorKind::Read(e),
+    })?;
+
+    (0..len)
+        .map(|_| {
+            (|| {
+                let size = reader.read_u32()? as usize;
+                let locals: Vec<FuncLocal> = reader.read()?;
+                let mut body = Vec::new();
+
+                loop {
+                    let instr = decode_instruction(reader)?;
+                    body.push(instr);
+                    if matches!(body.last(), Some(&Instruction::End)) {
+                        break;
+                    }
+                }
+                Ok(CodeEntry { size, locals, body })
+            })()
+            .map_err(|kind| SectionError { kind })
+        })
+        .collect()
+}
+
+impl<'a> FromReader<'a> for FuncLocal {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        Ok(FuncLocal {
+            count: reader.read()?,
+            valtype: reader.read()?,
         })
     }
 }

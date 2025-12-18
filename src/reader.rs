@@ -61,6 +61,14 @@ impl<'a> Reader<'a> {
         })
     }
 
+    pub fn read_i32(&mut self) -> Result<i32> {
+        let offset = self.cursor.position() as usize;
+        leb128::read_leb128_i32(&mut self.cursor).map_err(|e| ReadError {
+            offset,
+            kind: ReadErrorKind::Decode(e),
+        })
+    }
+
     pub fn read<T: FromReader<'a>>(&mut self) -> Result<T> {
         T::from_reader(self)
     }
@@ -144,9 +152,16 @@ impl<'a> FromReader<'a> for u8 {
         reader.read_u8()
     }
 }
+
 impl<'a> FromReader<'a> for u32 {
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         reader.read_u32()
+    }
+}
+
+impl<'a> FromReader<'a> for i32 {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        reader.read_i32()
     }
 }
 

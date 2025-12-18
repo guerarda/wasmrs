@@ -8,12 +8,13 @@ mod reader;
 
 use crate::{
     reader::ReadErrorKind,
-    sections::{ExportSection, FunctionSection, SectionId, TypeSection},
+    sections::{read_code_section, ExportSection, FunctionSection, SectionId, TypeSection},
 };
 use reader::{FromReader, ReadError, Reader, Result};
 
 mod sections;
 
+mod instructions;
 mod types;
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
@@ -155,7 +156,10 @@ fn main() -> anyhow::Result<()> {
             }
             SectionId::Start => todo!(),
             SectionId::Element => todo!(),
-            SectionId::Code => todo!(),
+            SectionId::Code => {
+                let data = read_code_section(&mut reader);
+                dbg!(&data);
+            }
             SectionId::Data => todo!(),
             SectionId::DataCount => todo!(),
             SectionId::Unknown(_) => todo!(),
