@@ -249,7 +249,7 @@ impl Display for InvalidEnumValueError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} is not a valid value for {}",
+            "{:#0x} is not a valid value for {}",
             self.value, self.enum_name
         )
     }

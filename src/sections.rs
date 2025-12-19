@@ -1,7 +1,11 @@
-use std::fmt;
+use std::{
+    error,
+    fmt::{self, Display},
+    result,
+};
 
 use crate::{
-    instructions::{self, decode_instruction, Instruction, InstructionError, InstructionErrorKind},
+    instructions::{decode_instruction, Instruction, InstructionError},
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
     types::{FuncType, TypeIdx, ValType},
 };
@@ -70,39 +74,80 @@ impl From<u8> for SectionId {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct SectionInfo {
+    pub id: SectionId,
+    pub start: u64,
+    pub end: u64,
+    pub size: u32,
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct SectionError {
     kind: SectionErrorKind,
+    info: SectionInfo,
+    idx: Option<usize>,
+}
+
+impl Display for SectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(idx) = self.idx {
+            write!(f, "reading section {}, code[{}]", self.info.id, idx)
+        } else {
+            write!(f, "reading section {}", self.info.id)
+        }
+    }
+}
+
+impl error::Error for SectionError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        Some(&self.kind)
+    }
 }
 
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum SectionErrorKind {
-    Read(ReadError),
-    Instruction(InstructionError),
+    // Generic
+    ContentSize(ReadError),
+    EntrySize(ReadError),
+
+    // Code Section
+    CodeFuncLocal(ReadError),
+    CodeFuncBody(InstructionError),
 }
 
-impl From<ReadError> for SectionErrorKind {
-    fn from(value: ReadError) -> Self {
-        SectionErrorKind::Read(value)
+impl Display for SectionErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SectionErrorKind::ContentSize(_) => write!(f, "reading content size"),
+            SectionErrorKind::EntrySize(_) => write!(f, "reading entry size"),
+            SectionErrorKind::CodeFuncLocal(_) => write!(f, "reading function local"),
+            SectionErrorKind::CodeFuncBody(_) => write!(f, "reading function body"),
+        }
+    }
+}
+
+impl error::Error for SectionErrorKind {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            SectionErrorKind::ContentSize(e) => Some(e),
+            SectionErrorKind::EntrySize(e) => Some(e),
+            SectionErrorKind::CodeFuncBody(e) => Some(e),
+            SectionErrorKind::CodeFuncLocal(e) => Some(e),
+        }
     }
 }
 
 impl From<InstructionError> for SectionErrorKind {
     fn from(value: InstructionError) -> Self {
-        SectionErrorKind::Instruction(value)
+        SectionErrorKind::CodeFuncBody(value)
     }
 }
 
 /// Type Section
 pub type TypeSection = Vec<FuncType>;
-
-// impl<'a> FromReader<'a> for TypeSection {
-//     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-//         reader.read_vec::<FuncType>()
-//     }
-// }
 
 /// Function Section
 pub type FunctionSection = Vec<TypeIdx>;
@@ -173,30 +218,43 @@ pub struct CodeEntry {
 
 pub type CodeSection = Vec<CodeEntry>;
 
-pub fn read_code_section<'a>(
+pub fn read_code_entry(reader: &mut Reader) -> result::Result<CodeEntry, SectionErrorKind> {
+    let size = reader
+        .read_u32()
+        .map_err(|e| SectionErrorKind::EntrySize(e))? as usize;
+
+    let locals: Vec<FuncLocal> = reader
+        .read()
+        .map_err(|e| SectionErrorKind::CodeFuncLocal(e))?;
+
+    let mut body = Vec::new();
+    loop {
+        let instr = decode_instruction(reader)?;
+        body.push(instr);
+        if matches!(body.last(), Some(&Instruction::End)) {
+            break;
+        }
+    }
+    Ok(CodeEntry { size, locals, body })
+}
+
+pub fn read_code_section(
     reader: &mut Reader,
+    info: SectionInfo,
 ) -> std::result::Result<CodeSection, SectionError> {
     let len: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::Read(e),
+        kind: SectionErrorKind::ContentSize(e),
+        info,
+        idx: None,
     })?;
 
     (0..len)
-        .map(|_| {
-            (|| {
-                let size = reader.read_u32()? as usize;
-                let locals: Vec<FuncLocal> = reader.read()?;
-                let mut body = Vec::new();
-
-                loop {
-                    let instr = decode_instruction(reader)?;
-                    body.push(instr);
-                    if matches!(body.last(), Some(&Instruction::End)) {
-                        break;
-                    }
-                }
-                Ok(CodeEntry { size, locals, body })
-            })()
-            .map_err(|kind| SectionError { kind })
+        .map(|idx| {
+            read_code_entry(reader).map_err(|kind| SectionError {
+                kind,
+                info,
+                idx: Some(idx as usize),
+            })
         })
         .collect()
 }

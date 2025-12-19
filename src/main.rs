@@ -13,6 +13,7 @@ use crate::{
 use reader::{FromReader, ReadError, Reader, Result};
 
 mod sections;
+use crate::sections::SectionInfo;
 
 mod instructions;
 mod types;
@@ -23,14 +24,6 @@ const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
 struct Module {
     bytes: Vec<u8>,
     sections: Vec<SectionInfo>,
-}
-
-#[derive(Debug)]
-struct SectionInfo {
-    id: SectionId,
-    start: u64,
-    end: u64,
-    size: u32,
 }
 
 #[derive(Debug)]
@@ -157,7 +150,7 @@ fn main() -> anyhow::Result<()> {
             SectionId::Start => todo!(),
             SectionId::Element => todo!(),
             SectionId::Code => {
-                let data = read_code_section(&mut reader);
+                let data = read_code_section(&mut reader, *item)?;
                 dbg!(&data);
             }
             SectionId::Data => todo!(),
