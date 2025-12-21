@@ -4,6 +4,7 @@ use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     io::{self, BufRead, Cursor, Read},
+    ops::Range,
     string::FromUtf8Error,
 };
 
@@ -11,15 +12,46 @@ use crate::types::{FuncType, ValType};
 
 pub struct Reader<'a> {
     pub cursor: Cursor<&'a [u8]>,
+    range: Range<u64>,
 }
 
 impl<'a> Reader<'a> {
     pub fn from_bytes(bytes: &'a [u8], pos: usize) -> Self {
         let mut r = Reader {
             cursor: Cursor::new(&bytes),
+            range: (pos as u64)..(bytes.len() as u64),
         };
         r.cursor.set_position(pos as u64);
         r
+    }
+
+    pub fn scoped(&mut self, size: u32) -> Result<Reader<'a>> {
+        let start = self.position();
+        let end = start + size as u64;
+
+        if end > self.range.end {
+            return Err(ReadError {
+                offset: start as usize,
+                kind: ReadErrorKind::OutOfRange {
+                    requested: end,
+                    allowed: self.range.clone(),
+                },
+            });
+        }
+
+        // Advance past the requested range
+        self.cursor.set_position(end);
+        let mut sub = Reader {
+            cursor: Cursor::new(self.cursor.get_ref()),
+            range: start..end,
+        };
+        sub.cursor.set_position(start);
+
+        Ok(sub)
+    }
+
+    pub fn is_exhausted(&self) -> bool {
+        self.position() >= self.range.end
     }
 
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
@@ -47,7 +79,7 @@ impl<'a> Reader<'a> {
 
     pub fn read_u8(&mut self) -> Result<u8> {
         let offset = self.cursor.position() as usize;
-        leb128::read_u8(&mut self.cursor).map_err(|e| ReadError {
+        leb128::read_u8(self).map_err(|e| ReadError {
             offset,
             kind: ReadErrorKind::Decode(e),
         })
@@ -55,7 +87,7 @@ impl<'a> Reader<'a> {
 
     pub fn read_u32(&mut self) -> Result<u32> {
         let offset = self.cursor.position() as usize;
-        leb128::read_leb128_u32(&mut self.cursor).map_err(|e| ReadError {
+        leb128::read_leb128_u32(self).map_err(|e| ReadError {
             offset,
             kind: ReadErrorKind::Decode(e),
         })
@@ -63,7 +95,7 @@ impl<'a> Reader<'a> {
 
     pub fn read_i32(&mut self) -> Result<i32> {
         let offset = self.cursor.position() as usize;
-        leb128::read_leb128_i32(&mut self.cursor).map_err(|e| ReadError {
+        leb128::read_leb128_i32(self).map_err(|e| ReadError {
             offset,
             kind: ReadErrorKind::Decode(e),
         })
@@ -109,6 +141,21 @@ impl<'a> Reader<'a> {
             offset,
             kind: ReadErrorKind::FromUtf8(e),
         })
+    }
+}
+
+impl<'a> io::Read for Reader<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let rem = (self.range.end - self.position()) as usize;
+        let req = buf.len().min(rem);
+
+        if req == 0 && !buf.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "read past range limit",
+            ));
+        }
+        self.cursor.read(&mut buf[..req])
     }
 }
 
@@ -185,6 +232,13 @@ impl Display for ReadError {
             ReadErrorKind::InvalidEnumValue(_) => {
                 write!(f, "converting byte at offset {} to enum value", self.offset)
             }
+            ReadErrorKind::OutOfRange { requested, allowed } => {
+                write!(
+                    f,
+                    "read at {} is outside the allowed range {:?}",
+                    requested, allowed
+                )
+            }
             ReadErrorKind::UnexpectedValue { value, expected } => {
                 write!(
                     f,
@@ -224,6 +278,10 @@ pub enum ReadErrorKind {
     Read(io::Error),
     FromUtf8(FromUtf8Error),
     InvalidEnumValue(InvalidEnumValueError),
+    OutOfRange {
+        requested: u64,
+        allowed: Range<u64>,
+    },
 
     #[non_exhaustive]
     UnexpectedValue {
@@ -271,5 +329,18 @@ impl ReadError {
     pub fn at_offset(error: impl Into<ReadErrorKind>, offset: usize) -> Self {
         let kind = error.into();
         ReadError { offset, kind }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_out_of_range() {
+        let bytes = [0x83];
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        assert!(r.read_u32().is_err(), "should be out of range")
     }
 }
