@@ -18,7 +18,7 @@ pub struct Reader<'a> {
 impl<'a> Reader<'a> {
     pub fn from_bytes(bytes: &'a [u8], pos: usize) -> Self {
         let mut r = Reader {
-            cursor: Cursor::new(&bytes),
+            cursor: Cursor::new(bytes),
             range: (pos as u64)..(bytes.len() as u64),
         };
         r.cursor.set_position(pos as u64);
@@ -150,8 +150,7 @@ impl<'a> io::Read for Reader<'a> {
         let req = buf.len().min(rem);
 
         if req == 0 && !buf.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 "read past range limit",
             ));
         }

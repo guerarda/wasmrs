@@ -221,11 +221,11 @@ pub type CodeSection = Vec<CodeEntry>;
 pub fn read_code_entry(reader: &mut Reader) -> result::Result<CodeEntry, SectionErrorKind> {
     let size = reader
         .read_u32()
-        .map_err(|e| SectionErrorKind::EntrySize(e))? as usize;
+        .map_err(SectionErrorKind::EntrySize)? as usize;
 
     let locals: Vec<FuncLocal> = reader
         .read()
-        .map_err(|e| SectionErrorKind::CodeFuncLocal(e))?;
+        .map_err(SectionErrorKind::CodeFuncLocal)?;
 
     let mut body = Vec::new();
     loop {
