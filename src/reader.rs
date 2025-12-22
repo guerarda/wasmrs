@@ -30,12 +30,10 @@ impl<'a> Reader<'a> {
         let end = start + size as u64;
 
         if end > self.range.end {
+            let remaining = self.range.end.saturating_sub(start);
             return Err(ReadError {
                 offset: start as usize,
-                kind: ReadErrorKind::OutOfRange {
-                    requested: end,
-                    allowed: self.range.clone(),
-                },
+                kind: ReadErrorKind::OutOfRange { size, remaining },
             });
         }
 
@@ -150,9 +148,11 @@ impl<'a> io::Read for Reader<'a> {
         let req = buf.len().min(rem);
 
         if req == 0 && !buf.is_empty() {
-            return Err(io::Error::other(
-                "read past range limit",
-            ));
+            return Err(io::Error::other(format!(
+                "requested {} bytes past range end ({})",
+                buf.len(),
+                self.range.end
+            )));
         }
         self.cursor.read(&mut buf[..req])
     }
@@ -231,12 +231,8 @@ impl Display for ReadError {
             ReadErrorKind::InvalidEnumValue(_) => {
                 write!(f, "converting byte at offset {} to enum value", self.offset)
             }
-            ReadErrorKind::OutOfRange { requested, allowed } => {
-                write!(
-                    f,
-                    "read at {} is outside the allowed range {:?}",
-                    requested, allowed
-                )
+            ReadErrorKind::OutOfRange { size, remaining } => {
+                write!(f, "requested {} bytes, only {} available", size, remaining)
             }
             ReadErrorKind::UnexpectedValue { value, expected } => {
                 write!(
@@ -278,8 +274,8 @@ pub enum ReadErrorKind {
     FromUtf8(FromUtf8Error),
     InvalidEnumValue(InvalidEnumValueError),
     OutOfRange {
-        requested: u64,
-        allowed: Range<u64>,
+        size: u32,
+        remaining: u64,
     },
 
     #[non_exhaustive]
