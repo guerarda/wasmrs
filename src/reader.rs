@@ -172,17 +172,6 @@ impl<'a, T: FromReader<'a>> FromReader<'a> for Vec<T> {
     }
 }
 
-impl<'a> FromReader<'a> for FuncType {
-    fn from_reader(reader: &mut Reader<'a>) -> Result<FuncType> {
-        let _: u8 = reader.expect(0x60)?; // TODO Enum or const
-
-        Ok(FuncType {
-            params: reader.read()?,
-            results: reader.read()?,
-        })
-    }
-}
-
 impl<'a> FromReader<'a> for ValType {
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         let pos = reader.position() as usize;

@@ -8,7 +8,10 @@ mod reader;
 
 use crate::{
     reader::ReadErrorKind,
-    sections::{read_code_section, ExportSection, FunctionSection, SectionId, TypeSection},
+    sections::{
+        read_code_section, read_type_section, ExportSection, FunctionSection, SectionId,
+        TypeSection,
+    },
 };
 use reader::{FromReader, ReadError, Reader, Result};
 
@@ -132,7 +135,7 @@ fn main() -> anyhow::Result<()> {
         match item.id {
             SectionId::Custom => todo!(),
             SectionId::Type => {
-                let data = TypeSection::from_reader(&mut reader)?;
+                let data = read_type_section(&mut reader, *item)?;
                 dbg!(&data);
             }
             SectionId::Import => todo!(),
