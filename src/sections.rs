@@ -118,6 +118,11 @@ pub enum SectionErrorKind {
     FuncTypeParams(ReadError),
     FuncTypeResults(ReadError),
 
+    // Export Section
+    ExportName(ReadError),
+    ExportDescKind(ReadError),
+    ExportDescIndex(ReadError),
+
     // Code Section
     CodeFuncLocal(ReadError),
     CodeFuncBody(InstructionError),
@@ -133,6 +138,14 @@ impl Display for SectionErrorKind {
             SectionErrorKind::FuncTypeParams(_) => write!(f, "reading the function param types"),
             SectionErrorKind::FuncTypeResults(_) => write!(f, "reading the function result types"),
 
+            SectionErrorKind::ExportName(_) => write!(f, "reading the export name"),
+            SectionErrorKind::ExportDescKind(_) => {
+                write!(f, "reading the export kind")
+            }
+            SectionErrorKind::ExportDescIndex(_) => {
+                write!(f, "reading the export index")
+            }
+
             SectionErrorKind::CodeFuncLocal(_) => write!(f, "reading function local"),
             SectionErrorKind::CodeFuncBody(_) => write!(f, "reading function body"),
         }
@@ -144,9 +157,15 @@ impl error::Error for SectionErrorKind {
         match self {
             SectionErrorKind::EntryCount(e) => Some(e),
             SectionErrorKind::EntrySize(e) => Some(e),
+
             SectionErrorKind::FuncTypeMarker(e) => Some(e),
             SectionErrorKind::FuncTypeParams(e) => Some(e),
             SectionErrorKind::FuncTypeResults(e) => Some(e),
+
+            SectionErrorKind::ExportName(e) => Some(e),
+            SectionErrorKind::ExportDescKind(e) => Some(e),
+            SectionErrorKind::ExportDescIndex(e) => Some(e),
+
             SectionErrorKind::CodeFuncBody(e) => Some(e),
             SectionErrorKind::CodeFuncLocal(e) => Some(e),
         }
@@ -162,7 +181,7 @@ impl From<InstructionError> for SectionErrorKind {
 /// Type Section
 pub type TypeSection = Vec<FuncType>;
 
-pub fn read_type_entry(reader: &mut Reader) -> result::Result<FuncType, SectionErrorKind> {
+fn read_type_entry(reader: &mut Reader) -> result::Result<FuncType, SectionErrorKind> {
     let _: u8 = reader
         .expect(0x60) // TODO Enum or const
         .map_err(SectionErrorKind::FuncTypeMarker)?;
@@ -233,18 +252,42 @@ pub struct Export {
 
 pub type ExportSection = Vec<Export>;
 
-impl<'a> FromReader<'a> for Export {
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-        let offset = reader.position() as usize;
-        Ok(Export {
-            name: reader.read_name()?,
-            kind: reader
-                .read_u8()?
-                .try_into()
-                .map_err(|e| ReadError::at_offset(e, offset))?,
-            index: reader.read_u32()?,
+fn read_export_entry(reader: &mut Reader) -> result::Result<Export, SectionErrorKind> {
+    let name = reader.read_name().map_err(SectionErrorKind::ExportName)?;
+
+    let offset = reader.position() as usize;
+    let kind = reader
+        .read_u8()
+        .map_err(SectionErrorKind::ExportDescKind)?
+        .try_into()
+        .map_err(|e| SectionErrorKind::ExportDescKind(ReadError::at_offset(e, offset)))?;
+
+    let index = reader
+        .read_u32()
+        .map_err(SectionErrorKind::ExportDescIndex)?;
+
+    Ok(Export { name, kind, index })
+}
+
+pub fn read_export_section(
+    reader: &mut Reader,
+    info: SectionInfo,
+) -> std::result::Result<ExportSection, SectionError> {
+    let len: u32 = reader.read().map_err(|e| SectionError {
+        kind: SectionErrorKind::EntryCount(e),
+        info,
+        idx: None,
+    })?;
+
+    (0..len)
+        .map(|idx| {
+            read_export_entry(reader).map_err(|kind| SectionError {
+                kind,
+                info,
+                idx: Some(idx as usize),
+            })
         })
-    }
+        .collect()
 }
 
 /// Code Section
@@ -263,7 +306,7 @@ pub struct CodeEntry {
 
 pub type CodeSection = Vec<CodeEntry>;
 
-pub fn read_code_entry(reader: &mut Reader) -> result::Result<CodeEntry, SectionErrorKind> {
+fn read_code_entry(reader: &mut Reader) -> result::Result<CodeEntry, SectionErrorKind> {
     let size = reader.read_u32().map_err(SectionErrorKind::EntrySize)?;
     let mut reader = reader.scoped(size).map_err(SectionErrorKind::EntrySize)?;
 

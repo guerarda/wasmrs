@@ -8,7 +8,7 @@ use std::{
     string::FromUtf8Error,
 };
 
-use crate::types::{FuncType, ValType};
+use crate::types::ValType;
 
 pub struct Reader<'a> {
     pub cursor: Cursor<&'a [u8]>,
@@ -218,7 +218,11 @@ impl Display for ReadError {
                 write!(f, "reading byte at offset {}", self.offset)
             }
             ReadErrorKind::InvalidEnumValue(_) => {
-                write!(f, "converting byte at offset {} to enum value", self.offset)
+                write!(
+                    f,
+                    "converting value at offset {a:#0x} ({a}), into an enum",
+                    a = self.offset
+                )
             }
             ReadErrorKind::OutOfRange { size, remaining } => {
                 write!(f, "requested {} bytes, only {} available", size, remaining)
@@ -226,7 +230,7 @@ impl Display for ReadError {
             ReadErrorKind::UnexpectedValue { value, expected } => {
                 write!(
                     f,
-                    "byte at offset {}, expected {expected}, got {value} instead",
+                    "value at offset {}, expected {expected}, got {value} instead",
                     self.offset
                 )
             }
