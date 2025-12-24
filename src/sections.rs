@@ -118,6 +118,9 @@ pub enum SectionErrorKind {
     FuncTypeParams(ReadError),
     FuncTypeResults(ReadError),
 
+    // Function Section
+    FunctionIndex(ReadError),
+
     // Export Section
     ExportName(ReadError),
     ExportDescKind(ReadError),
@@ -138,13 +141,11 @@ impl Display for SectionErrorKind {
             SectionErrorKind::FuncTypeParams(_) => write!(f, "reading the function param types"),
             SectionErrorKind::FuncTypeResults(_) => write!(f, "reading the function result types"),
 
+            SectionErrorKind::FunctionIndex(_) => write!(f, "reading the function type index"),
+
             SectionErrorKind::ExportName(_) => write!(f, "reading the export name"),
-            SectionErrorKind::ExportDescKind(_) => {
-                write!(f, "reading the export kind")
-            }
-            SectionErrorKind::ExportDescIndex(_) => {
-                write!(f, "reading the export index")
-            }
+            SectionErrorKind::ExportDescKind(_) => write!(f, "reading the export kind"),
+            SectionErrorKind::ExportDescIndex(_) => write!(f, "reading the export index"),
 
             SectionErrorKind::CodeFuncLocal(_) => write!(f, "reading function local"),
             SectionErrorKind::CodeFuncBody(_) => write!(f, "reading function body"),
@@ -161,6 +162,8 @@ impl error::Error for SectionErrorKind {
             SectionErrorKind::FuncTypeMarker(e) => Some(e),
             SectionErrorKind::FuncTypeParams(e) => Some(e),
             SectionErrorKind::FuncTypeResults(e) => Some(e),
+
+            SectionErrorKind::FunctionIndex(e) => Some(e),
 
             SectionErrorKind::ExportName(e) => Some(e),
             SectionErrorKind::ExportDescKind(e) => Some(e),
@@ -216,6 +219,27 @@ pub fn read_type_section(
 /// Function Section
 pub type FunctionSection = Vec<TypeIdx>;
 
+pub fn read_function_section(
+    reader: &mut Reader,
+    info: SectionInfo,
+) -> std::result::Result<FunctionSection, SectionError> {
+    let len: u32 = reader.read().map_err(|e| SectionError {
+        kind: SectionErrorKind::EntryCount(e),
+        info,
+        idx: None,
+    })?;
+
+    (0..len)
+        .map(|idx| {
+            TypeIdx::from_reader(reader).map_err(|e| SectionError {
+                kind: SectionErrorKind::FunctionIndex(e),
+                info,
+                idx: Some(idx as usize),
+            })
+        })
+        .collect()
+}
+
 /// Export Section
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -252,15 +276,19 @@ pub struct Export {
 
 pub type ExportSection = Vec<Export>;
 
+impl<'a> FromReader<'a> for ExportKind {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        let pos = reader.position() as usize;
+        reader
+            .read_u8()?
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
+
 fn read_export_entry(reader: &mut Reader) -> result::Result<Export, SectionErrorKind> {
     let name = reader.read_name().map_err(SectionErrorKind::ExportName)?;
-
-    let offset = reader.position() as usize;
-    let kind = reader
-        .read_u8()
-        .map_err(SectionErrorKind::ExportDescKind)?
-        .try_into()
-        .map_err(|e| SectionErrorKind::ExportDescKind(ReadError::at_offset(e, offset)))?;
+    let kind = reader.read().map_err(SectionErrorKind::ExportDescKind)?;
 
     let index = reader
         .read_u32()

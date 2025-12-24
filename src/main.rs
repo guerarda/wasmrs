@@ -9,7 +9,8 @@ mod reader;
 use crate::{
     reader::ReadErrorKind,
     sections::{
-        read_code_section, read_export_section, read_type_section, FunctionSection, SectionId,
+        read_code_section, read_export_section, read_function_section, read_type_section,
+        FunctionSection, SectionId,
     },
 };
 use reader::{FromReader, ReadError, Reader, Result};
@@ -139,7 +140,7 @@ fn main() -> anyhow::Result<()> {
             }
             SectionId::Import => todo!(),
             SectionId::Function => {
-                let data = FunctionSection::from_reader(&mut reader)?;
+                let data = read_function_section(&mut reader, *item)?;
                 dbg!(&data);
             }
             SectionId::Table => todo!(),
