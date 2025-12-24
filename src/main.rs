@@ -10,10 +10,10 @@ use crate::{
     reader::ReadErrorKind,
     sections::{
         read_code_section, read_export_section, read_function_section, read_type_section,
-        FunctionSection, SectionId,
+        CodeSection, ExportSection, FunctionSection, SectionId, TypeSection,
     },
 };
-use reader::{FromReader, ReadError, Reader, Result};
+use reader::{ReadError, Reader, Result};
 
 mod sections;
 use crate::sections::SectionInfo;
@@ -27,8 +27,26 @@ const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
 struct Module {
     bytes: Vec<u8>,
     sections: Vec<SectionInfo>,
+
+    types: Option<TypeSection>,
+    functions: Option<FunctionSection>,
+    exports: Option<ExportSection>,
+    codes: Option<CodeSection>,
 }
 
+impl Module {
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        Module {
+            bytes,
+            sections: Vec::new(),
+
+            types: None,
+            functions: None,
+            exports: None,
+            codes: None,
+        }
+    }
+}
 #[derive(Debug)]
 struct Section<T> {
     id: SectionId,
@@ -108,10 +126,7 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
     let bytes = fs::read(&args[1])?;
-    let mut m = Module {
-        bytes,
-        sections: Vec::new(),
-    };
+    let mut m = Module::from_bytes(bytes);
 
     let mut r = ModuleReader::from_module(&m);
 
@@ -135,26 +150,22 @@ fn main() -> anyhow::Result<()> {
         match item.id {
             SectionId::Custom => todo!(),
             SectionId::Type => {
-                let data = read_type_section(&mut reader, *item)?;
-                dbg!(&data);
+                m.types = Some(read_type_section(&mut reader, *item)?);
             }
             SectionId::Import => todo!(),
             SectionId::Function => {
-                let data = read_function_section(&mut reader, *item)?;
-                dbg!(&data);
+                m.functions = Some(read_function_section(&mut reader, *item)?);
             }
             SectionId::Table => todo!(),
             SectionId::Memory => todo!(),
             SectionId::Global => todo!(),
             SectionId::Export => {
-                let data = read_export_section(&mut reader, *item)?;
-                dbg!(&data);
+                m.exports = Some(read_export_section(&mut reader, *item)?);
             }
             SectionId::Start => todo!(),
             SectionId::Element => todo!(),
             SectionId::Code => {
-                let data = read_code_section(&mut reader, *item)?;
-                dbg!(&data);
+                m.codes = Some(read_code_section(&mut reader, *item)?);
             }
             SectionId::Data => todo!(),
             SectionId::DataCount => todo!(),
