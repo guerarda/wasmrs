@@ -268,13 +268,13 @@ impl TryFrom<u8> for ExportKind {
 }
 
 #[derive(Debug)]
-pub struct Export {
+pub struct ExportEntry {
     pub name: String,
     pub kind: ExportKind,
     pub index: u32,
 }
 
-pub type ExportSection = Vec<Export>;
+pub type ExportSection = Vec<ExportEntry>;
 
 impl<'a> FromReader<'a> for ExportKind {
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
@@ -286,7 +286,7 @@ impl<'a> FromReader<'a> for ExportKind {
     }
 }
 
-fn read_export_entry(reader: &mut Reader) -> result::Result<Export, SectionErrorKind> {
+fn read_export_entry(reader: &mut Reader) -> result::Result<ExportEntry, SectionErrorKind> {
     let name = reader.read_name().map_err(SectionErrorKind::ExportName)?;
     let kind = reader.read().map_err(SectionErrorKind::ExportDescKind)?;
 
@@ -294,7 +294,7 @@ fn read_export_entry(reader: &mut Reader) -> result::Result<Export, SectionError
         .read_u32()
         .map_err(SectionErrorKind::ExportDescIndex)?;
 
-    Ok(Export { name, kind, index })
+    Ok(ExportEntry { name, kind, index })
 }
 
 pub fn read_export_section(
