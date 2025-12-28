@@ -47,13 +47,6 @@ impl Module {
         }
     }
 }
-#[derive(Debug)]
-struct Section<T> {
-    id: SectionId,
-    offset: u64,
-    size: u32,
-    data: T,
-}
 
 struct ModuleReader<'a> {
     reader: Reader<'a>,
@@ -79,22 +72,6 @@ impl<'a> ModuleReader<'a> {
             return Err(ReadError::at_offset(ReadErrorKind::BadVersion, 4));
         }
         Ok(())
-    }
-
-    fn read_section(&mut self) -> Result<SectionInfo> {
-        let id: SectionId = self.reader.read_u8()?.into();
-        let size = self.reader.read_u32()?;
-
-        Ok(SectionInfo {
-            id,
-            start: self.reader.position(),
-            end: self
-                .reader
-                .cursor
-                .seek(SeekFrom::Current(size as i64))
-                .unwrap(),
-            size,
-        })
     }
 
     fn read_toc(&mut self) -> Result<Vec<SectionInfo>> {
