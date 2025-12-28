@@ -1,17 +1,20 @@
 use std::{
     fs,
     io::{Seek, SeekFrom},
+    iter::repeat_n,
 };
 
 mod leb128;
 mod reader;
 
 use crate::{
+    instructions::Instruction,
     reader::ReadErrorKind,
     sections::{
         read_code_section, read_export_section, read_function_section, read_type_section,
         CodeSection, ExportSection, FunctionSection, SectionId, TypeSection,
     },
+    types::{FuncType, TypeIdx, ValType},
 };
 use reader::{ReadError, Reader, Result};
 
@@ -24,6 +27,7 @@ mod types;
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
 
+#[derive(Debug)]
 struct Module {
     bytes: Vec<u8>,
     sections: Vec<SectionInfo>,
@@ -96,6 +100,144 @@ impl<'a> ModuleReader<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct FuncAddr(usize);
+
+#[derive(Debug)]
+pub enum ExternVal {
+    Func(FuncAddr),
+    Table(usize),
+    Mem(usize),
+    Global(usize),
+}
+
+#[derive(Debug)]
+pub struct ExportInstance {
+    name: String,
+    value: ExternVal,
+}
+
+#[derive(Debug, Default)]
+pub struct ModuleInstance {
+    types: Vec<FuncType>,
+    funcaddrs: Vec<usize>,
+    exports: Vec<ExportInstance>,
+}
+
+#[derive(Debug)]
+pub struct Func {
+    typeidx: TypeIdx,
+    locals: Vec<ValType>,
+    body: Vec<Instruction>,
+}
+
+#[derive(Debug)]
+pub struct FuncInstance {
+    ftype: FuncType,
+    module: usize,
+    func: Func,
+}
+
+#[derive(Debug, Default)]
+pub struct Store {
+    funcs: Vec<FuncInstance>,
+}
+
+impl Store {
+    pub fn get_func(&self, addr: FuncAddr) -> &FuncInstance {
+        &self.funcs[addr.0]
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Runtime {
+    stack: Vec<StackEntry>,
+    store: Store,
+    modules: Vec<ModuleInstance>,
+}
+
+#[derive(Debug)]
+pub enum Values {
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+    // Vec128,
+    NullRef,
+    FuncRef(usize),
+    ExternRef(usize),
+}
+
+#[derive(Debug)]
+pub enum StackEntry {
+    Value(Values),
+    Label, // TODO
+    Activation(Frame),
+}
+
+#[derive(Debug)]
+pub struct Frame {
+    arity: u32,
+    funcaddr: FuncAddr,
+    pc: isize,
+    locals: Vec<Values>,
+}
+
+impl Runtime {
+    fn add_module(&mut self, module: &Module) {
+        self.modules.push(ModuleInstance::default());
+
+        let midx = self.modules.len() - 1;
+        let mi = self.modules.last_mut().unwrap();
+
+        let codesec = module.codes.as_ref().unwrap();
+        let typesec = module.types.as_ref().unwrap();
+
+        // Populate Types
+        mi.types = typesec.clone();
+
+        // Populate Functions
+        for (idx, typeidx) in module.functions.as_ref().unwrap().iter().enumerate() {
+            let typeidx = *typeidx;
+
+            let locals = {
+                let mut v = vec![];
+                for l in codesec[idx].locals.as_slice() {
+                    v.extend(repeat_n(l.valtype, l.count as usize));
+                }
+                v
+            };
+            let func = Func {
+                typeidx,
+                locals,
+                body: codesec[idx].body.clone(),
+            };
+
+            let funcinst = FuncInstance {
+                ftype: typesec[typeidx as usize].clone(),
+                module: midx,
+                func,
+            };
+
+            mi.funcaddrs.push(self.store.funcs.len());
+            self.store.funcs.push(funcinst);
+        }
+
+        // Populate Exports
+        for export in module.exports.as_ref().unwrap() {
+            // Map address from module to store
+            let funcaddr = mi.funcaddrs[export.index as usize];
+
+            // FIXME We assume only functions are exported
+            // ExportInstance from Entry ?
+            mi.exports.push(ExportInstance {
+                name: export.name.clone(),
+                value: ExternVal::Func(funcaddr),
+            });
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
@@ -149,6 +291,12 @@ fn main() -> anyhow::Result<()> {
             SectionId::Unknown(_) => todo!(),
         };
     }
+
+    // Execution
+    let mut runtime = Runtime::default();
+    runtime.add_module(&m);
+
+    dbg!(runtime);
 
     Ok(())
 }
