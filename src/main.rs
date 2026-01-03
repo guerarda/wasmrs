@@ -1,4 +1,5 @@
 use std::{
+    collections::{hash_map::Entry, HashMap},
     fs,
     io::{Seek, SeekFrom},
     iter::repeat_n,
@@ -100,8 +101,25 @@ impl<'a> ModuleReader<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FuncAddr(usize);
+
+impl From<usize> for FuncAddr {
+    fn from(value: usize) -> Self {
+        FuncAddr(value)
+    }
+}
+
+impl TryFrom<&ExternVal> for FuncAddr {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &ExternVal) -> std::result::Result<Self, Self::Error> {
+        match *value {
+            ExternVal::Func(funcaddr) => Ok(funcaddr),
+            _ => panic!("oops"),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum ExternVal {
@@ -111,17 +129,11 @@ pub enum ExternVal {
     Global(usize),
 }
 
-#[derive(Debug)]
-pub struct ExportInstance {
-    name: String,
-    value: ExternVal,
-}
-
 #[derive(Debug, Default)]
 pub struct ModuleInstance {
     types: Vec<FuncType>,
-    funcaddrs: Vec<usize>,
-    exports: Vec<ExportInstance>,
+    funcaddrs: Vec<FuncAddr>,
+    exports: HashMap<String, ExternVal>,
 }
 
 #[derive(Debug)]
@@ -134,7 +146,7 @@ pub struct Func {
 #[derive(Debug)]
 pub struct FuncInstance {
     ftype: FuncType,
-    module: usize,
+    module: ModuleHandle,
     func: Func,
 }
 
@@ -149,15 +161,48 @@ impl Store {
     }
 }
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+pub struct ModuleHandle(usize);
+
 #[derive(Debug, Default)]
-pub struct Runtime {
-    stack: Vec<StackEntry>,
-    store: Store,
-    modules: Vec<ModuleInstance>,
+struct ModuleRegistry {
+    map: HashMap<ModuleHandle, ModuleInstance>,
+    next_handle: usize,
 }
 
-#[derive(Debug)]
-pub enum Values {
+impl ModuleRegistry {
+    fn reserve(&mut self) -> ModuleHandle {
+        let h = ModuleHandle(self.next_handle);
+        self.next_handle += 1;
+        h
+    }
+
+    fn register(&mut self, handle: ModuleHandle, inst: ModuleInstance) {
+        match self.map.entry(handle) {
+            Entry::Vacant(e) => {
+                e.insert(inst);
+            }
+            Entry::Occupied(_) => panic!("Handle taken"),
+        }
+    }
+
+    fn get_instance(&self, handle: ModuleHandle) -> &ModuleInstance {
+        self.map.get(&handle).unwrap()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Runtime {
+    call_stack: Vec<Frame>,
+    value_stack: Vec<Value>,
+
+    store: Store,
+    module_registry: ModuleRegistry,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Value {
     I32(i32),
     I64(i64),
     F32(f32),
@@ -170,7 +215,7 @@ pub enum Values {
 
 #[derive(Debug)]
 pub enum StackEntry {
-    Value(Values),
+    Value(Value),
     Label, // TODO
     Activation(Frame),
 }
@@ -180,15 +225,13 @@ pub struct Frame {
     arity: u32,
     funcaddr: FuncAddr,
     pc: isize,
-    locals: Vec<Values>,
+    locals: Vec<Value>,
 }
 
 impl Runtime {
-    fn add_module(&mut self, module: &Module) {
-        self.modules.push(ModuleInstance::default());
-
-        let midx = self.modules.len() - 1;
-        let mi = self.modules.last_mut().unwrap();
+    fn instantiate_module(&mut self, module: &Module) -> ModuleHandle {
+        let h = self.module_registry.reserve();
+        let mut mi = ModuleInstance::default();
 
         let codesec = module.codes.as_ref().unwrap();
         let typesec = module.types.as_ref().unwrap();
@@ -215,11 +258,11 @@ impl Runtime {
 
             let funcinst = FuncInstance {
                 ftype: typesec[typeidx as usize].clone(),
-                module: midx,
+                module: h,
                 func,
             };
 
-            mi.funcaddrs.push(self.store.funcs.len());
+            mi.funcaddrs.push(self.store.funcs.len().into());
             self.store.funcs.push(funcinst);
         }
 
@@ -230,11 +273,60 @@ impl Runtime {
 
             // FIXME We assume only functions are exported
             // ExportInstance from Entry ?
-            mi.exports.push(ExportInstance {
-                name: export.name.clone(),
-                value: ExternVal::Func(funcaddr),
-            });
+            mi.exports
+                .insert(export.name.clone(), ExternVal::Func(funcaddr));
         }
+
+        self.module_registry.register(h, mi);
+        h
+    }
+
+    fn execute(&mut self, module: ModuleHandle, fn_name: &str, fn_args: &[Value]) -> Value {
+        let mi = self.module_registry.get_instance(module);
+        let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
+
+        let fi = self.store.get_func(funcaddr);
+
+        let frame = {
+            self.call_stack.push(Frame {
+                arity: fi.ftype.results.len() as u32,
+                funcaddr,
+                pc: -1,
+                locals: fn_args.to_vec(),
+            });
+
+            self.call_stack.last_mut().unwrap()
+        };
+
+        let instrs = &self.store.get_func(frame.funcaddr).func.body;
+        loop {
+            frame.pc += 1;
+
+            let inst = instrs[frame.pc as usize];
+            match inst {
+                Instruction::Nop => continue,
+                Instruction::End => break,
+                Instruction::LocalGet(idx) => {
+                    let v = frame.locals[idx as usize];
+                    self.value_stack.push(v)
+                }
+                Instruction::LocalSet(_) => todo!(),
+                Instruction::LocalTee(_) => todo!(),
+                Instruction::I32Const(_) => todo!(),
+                Instruction::I32Add => {
+                    let rhs = self.value_stack.pop().unwrap();
+                    let lhs = self.value_stack.pop().unwrap();
+
+                    let res = match (lhs, rhs) {
+                        (Value::I32(a), Value::I32(b)) => a + b,
+                        _ => unreachable!(),
+                    };
+
+                    self.value_stack.push(Value::I32(res));
+                }
+            }
+        }
+        *self.value_stack.last().unwrap()
     }
 }
 
@@ -294,9 +386,9 @@ fn main() -> anyhow::Result<()> {
 
     // Execution
     let mut runtime = Runtime::default();
-    runtime.add_module(&m);
-
-    dbg!(runtime);
+    let mh = runtime.instantiate_module(&m);
+    let r = runtime.execute(mh, "add", &[Value::I32(10), Value::I32(2)]);
+    dbg!(r);
 
     Ok(())
 }
