@@ -213,6 +213,18 @@ pub enum Value {
     ExternRef(usize),
 }
 
+impl From<ValType> for Value {
+    fn from(value: ValType) -> Self {
+        match value {
+            ValType::I32 => Value::I32(0),
+            ValType::I64 => Value::I64(0),
+            ValType::F32 => Value::F32(0.0),
+            ValType::F64 => Value::F64(0.0),
+            ValType::V128 => unimplemented!(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum StackEntry {
     Value(Value),
@@ -224,8 +236,9 @@ pub enum StackEntry {
 pub struct Frame {
     arity: u32,
     funcaddr: FuncAddr,
-    pc: isize,
     locals: Vec<Value>,
+    pc: isize,
+    sp: usize,
 }
 
 impl Runtime {
@@ -281,52 +294,98 @@ impl Runtime {
         h
     }
 
-    fn execute(&mut self, module: ModuleHandle, fn_name: &str, fn_args: &[Value]) -> Value {
+    fn invoke(&mut self, module: ModuleHandle, fn_name: &str, fn_args: &[Value]) -> Vec<Value> {
         let mi = self.module_registry.get_instance(module);
         let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
+        let arity = self.store.get_func(funcaddr).ftype.results.len();
 
-        let fi = self.store.get_func(funcaddr);
+        self.value_stack.extend_from_slice(fn_args);
 
-        let frame = {
-            self.call_stack.push(Frame {
-                arity: fi.ftype.results.len() as u32,
-                funcaddr,
-                pc: -1,
-                locals: fn_args.to_vec(),
-            });
+        self.call(funcaddr);
 
-            self.call_stack.last_mut().unwrap()
-        };
+        // TODO If error, restore stacks to previous state
+        self.execute();
 
-        let instrs = &self.store.get_func(frame.funcaddr).func.body;
-        loop {
+        let idx = self.value_stack.len() - arity;
+        self.value_stack.split_off(idx)
+    }
+
+    fn call(&mut self, funcaddr: FuncAddr) {
+        let func_instance = self.store.get_func(funcaddr);
+        let n_args = func_instance.ftype.params.len();
+        let arity = func_instance.ftype.results.len() as u32;
+        let sp = self.value_stack.len() - n_args;
+
+        let mut locals: Vec<Value> = self.value_stack.split_off(sp);
+        locals.extend(
+            func_instance
+                .func
+                .locals
+                .clone()
+                .into_iter()
+                .map(Into::<Value>::into),
+        );
+
+        self.call_stack.push(Frame {
+            arity,
+            funcaddr,
+            locals,
+            pc: -1,
+            sp,
+        });
+    }
+
+    fn execute(&mut self) {
+        while let Some(frame) = self.call_stack.last_mut() {
+            let func_inst = self.store.get_func(frame.funcaddr);
+            let instrs = &func_inst.func.body;
+
             frame.pc += 1;
+            if let Some(inst) = instrs.get(frame.pc as usize) {
+                match inst {
+                    Instruction::Nop => continue,
+                    Instruction::End => {
+                        // take results
+                        let results = {
+                            let idx = self.value_stack.len() - frame.arity as usize;
+                            self.value_stack.split_off(idx)
+                        };
 
-            let inst = instrs[frame.pc as usize];
-            match inst {
-                Instruction::Nop => continue,
-                Instruction::End => break,
-                Instruction::LocalGet(idx) => {
-                    let v = frame.locals[idx as usize];
-                    self.value_stack.push(v)
-                }
-                Instruction::LocalSet(_) => todo!(),
-                Instruction::LocalTee(_) => todo!(),
-                Instruction::I32Const(_) => todo!(),
-                Instruction::I32Add => {
-                    let rhs = self.value_stack.pop().unwrap();
-                    let lhs = self.value_stack.pop().unwrap();
+                        // unwind
+                        self.value_stack.truncate(frame.sp);
 
-                    let res = match (lhs, rhs) {
-                        (Value::I32(a), Value::I32(b)) => a + b,
-                        _ => unreachable!(),
-                    };
+                        // push results
+                        self.value_stack.extend(results);
 
-                    self.value_stack.push(Value::I32(res));
+                        // pop frame
+                        self.call_stack.pop();
+                    }
+                    Instruction::Call(idx) => {
+                        let mi = self.module_registry.get_instance(func_inst.module);
+                        let funcaddr = mi.funcaddrs[*idx as usize];
+                        self.call(funcaddr);
+                    }
+                    Instruction::LocalGet(idx) => {
+                        let v = frame.locals[*idx as usize];
+                        self.value_stack.push(v)
+                    }
+                    Instruction::LocalSet(_) => todo!(),
+                    Instruction::LocalTee(_) => todo!(),
+                    Instruction::I32Const(_) => todo!(),
+                    Instruction::I32Add => {
+                        let rhs = self.value_stack.pop().unwrap();
+                        let lhs = self.value_stack.pop().unwrap();
+
+                        let res = match (lhs, rhs) {
+                            (Value::I32(a), Value::I32(b)) => a + b,
+                            _ => unreachable!(),
+                        };
+
+                        self.value_stack.push(Value::I32(res));
+                    }
                 }
             }
         }
-        *self.value_stack.last().unwrap()
     }
 }
 
@@ -387,7 +446,7 @@ fn main() -> anyhow::Result<()> {
     // Execution
     let mut runtime = Runtime::default();
     let mh = runtime.instantiate_module(&m);
-    let r = runtime.execute(mh, "add", &[Value::I32(10), Value::I32(2)]);
+    let r = runtime.invoke(mh, "add", &[Value::I32(10), Value::I32(2)]);
     dbg!(r);
 
     Ok(())

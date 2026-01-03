@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    instructions::{decode_instruction, Instruction, InstructionError},
+    instructions::{Instruction, InstructionError, decode_instruction},
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
     types::{FuncType, TypeIdx, ValType},
 };

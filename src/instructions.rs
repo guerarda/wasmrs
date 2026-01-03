@@ -5,6 +5,8 @@ pub enum Instruction {
     Nop,
     End,
 
+    Call(u32),
+
     LocalGet(u32),
     LocalSet(u32),
     LocalTee(u32),
@@ -20,6 +22,11 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
     match opcode {
         0x01 => Ok(Instruction::Nop),
         0x0b => Ok(Instruction::End),
+
+        0x10 => {
+            let idx: u32 = decode_arg(reader, "call")?;
+            Ok(Instruction::Call(idx))
+        }
 
         0x20 => {
             let idx: u32 = decode_arg(reader, "local.get")?;
