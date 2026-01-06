@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    instructions::{Instruction, InstructionError, decode_instruction},
+    instructions::{decode_instruction, Instruction, InstructionError},
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
     types::{FuncType, TypeIdx, ValType},
 };
@@ -53,23 +53,28 @@ impl fmt::Display for SectionId {
     }
 }
 
-impl From<u8> for SectionId {
-    fn from(value: u8) -> Self {
+impl TryFrom<u8> for SectionId {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: u8) -> result::Result<Self, Self::Error> {
         match value {
-            0x00 => SectionId::Custom,
-            0x01 => SectionId::Type,
-            0x02 => SectionId::Import,
-            0x03 => SectionId::Function,
-            0x04 => SectionId::Table,
-            0x05 => SectionId::Memory,
-            0x06 => SectionId::Global,
-            0x07 => SectionId::Export,
-            0x08 => SectionId::Start,
-            0x09 => SectionId::Element,
-            0x0a => SectionId::Code,
-            0x0b => SectionId::Data,
-            0x0c => SectionId::DataCount,
-            v => SectionId::Unknown(v),
+            0x00 => Ok(SectionId::Custom),
+            0x01 => Ok(SectionId::Type),
+            0x02 => Ok(SectionId::Import),
+            0x03 => Ok(SectionId::Function),
+            0x04 => Ok(SectionId::Table),
+            0x05 => Ok(SectionId::Memory),
+            0x06 => Ok(SectionId::Global),
+            0x07 => Ok(SectionId::Export),
+            0x08 => Ok(SectionId::Start),
+            0x09 => Ok(SectionId::Element),
+            0x0a => Ok(SectionId::Code),
+            0x0b => Ok(SectionId::Data),
+            0x0c => Ok(SectionId::DataCount),
+            _ => Err(InvalidEnumValueError {
+                value,
+                enum_name: std::any::type_name::<ExportKind>(),
+            }),
         }
     }
 }
