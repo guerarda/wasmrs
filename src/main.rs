@@ -13,7 +13,7 @@ use crate::{
     reader::ReadErrorKind,
     sections::{
         read_code_section, read_export_section, read_function_section, read_type_section,
-        CodeSection, ExportSection, FunctionSection, SectionId, TypeSection,
+        CodeSection, ExportSection, FunctionSection, SectionError, SectionId, TypeSection,
     },
     types::{FuncType, TypeIdx, ValType},
 };
@@ -344,21 +344,45 @@ impl Runtime {
             if let Some(inst) = instrs.get(frame.pc as usize) {
                 match inst {
                     Instruction::Nop => continue,
-                    Instruction::End => {
-                        // take results
-                        let results = {
-                            let idx = self.value_stack.len() - frame.arity as usize;
-                            self.value_stack.split_off(idx)
+                    Instruction::If(_) => {
+                        let cond = self.value_stack.pop().unwrap();
+                        match cond {
+                            Value::I32(0) => {
+                                frame.pc += instrs[frame.pc as usize..]
+                                    .iter()
+                                    .position(|&x| x == Instruction::Else || x == Instruction::End)
+                                    .unwrap() as isize;
+                            }
+
+                            Value::I32(_) => continue,
+                            _ => unreachable!(),
                         };
+                    }
+                    Instruction::Else => {
+                        frame.pc += instrs[frame.pc as usize..]
+                            .iter()
+                            .position(|&x| x == Instruction::End)
+                            .unwrap() as isize;
+                    }
+                    Instruction::End => {
+                        // Check if we're at the end of function, or just the block
 
-                        // unwind
-                        self.value_stack.truncate(frame.sp);
+                        if frame.pc as usize == instrs.len() - 1 {
+                            // take results
+                            let results = {
+                                let idx = self.value_stack.len() - frame.arity as usize;
+                                self.value_stack.split_off(idx)
+                            };
 
-                        // push results
-                        self.value_stack.extend(results);
+                            // unwind
+                            self.value_stack.truncate(frame.sp);
 
-                        // pop frame
-                        self.call_stack.pop();
+                            // push results
+                            self.value_stack.extend(results);
+
+                            // pop frame
+                            self.call_stack.pop();
+                        }
                     }
                     Instruction::Call(idx) => {
                         let mi = self.module_registry.get_instance(func_inst.module);
@@ -371,7 +395,21 @@ impl Runtime {
                     }
                     Instruction::LocalSet(_) => todo!(),
                     Instruction::LocalTee(_) => todo!(),
-                    Instruction::I32Const(_) => todo!(),
+                    Instruction::I32Const(v) => {
+                        self.value_stack.push(Value::I32(*v));
+                    }
+
+                    Instruction::I32LeS => {
+                        let rhs = self.value_stack.pop().unwrap();
+                        let lhs = self.value_stack.pop().unwrap();
+
+                        let res = match (lhs, rhs) {
+                            (Value::I32(a), Value::I32(b)) => a <= b,
+                            _ => unreachable!(),
+                        };
+
+                        self.value_stack.push(Value::I32(res as i32));
+                    }
                     Instruction::I32Add => {
                         let rhs = self.value_stack.pop().unwrap();
                         let lhs = self.value_stack.pop().unwrap();
@@ -383,8 +421,42 @@ impl Runtime {
 
                         self.value_stack.push(Value::I32(res));
                     }
+                    Instruction::I32Sub => {
+                        let rhs = self.value_stack.pop().unwrap();
+                        let lhs = self.value_stack.pop().unwrap();
+
+                        let res = match (lhs, rhs) {
+                            (Value::I32(a), Value::I32(b)) => a - b,
+                            _ => unreachable!(),
+                        };
+
+                        self.value_stack.push(Value::I32(res));
+                    }
                 }
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Error {
+    Malformed(SectionError),
+    Invalid,
+    Trap,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Malformed(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -411,42 +483,47 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    for item in m.sections.iter() {
-        let start = item.start as usize;
-        let end = item.end as usize;
+    (|| {
+        for item in m.sections.iter() {
+            let start = item.start as usize;
+            let end = item.end as usize;
 
-        let mut reader = Reader::from_bytes(&m.bytes[..end], start);
+            let mut reader = Reader::from_bytes(&m.bytes[..end], start);
 
-        match item.id {
-            SectionId::Custom => todo!(),
-            SectionId::Type => {
-                m.types = Some(read_type_section(&mut reader, *item)?);
-            }
-            SectionId::Import => todo!(),
-            SectionId::Function => {
-                m.functions = Some(read_function_section(&mut reader, *item)?);
-            }
-            SectionId::Table => todo!(),
-            SectionId::Memory => todo!(),
-            SectionId::Global => todo!(),
-            SectionId::Export => {
-                m.exports = Some(read_export_section(&mut reader, *item)?);
-            }
-            SectionId::Start => todo!(),
-            SectionId::Element => todo!(),
-            SectionId::Code => {
-                m.codes = Some(read_code_section(&mut reader, *item)?);
-            }
-            SectionId::Data => todo!(),
-            SectionId::DataCount => todo!(),
-            SectionId::Unknown(_) => todo!(),
-        };
-    }
+            match item.id {
+                SectionId::Custom => todo!(),
+                SectionId::Type => {
+                    m.types = Some(read_type_section(&mut reader, *item)?);
+                }
+                SectionId::Import => todo!(),
+                SectionId::Function => {
+                    m.functions = Some(read_function_section(&mut reader, *item)?);
+                }
+                SectionId::Table => todo!(),
+                SectionId::Memory => todo!(),
+                SectionId::Global => todo!(),
+                SectionId::Export => {
+                    m.exports = Some(read_export_section(&mut reader, *item)?);
+                }
+                SectionId::Start => todo!(),
+                SectionId::Element => todo!(),
+                SectionId::Code => {
+                    m.codes = Some(read_code_section(&mut reader, *item)?);
+                }
+                SectionId::Data => todo!(),
+                SectionId::DataCount => todo!(),
+                SectionId::Unknown(_) => todo!(),
+            };
+        }
+        Ok(())
+    })()
+    .map_err(Error::Malformed)?;
 
     // Execution
     let mut runtime = Runtime::default();
     let mh = runtime.instantiate_module(&m);
-    let r = runtime.invoke(mh, "add", &[Value::I32(10), Value::I32(2)]);
+    //let r = runtime.invoke(mh, "add", &[Value::I32(10), Value::I32(2)]);
+    let r = runtime.invoke(mh, "fib", &[Value::I32(20)]);
     dbg!(r);
 
     Ok(())

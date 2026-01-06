@@ -1,8 +1,17 @@
-use crate::reader::{FromReader, InvalidEnumValueError, ReadError, Reader};
+use crate::{
+    reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
+    types::ValType,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Instruction {
     Nop,
+
+    //Block,
+    //Loop,
+    If(ValType),
+    Else,
+
     End,
 
     Call(u32),
@@ -12,8 +21,10 @@ pub enum Instruction {
     LocalTee(u32),
 
     I32Const(i32),
+    I32LeS,
 
     I32Add,
+    I32Sub,
 }
 
 pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
@@ -21,6 +32,11 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
     let opcode = reader.read_u8().map_err(InstructionError::from)?;
     match opcode {
         0x01 => Ok(Instruction::Nop),
+        0x04 => {
+            let bt: ValType = decode_arg(reader, "if")?;
+            Ok(Instruction::If(bt))
+        }
+        0x05 => Ok(Instruction::Else),
         0x0b => Ok(Instruction::End),
 
         0x10 => {
@@ -46,7 +62,10 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
             Ok(Instruction::I32Const(v))
         }
 
+        0x4c => Ok(Instruction::I32LeS),
+
         0x6a => Ok(Instruction::I32Add),
+        0x6b => Ok(Instruction::I32Sub),
 
         _ => Err(InstructionError {
             kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {
