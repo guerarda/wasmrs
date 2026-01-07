@@ -32,6 +32,7 @@ struct Module {
     types: Option<TypeSection>,
     functions: Option<FunctionSection>,
     exports: Option<ExportSection>,
+    data_count: Option<DataCountSection>,
     codes: Option<CodeSection>,
 }
 
@@ -44,6 +45,7 @@ impl Module {
             types: None,
             functions: None,
             exports: None,
+            data_count: None,
             codes: None,
         }
     }
@@ -523,7 +525,10 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                 m.codes = Some(read_code_section(&mut reader, *item).map_err(Error::Malformed)?);
             }
             SectionId::Data => {}
-            SectionId::DataCount => {}
+            SectionId::DataCount => {
+                m.data_count =
+                    Some(read_data_count_section(&mut reader, *item).map_err(Error::Malformed)?)
+            }
             SectionId::Unknown(_) => {}
         };
     }
@@ -545,20 +550,6 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_type_section() -> anyhow::Result<()> {
-        let bytes = [
-            b"\0asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x06",                 // Type section(1), 6 bytes
-            b"\x01\x60\x01\x7f\x01\x7f", // 1 function, (i32) -> i32
-        ]
-        .concat();
-
-        let _ = decode_module(bytes)?;
-
-        Ok(())
-    }
-
-    #[test]
     fn test_decode_invalid_section() -> anyhow::Result<()> {
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
@@ -569,6 +560,37 @@ mod tests {
 
         let m = decode_module(bytes);
         assert!(m.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_type_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x06",                 // Type section(1), 6 bytes
+            b"\x01\x60\x01\x7f\x01\x7f", // 1 function, (i32) -> i32
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.types.is_some());
+        assert_eq!(m.types.unwrap().len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_data_count_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x0c\x01\x01", // Data Count section(12), u32(1)
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.data_count.is_some());
+        assert_eq!(m.data_count.unwrap().0, 1);
 
         Ok(())
     }

@@ -138,6 +138,9 @@ pub enum SectionErrorKind {
     // Code Section
     CodeFuncLocal(ReadError),
     CodeFuncBody(InstructionError),
+
+    // DataCount Section
+    DataCount(ReadError),
 }
 
 impl Display for SectionErrorKind {
@@ -161,6 +164,8 @@ impl Display for SectionErrorKind {
 
             SectionErrorKind::CodeFuncLocal(_) => write!(f, "reading function local"),
             SectionErrorKind::CodeFuncBody(_) => write!(f, "reading function body"),
+
+            SectionErrorKind::DataCount(_) => write!(f, "reading data count"),
         }
     }
 }
@@ -186,6 +191,8 @@ impl error::Error for SectionErrorKind {
 
             SectionErrorKind::CodeFuncBody(e) => Some(e),
             SectionErrorKind::CodeFuncLocal(e) => Some(e),
+
+            SectionErrorKind::DataCount(e) => Some(e),
         }
     }
 }
@@ -389,6 +396,22 @@ pub fn read_code_section(
             })
         })
         .collect()
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct DataCountSection(pub u32);
+
+pub fn read_data_count_section(
+    reader: &mut Reader,
+    info: SectionInfo,
+) -> std::result::Result<DataCountSection, SectionError> {
+    let count: u32 = reader.read().map_err(|e| SectionError {
+        kind: SectionErrorKind::DataCount(e),
+        info,
+        idx: None,
+    })?;
+    Ok(DataCountSection(count))
 }
 
 impl<'a> FromReader<'a> for FuncLocal {
