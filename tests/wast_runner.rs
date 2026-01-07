@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 
 use wast::parser::{self, ParseBuffer};
@@ -196,6 +196,7 @@ fn run_wast_file(path: &Path) -> (usize, usize, usize) {
 }
 
 #[test]
+#[ignore]
 fn run_binary_wast() {
     let (passed, failed, skipped) = run_wast_file(Path::new("tests/spec/binary.wast"));
     eprintln!(

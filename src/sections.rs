@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    instructions::{decode_instruction, Instruction, InstructionError},
+    instructions::{Instruction, InstructionError, decode_instruction},
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
     types::{FuncType, TypeIdx, ValType},
 };
@@ -285,6 +285,7 @@ impl TryFrom<u8> for ExportKind {
 #[derive(Debug)]
 pub struct ExportEntry {
     pub name: String,
+    #[allow(dead_code)]
     pub kind: ExportKind,
     pub index: u32,
 }
@@ -342,6 +343,7 @@ pub struct FuncLocal {
 
 #[derive(Debug)]
 pub struct CodeEntry {
+    #[allow(dead_code)]
     pub size: usize,
     pub locals: Vec<FuncLocal>,
     pub body: Vec<Instruction>,

@@ -123,6 +123,7 @@ impl<'a> Reader<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn read_vec<T, F>(&mut self, mut f: F) -> Result<Vec<T>>
     where
         F: FnMut(&mut Self) -> Result<T>,

@@ -1,5 +1,5 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::io::{Seek, SeekFrom};
 use std::iter::repeat_n;
 
@@ -9,8 +9,8 @@ mod reader;
 use crate::instructions::Instruction;
 use crate::reader::ReadErrorKind;
 use crate::sections::{
-    read_code_section, read_export_section, read_function_section, read_type_section, CodeSection,
-    ExportSection, FunctionSection, SectionError, SectionId, TypeSection,
+    CodeSection, ExportSection, FunctionSection, SectionError, SectionId, TypeSection,
+    read_code_section, read_export_section, read_function_section, read_type_section,
 };
 use crate::types::{FuncType, TypeIdx, ValType};
 use reader::{ReadError, Reader};
@@ -138,6 +138,7 @@ pub struct ModuleInstance {
 
 #[derive(Debug)]
 pub struct Func {
+    #[allow(dead_code)]
     typeidx: TypeIdx,
     locals: Vec<ValType>,
     body: Vec<Instruction>,
