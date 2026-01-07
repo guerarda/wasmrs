@@ -530,3 +530,46 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
 
     Ok(m)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_minimal_module() -> anyhow::Result<()> {
+        let bytes = b"\0asm\x01\x00\x00\x00".to_vec();
+
+        let _ = decode_module(bytes)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_type_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x06",                 // Type section(1), 6 bytes
+            b"\x01\x60\x01\x7f\x01\x7f", // 1 function, (i32) -> i32
+        ]
+        .concat();
+
+        let _ = decode_module(bytes)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_invalid_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x0f\x06",
+            b"\x01\x60\x01\x7f\x01\x7f",
+        ]
+        .concat();
+
+        let m = decode_module(bytes);
+        assert!(m.is_err());
+
+        Ok(())
+    }
+}
