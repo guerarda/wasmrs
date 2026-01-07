@@ -25,6 +25,7 @@ pub enum Instruction {
 
     I32Add,
     I32Sub,
+    I32Mul,
 }
 
 pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
@@ -66,6 +67,7 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
 
         0x6a => Ok(Instruction::I32Add),
         0x6b => Ok(Instruction::I32Sub),
+        0x6c => Ok(Instruction::I32Mul),
 
         _ => Err(InstructionError {
             kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {

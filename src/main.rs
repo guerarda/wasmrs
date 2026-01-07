@@ -75,4 +75,30 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_mul_wasm() -> anyhow::Result<()> {
+        let bytes = fs::read("tests/fixtures/mul.wasm")?;
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        let cases = [
+            // (a * b = c)
+            (1, 2, 2),
+            (2, 2, 4),
+            (-2, 2, -4),
+        ];
+
+        for (a, b, c) in cases {
+            let r = runtime.invoke(mh, "mul", &[Value::I32(a), Value::I32(b)]);
+
+            assert_eq!(r.len(), 1);
+            match r[0] {
+                Value::I32(v) => assert_eq!(v, c, "{} + {} = {}", a, b, c),
+                _ => panic!(),
+            }
+        }
+
+        Ok(())
+    }
 }

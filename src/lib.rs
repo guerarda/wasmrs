@@ -415,6 +415,15 @@ impl Runtime {
                         };
                         self.value_stack.push(Value::I32(res));
                     }
+                    Instruction::I32Mul => {
+                        let rhs = self.value_stack.pop().unwrap();
+                        let lhs = self.value_stack.pop().unwrap();
+                        let res = match (lhs, rhs) {
+                            (Value::I32(a), Value::I32(b)) => a * b,
+                            _ => unreachable!(),
+                        };
+                        self.value_stack.push(Value::I32(res));
+                    }
                 }
             }
         }
