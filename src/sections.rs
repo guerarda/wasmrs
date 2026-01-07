@@ -73,7 +73,7 @@ impl TryFrom<u8> for SectionId {
             0x0c => Ok(SectionId::DataCount),
             _ => Err(InvalidEnumValueError {
                 value,
-                enum_name: std::any::type_name::<SectionId>(),
+                enum_name: std::any::type_name::<Self>(),
             }),
         }
     }
@@ -283,7 +283,7 @@ impl TryFrom<u8> for ExportKind {
             0x03 => Ok(ExportKind::Global),
             _ => Err(InvalidEnumValueError {
                 value,
-                enum_name: std::any::type_name::<ExportKind>(),
+                enum_name: std::any::type_name::<Self>(),
             }),
         }
     }

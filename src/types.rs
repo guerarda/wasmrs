@@ -36,7 +36,7 @@ impl TryFrom<u8> for ValType {
             0x7b => Ok(ValType::V128),
             _ => Err(InvalidEnumValueError {
                 value,
-                enum_name: std::any::type_name::<ValType>(),
+                enum_name: std::any::type_name::<Self>(),
             }),
         }
     }
