@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 
 use wast::parser::{self, ParseBuffer};
@@ -44,9 +44,8 @@ impl WastRunner {
             WastDirective::Module(mut module) => {
                 let wasm_bytes = module.encode().expect("failed to encode module");
                 // Catch panics from incomplete runtime
-                let result = catch_unwind(AssertUnwindSafe(|| {
-                    self.runtime.load_module(&wasm_bytes)
-                }));
+                let result =
+                    catch_unwind(AssertUnwindSafe(|| self.runtime.load_module(&wasm_bytes)));
                 match result {
                     Ok(Ok(handle)) => {
                         self.current_module = Some(handle);
@@ -83,9 +82,8 @@ impl WastRunner {
             } => {
                 let wasm_bytes = module.encode().expect("failed to encode module");
                 // Catch panics from incomplete runtime
-                let result = catch_unwind(AssertUnwindSafe(|| {
-                    self.runtime.load_module(&wasm_bytes)
-                }));
+                let result =
+                    catch_unwind(AssertUnwindSafe(|| self.runtime.load_module(&wasm_bytes)));
                 match result {
                     Ok(Ok(_)) => {
                         self.results.push((
@@ -102,7 +100,10 @@ impl WastRunner {
                         // Test passed - we expected an error and got one
                         eprintln!(
                             "[{}] line {}: expected {:?}, got {:?}",
-                            idx, line, message, e.to_string()
+                            idx,
+                            line,
+                            message,
+                            e.to_string()
                         );
                         let _ = std::io::stderr().flush();
                         self.results
@@ -110,10 +111,7 @@ impl WastRunner {
                     }
                     Err(_) => {
                         // Panic counts as an error for malformed modules
-                        eprintln!(
-                            "[{}] line {}: expected {:?}, got PANIC",
-                            idx, line, message
-                        );
+                        eprintln!("[{}] line {}: expected {:?}, got PANIC", idx, line, message);
                         let _ = std::io::stderr().flush();
                         self.results
                             .push((idx, line, "AssertMalformed", TestResult::Pass));
