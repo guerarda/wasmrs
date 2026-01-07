@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 
 use wast::parser::{self, ParseBuffer};

@@ -9,8 +9,9 @@ mod reader;
 use crate::instructions::Instruction;
 use crate::reader::ReadErrorKind;
 use crate::sections::{
-    CodeSection, ExportSection, FunctionSection, SectionError, SectionId, TypeSection,
-    read_code_section, read_export_section, read_function_section, read_type_section,
+    CodeSection, DataCountSection, ExportSection, FunctionSection, SectionError, SectionId,
+    TypeSection, read_code_section, read_data_count_section, read_export_section,
+    read_function_section, read_type_section,
 };
 use crate::types::{FuncType, TypeIdx, ValType};
 use reader::{ReadError, Reader};
