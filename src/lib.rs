@@ -495,6 +495,7 @@ impl From<MalformedError> for Error {
 #[non_exhaustive]
 pub enum MalformedError {
     Read(ReadError),
+    Preamble(ReadError),
 
     DuplicateSection {
         offset: usize,
@@ -508,6 +509,7 @@ impl std::fmt::Display for MalformedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MalformedError::Read(e) => write!(f, "{}", e),
+            MalformedError::Preamble(_) => write!(f, "invalid module preamble"),
             MalformedError::DuplicateSection { offset, id, other } => {
                 write!(
                     f,
@@ -526,6 +528,7 @@ impl std::error::Error for MalformedError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             MalformedError::Read(e) => Some(e),
+            MalformedError::Preamble(e) => Some(e),
             MalformedError::DuplicateSection { .. } => None,
             MalformedError::Section(e) => Some(e),
         }
@@ -549,19 +552,7 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
     let mut m = Module::from_bytes(bytes);
 
     let mut r = ModuleReader::from_module(&m);
-    r.read_preamble().map_err(|e| {
-        Error::Malformed(MalformedError::Section(SectionError {
-            kind: sections::SectionErrorKind::Preamble(e),
-            info: SectionInfo {
-                id: SectionId::Custom,
-                offset: 0,
-                start: 0,
-                end: 0,
-                size: 0,
-            },
-            idx: None,
-        }))
-    })?;
+    r.read_preamble().map_err(MalformedError::Preamble)?;
     m.sections = r.read_toc().map_err(Error::Malformed)?;
 
     for item in m.sections.iter() {

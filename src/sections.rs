@@ -116,10 +116,6 @@ impl error::Error for SectionError {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum SectionErrorKind {
-    // Preamble errors (before sections)
-    Preamble(ReadError),
-    Toc(ReadError),
-
     // Generic
     EntryCount(ReadError),
     EntrySize(ReadError),
@@ -154,9 +150,6 @@ pub enum SectionErrorKind {
 impl Display for SectionErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SectionErrorKind::Preamble(_) => write!(f, "reading module preamble"),
-            SectionErrorKind::Toc(_) => write!(f, "reading section table of contents"),
-
             SectionErrorKind::EntryCount(_) => write!(f, "reading the entry count"),
             SectionErrorKind::EntrySize(_) => write!(f, "reading this entry size"),
 
@@ -186,9 +179,6 @@ impl Display for SectionErrorKind {
 impl error::Error for SectionErrorKind {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            SectionErrorKind::Preamble(e) => Some(e),
-            SectionErrorKind::Toc(e) => Some(e),
-
             SectionErrorKind::EntryCount(e) => Some(e),
             SectionErrorKind::EntrySize(e) => Some(e),
 
