@@ -27,7 +27,6 @@ pub enum SectionId {
     Code = 0x0a,
     Data = 0x0b,
     DataCount = 0x0c,
-    Unknown(u8),
 }
 
 impl fmt::Display for SectionId {
@@ -46,10 +45,6 @@ impl fmt::Display for SectionId {
             SectionId::Code => f.pad("Code(10)"),
             SectionId::Data => f.pad("Data(11)"),
             SectionId::DataCount => f.pad("Data Count(12)"),
-            SectionId::Unknown(v) => {
-                let s = format!("Unknown({})", v);
-                f.pad(&s)
-            }
         }
     }
 }
