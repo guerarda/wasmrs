@@ -3,7 +3,7 @@ use crate::leb128::{self, DecodeError};
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    io::{self, BufRead, Cursor, Read},
+    io::{self, BufRead, Cursor},
     ops::Range,
     string::FromUtf8Error,
 };
@@ -54,7 +54,7 @@ impl<'a> Reader<'a> {
 
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         let offset = self.cursor.position() as usize;
-        self.cursor.read_exact(buf).map_err(|e| ReadError {
+        std::io::Read::read_exact(self, buf).map_err(|e| ReadError {
             offset,
             kind: ReadErrorKind::Read(e),
         })
