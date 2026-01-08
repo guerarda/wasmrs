@@ -645,4 +645,18 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_invalid_leb128_encoding() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x05\x0d\x01", // Memory Section(5), one entry
+            b"\x00\x82\x80\x80\x80\x80\x80\x80\x80\x80\x80\x00", // Minimum 2, too many bytes
+        ]
+        .concat();
+
+        let m = decode_module(bytes);
+        assert!(m.is_err());
+
+        Ok(())
+    }
 }

@@ -206,3 +206,15 @@ fn run_binary_wast() {
     let _ = std::io::stderr().flush();
     // Don't assert - we expect failures while runtime is incomplete
 }
+
+#[test]
+#[ignore]
+fn run_binary_leb128_wast() {
+    let (passed, failed, skipped) = run_wast_file(Path::new("tests/spec/binary-leb128.wast"));
+    eprintln!(
+        "\nbinary.wast: {} passed, {} failed, {} skipped",
+        passed, failed, skipped
+    );
+    let _ = std::io::stderr().flush();
+    // Don't assert - we expect failures while runtime is incomplete
+}
