@@ -75,6 +75,28 @@ impl TryFrom<u8> for SectionId {
     }
 }
 
+/// Section ids do not always correspond to the order of sections in
+/// the encoding of a module.
+impl SectionId {
+    pub fn order(&self) -> u8 {
+        match self {
+            SectionId::Custom => 0,
+            SectionId::Type => 1,
+            SectionId::Import => 2,
+            SectionId::Function => 3,
+            SectionId::Table => 4,
+            SectionId::Memory => 5,
+            SectionId::Global => 6,
+            SectionId::Export => 7,
+            SectionId::Start => 8,
+            SectionId::Element => 9,
+            SectionId::Code => 11,
+            SectionId::Data => 12,
+            SectionId::DataCount => 10,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct SectionInfo {
     pub id: SectionId,

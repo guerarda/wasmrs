@@ -82,7 +82,7 @@ impl<'a> ModuleReader<'a> {
     }
 
     fn read_toc(&mut self) -> std::result::Result<Vec<SectionInfo>, MalformedError> {
-        let mut v = Vec::new();
+        let mut v: Vec<SectionInfo> = Vec::new();
         let mut seen: HashMap<SectionId, SectionInfo> = HashMap::new();
 
         while self.reader.has_data_left()? {
@@ -115,6 +115,15 @@ impl<'a> ModuleReader<'a> {
                     .unwrap(),
                 size,
             };
+            if let Some(prev) = v.last() {
+                if info.id.order() < prev.id.order() {
+                    return Err(MalformedError::SectionOrder {
+                        offset,
+                        id,
+                        other: *prev,
+                    });
+                }
+            }
             v.push(info);
             seen.insert(id, info);
         }
@@ -502,6 +511,11 @@ pub enum MalformedError {
         id: SectionId,
         other: SectionInfo,
     },
+    SectionOrder {
+        offset: usize,
+        id: SectionId,
+        other: SectionInfo,
+    },
     Section(SectionError),
 }
 
@@ -519,6 +533,16 @@ impl std::fmt::Display for MalformedError {
                     other_offset = other.offset
                 )
             }
+            MalformedError::SectionOrder { offset, id, other } => {
+                write!(
+                    f,
+                    "section out of order: {id} section at offset {offset:#0x} ({offset}), appears after {other_id} at offset {other_offset:#0x} ({other_offset})",
+                    id = id,
+                    offset = offset,
+                    other_id = other.id,
+                    other_offset = other.offset
+                )
+            }
             MalformedError::Section(_) => write!(f, "malformed section"),
         }
     }
@@ -530,6 +554,7 @@ impl std::error::Error for MalformedError {
             MalformedError::Read(e) => Some(e),
             MalformedError::Preamble(e) => Some(e),
             MalformedError::DuplicateSection { .. } => None,
+            MalformedError::SectionOrder { .. } => None,
             MalformedError::Section(e) => Some(e),
         }
     }
@@ -595,7 +620,6 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                     read_data_count_section(&mut reader, *item).map_err(MalformedError::Section)?,
                 )
             }
-            SectionId::Unknown(_) => {}
         };
     }
 
@@ -726,6 +750,21 @@ mod tests {
             b"\0asm\x01\x00\x00\x00" as &[u8],
             b"\x01\x01\x00",
             b"\x01\x01\x00", // Duplicate Type section
+        ]
+        .concat();
+
+        let m = decode_module(bytes);
+        assert!(m.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_out_of_order_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x02\x01\x00", // Import Section
+            b"\x01\x01\x00", // Type Section should be first
         ]
         .concat();
 
