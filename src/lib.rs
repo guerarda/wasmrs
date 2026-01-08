@@ -556,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_invalid_section() -> anyhow::Result<()> {
+    fn test_invalid_section_id() -> anyhow::Result<()> {
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
             b"\x0f\x06",
