@@ -20,6 +20,7 @@ mod sections;
 use crate::sections::SectionInfo;
 
 mod instructions;
+mod limits;
 mod types;
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";

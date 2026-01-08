@@ -6,6 +6,7 @@ use std::{
 
 use crate::{
     instructions::{Instruction, InstructionError, decode_instruction},
+    limits::MAX_WASM_FUNCTION_LOCALS,
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
     types::{FuncType, TypeIdx, ValType},
 };
@@ -142,6 +143,7 @@ pub enum SectionErrorKind {
 
     // Code Section
     CodeFuncLocal(ReadError),
+    CodeFuncTooManyLocals,
     CodeFuncBody(InstructionError),
 
     // DataCount Section
@@ -172,6 +174,7 @@ impl Display for SectionErrorKind {
             SectionErrorKind::ExportDescIndex(_) => write!(f, "reading the export index"),
 
             SectionErrorKind::CodeFuncLocal(_) => write!(f, "reading function local"),
+            SectionErrorKind::CodeFuncTooManyLocals => write!(f, "checking function locals count"),
             SectionErrorKind::CodeFuncBody(_) => write!(f, "reading function body"),
 
             SectionErrorKind::DataCount(_) => write!(f, "reading data count"),
@@ -203,6 +206,7 @@ impl error::Error for SectionErrorKind {
             SectionErrorKind::ExportDescIndex(e) => Some(e),
 
             SectionErrorKind::CodeFuncBody(e) => Some(e),
+            SectionErrorKind::CodeFuncTooManyLocals => None,
             SectionErrorKind::CodeFuncLocal(e) => Some(e),
 
             SectionErrorKind::DataCount(e) => Some(e),
@@ -454,6 +458,14 @@ fn read_code_entry(reader: &mut Reader) -> result::Result<CodeEntry, SectionErro
     let mut reader = reader.scoped(size).map_err(SectionErrorKind::EntrySize)?;
 
     let locals: Vec<FuncLocal> = reader.read().map_err(SectionErrorKind::CodeFuncLocal)?;
+
+    // There's a limit for number of functions locals
+    // TODO It should consider function parameters as implicit locals
+    let _ = locals
+        .iter()
+        .try_fold(0u32, |acc, &FuncLocal { count, .. }| acc.checked_add(count))
+        .filter(|&n| n <= MAX_WASM_FUNCTION_LOCALS)
+        .ok_or(SectionErrorKind::CodeFuncTooManyLocals)?;
 
     let mut body = Vec::new();
     while !reader.is_exhausted() {
