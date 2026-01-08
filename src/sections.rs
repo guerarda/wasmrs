@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub enum SectionId {
     Custom = 0x00,
     Type = 0x01,
@@ -83,6 +83,7 @@ impl TryFrom<u8> for SectionId {
 #[derive(Debug, Copy, Clone)]
 pub struct SectionInfo {
     pub id: SectionId,
+    pub offset: usize,
     pub start: u64,
     pub end: u64,
     pub size: u32,

@@ -81,17 +81,31 @@ impl<'a> ModuleReader<'a> {
         Ok(())
     }
 
-    fn read_toc(&mut self) -> reader::Result<Vec<SectionInfo>> {
+    fn read_toc(&mut self) -> std::result::Result<Vec<SectionInfo>, MalformedError> {
         let mut v = Vec::new();
+        let mut seen: HashMap<SectionId, SectionInfo> = HashMap::new();
+
         while self.reader.has_data_left()? {
             let offset = self.reader.position() as usize;
             let id: SectionId = self.reader.read_u8()?.try_into().map_err(|e| ReadError {
                 kind: ReadErrorKind::InvalidEnumValue(e),
                 offset,
             })?;
+
+            if id != SectionId::Custom {
+                if let Some(other) = seen.get(&id) {
+                    return Err(MalformedError::DuplicateSection {
+                        offset,
+                        id,
+                        other: *other,
+                    });
+                }
+            }
+
             let size = self.reader.read_u32()?;
 
             let info = SectionInfo {
+                offset,
                 id,
                 start: self.reader.position(),
                 end: self
@@ -102,6 +116,7 @@ impl<'a> ModuleReader<'a> {
                 size,
             };
             v.push(info);
+            seen.insert(id, info);
         }
         Ok(v)
     }
@@ -446,7 +461,7 @@ impl Runtime {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
-    Malformed(SectionError),
+    Malformed(MalformedError),
     Invalid,
     Trap,
 }
@@ -470,35 +485,84 @@ impl std::error::Error for Error {
     }
 }
 
+impl From<MalformedError> for Error {
+    fn from(value: MalformedError) -> Self {
+        Error::Malformed(value)
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum MalformedError {
+    Read(ReadError),
+
+    DuplicateSection {
+        offset: usize,
+        id: SectionId,
+        other: SectionInfo,
+    },
+    Section(SectionError),
+}
+
+impl std::fmt::Display for MalformedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MalformedError::Read(e) => write!(f, "{}", e),
+            MalformedError::DuplicateSection { offset, id, other } => {
+                write!(
+                    f,
+                    "duplicate section: {id} section at offset {offset:#0x} ({offset}), previously seen at offset {other_offset:#0x} ({other_offset})",
+                    id = id,
+                    offset = offset,
+                    other_offset = other.offset
+                )
+            }
+            MalformedError::Section(_) => write!(f, "malformed section"),
+        }
+    }
+}
+
+impl std::error::Error for MalformedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            MalformedError::Read(e) => Some(e),
+            MalformedError::DuplicateSection { .. } => None,
+            MalformedError::Section(e) => Some(e),
+        }
+    }
+}
+
+impl From<SectionError> for MalformedError {
+    fn from(value: SectionError) -> Self {
+        MalformedError::Section(value)
+    }
+}
+
+impl From<ReadError> for MalformedError {
+    fn from(value: ReadError) -> Self {
+        MalformedError::Read(value)
+    }
+}
+
 /// Decode a module from bytes (parsing only, no instantiation)
 fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
     let mut m = Module::from_bytes(bytes);
 
     let mut r = ModuleReader::from_module(&m);
     r.read_preamble().map_err(|e| {
-        Error::Malformed(SectionError {
+        Error::Malformed(MalformedError::Section(SectionError {
             kind: sections::SectionErrorKind::Preamble(e),
             info: SectionInfo {
                 id: SectionId::Custom,
+                offset: 0,
                 start: 0,
                 end: 0,
                 size: 0,
             },
             idx: None,
-        })
+        }))
     })?;
-    m.sections = r.read_toc().map_err(|e| {
-        Error::Malformed(SectionError {
-            kind: sections::SectionErrorKind::Toc(e),
-            info: SectionInfo {
-                id: SectionId::Custom,
-                start: 0,
-                end: 0,
-                size: 0,
-            },
-            idx: None,
-        })
-    })?;
+    m.sections = r.read_toc().map_err(Error::Malformed)?;
 
     for item in m.sections.iter() {
         let start = item.start as usize;
@@ -509,32 +573,36 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
         match item.id {
             SectionId::Custom => {}
             SectionId::Type => {
-                m.types = Some(read_type_section(&mut reader, *item).map_err(Error::Malformed)?);
+                m.types =
+                    Some(read_type_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Import => {}
             SectionId::Function => {
-                m.functions =
-                    Some(read_function_section(&mut reader, *item).map_err(Error::Malformed)?);
+                m.functions = Some(
+                    read_function_section(&mut reader, *item).map_err(MalformedError::Section)?,
+                );
             }
             SectionId::Table => {}
             SectionId::Memory => {
                 m.memories =
-                    Some(read_memory_section(&mut reader, *item).map_err(Error::Malformed)?);
+                    Some(read_memory_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Global => {}
             SectionId::Export => {
                 m.exports =
-                    Some(read_export_section(&mut reader, *item).map_err(Error::Malformed)?);
+                    Some(read_export_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Start => {}
             SectionId::Element => {}
             SectionId::Code => {
-                m.codes = Some(read_code_section(&mut reader, *item).map_err(Error::Malformed)?);
+                m.codes =
+                    Some(read_code_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Data => {}
             SectionId::DataCount => {
-                m.data_count =
-                    Some(read_data_count_section(&mut reader, *item).map_err(Error::Malformed)?)
+                m.data_count = Some(
+                    read_data_count_section(&mut reader, *item).map_err(MalformedError::Section)?,
+                )
             }
             SectionId::Unknown(_) => {}
         };
@@ -652,6 +720,21 @@ mod tests {
             b"\0asm\x01\x00\x00\x00" as &[u8],
             b"\x05\x0d\x01", // Memory Section(5), one entry
             b"\x00\x82\x80\x80\x80\x80\x80\x80\x80\x80\x80\x00", // Minimum 2, too many bytes
+        ]
+        .concat();
+
+        let m = decode_module(bytes);
+        assert!(m.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_duplicate_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x01\x00",
+            b"\x01\x01\x00", // Duplicate Type section
         ]
         .concat();
 
