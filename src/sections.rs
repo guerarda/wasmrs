@@ -130,6 +130,11 @@ pub enum SectionErrorKind {
     // Function Section
     FunctionIndex(ReadError),
 
+    // Memory Section
+    MemoryLimitFlag(ReadError),
+    MemoryLimitMin(ReadError),
+    MemoryLimitMax(ReadError),
+
     // Export Section
     ExportName(ReadError),
     ExportDescKind(ReadError),
@@ -158,6 +163,10 @@ impl Display for SectionErrorKind {
 
             SectionErrorKind::FunctionIndex(_) => write!(f, "reading the function type index"),
 
+            SectionErrorKind::MemoryLimitFlag(_) => write!(f, "reading the memory type limit flag"),
+            SectionErrorKind::MemoryLimitMin(_) => write!(f, "reading the memory type limit min"),
+            SectionErrorKind::MemoryLimitMax(_) => write!(f, "reading the memory type limit max"),
+
             SectionErrorKind::ExportName(_) => write!(f, "reading the export name"),
             SectionErrorKind::ExportDescKind(_) => write!(f, "reading the export kind"),
             SectionErrorKind::ExportDescIndex(_) => write!(f, "reading the export index"),
@@ -184,6 +193,10 @@ impl error::Error for SectionErrorKind {
             SectionErrorKind::FuncTypeResults(e) => Some(e),
 
             SectionErrorKind::FunctionIndex(e) => Some(e),
+
+            SectionErrorKind::MemoryLimitFlag(e) => Some(e),
+            SectionErrorKind::MemoryLimitMin(e) => Some(e),
+            SectionErrorKind::MemoryLimitMax(e) => Some(e),
 
             SectionErrorKind::ExportName(e) => Some(e),
             SectionErrorKind::ExportDescKind(e) => Some(e),
@@ -255,6 +268,84 @@ pub fn read_function_section(
         .map(|idx| {
             TypeIdx::from_reader(reader).map_err(|e| SectionError {
                 kind: SectionErrorKind::FunctionIndex(e),
+                info,
+                idx: Some(idx as usize),
+            })
+        })
+        .collect()
+}
+
+/// Memory Section
+#[repr(u8)]
+#[derive(Debug, Eq, PartialEq)]
+pub enum LimitFlag {
+    Min = 0x00,
+    MinMax = 0x01,
+}
+
+impl TryFrom<u8> for LimitFlag {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(Self::Min),
+            0x01 => Ok(Self::MinMax),
+            _ => Err(InvalidEnumValueError {
+                value,
+                enum_name: std::any::type_name::<Self>(),
+            }),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for LimitFlag {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        let pos = reader.position() as usize;
+        reader
+            .read_u8()?
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
+
+#[derive(Debug)]
+pub struct Limit {
+    pub min: u32,
+    pub max: Option<u32>,
+}
+
+#[derive(Debug)]
+pub struct MemType(pub Limit);
+
+pub type MemorySection = Vec<MemType>;
+
+fn read_memory_entry(reader: &mut Reader) -> std::result::Result<MemType, SectionErrorKind> {
+    let flag: LimitFlag = reader.read().map_err(SectionErrorKind::MemoryLimitFlag)?;
+    let min: u32 = reader.read().map_err(SectionErrorKind::MemoryLimitMin)?;
+
+    match flag {
+        LimitFlag::Min => Ok(MemType(Limit { min, max: None })),
+        LimitFlag::MinMax => Ok(MemType(Limit {
+            min,
+            max: Some(reader.read().map_err(SectionErrorKind::MemoryLimitMax)?),
+        })),
+    }
+}
+
+pub fn read_memory_section(
+    reader: &mut Reader,
+    info: SectionInfo,
+) -> std::result::Result<MemorySection, SectionError> {
+    let len: u32 = reader.read().map_err(|e| SectionError {
+        kind: SectionErrorKind::EntryCount(e),
+        info,
+        idx: None,
+    })?;
+
+    (0..len)
+        .map(|idx| {
+            read_memory_entry(reader).map_err(|kind| SectionError {
+                kind,
                 info,
                 idx: Some(idx as usize),
             })

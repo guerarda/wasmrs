@@ -9,9 +9,9 @@ mod reader;
 use crate::instructions::Instruction;
 use crate::reader::ReadErrorKind;
 use crate::sections::{
-    CodeSection, DataCountSection, ExportSection, FunctionSection, SectionError, SectionId,
-    TypeSection, read_code_section, read_data_count_section, read_export_section,
-    read_function_section, read_type_section,
+    CodeSection, DataCountSection, ExportSection, FunctionSection, MemorySection, SectionError,
+    SectionId, TypeSection, read_code_section, read_data_count_section, read_export_section,
+    read_function_section, read_memory_section, read_type_section,
 };
 use crate::types::{FuncType, TypeIdx, ValType};
 use reader::{ReadError, Reader};
@@ -32,6 +32,7 @@ struct Module {
 
     types: Option<TypeSection>,
     functions: Option<FunctionSection>,
+    memories: Option<MemorySection>,
     exports: Option<ExportSection>,
     data_count: Option<DataCountSection>,
     codes: Option<CodeSection>,
@@ -45,6 +46,7 @@ impl Module {
 
             types: None,
             functions: None,
+            memories: None,
             exports: None,
             data_count: None,
             codes: None,
@@ -514,7 +516,10 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                     Some(read_function_section(&mut reader, *item).map_err(Error::Malformed)?);
             }
             SectionId::Table => {}
-            SectionId::Memory => {}
+            SectionId::Memory => {
+                m.memories =
+                    Some(read_memory_section(&mut reader, *item).map_err(Error::Malformed)?);
+            }
             SectionId::Global => {}
             SectionId::Export => {
                 m.exports =
@@ -595,4 +600,49 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_decode_memory_section() -> anyhow::Result<()> {
+        // One MemType, Min Only
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x05\x03\x01", // Memory Section(5), one entry
+            b"\x00\x01",     // Min
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.memories.is_some());
+        assert_eq!(m.memories.unwrap().len(), 1);
+
+        // One MemType, Min Max
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x05\x04\x01", // Memory Section(5), one entry
+            b"\x01\x01\x02", // Min Max
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.memories.is_some());
+        assert_eq!(m.memories.unwrap().len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_invalid_memory_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x05\x03\x01", // Memory Section(5), one entry
+            b"\x02\x01",     // Invalid Flag
+        ]
+        .concat();
+
+        let m = decode_module(bytes);
+        assert!(m.is_err());
+
+        Ok(())
+    }
+
 }
