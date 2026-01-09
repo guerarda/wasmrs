@@ -10,7 +10,8 @@ use crate::instructions::Instruction;
 use crate::reader::ReadErrorKind;
 use crate::sections::{
     CodeSection, DataCountSection, ExportSection, FunctionSection, MemorySection, SectionError,
-    SectionId, TableSection, TypeSection, decode_data_count_section, decode_section,
+    SectionId, StartSection, TableSection, TypeSection, decode_data_count_section, decode_section,
+    decode_start_section,
 };
 use crate::types::{FuncType, TypeIdx, ValType};
 use reader::{ReadError, Reader};
@@ -35,6 +36,7 @@ struct Module {
     tables: Option<TableSection>,
     memories: Option<MemorySection>,
     exports: Option<ExportSection>,
+    start: Option<StartSection>,
     data_count: Option<DataCountSection>,
     codes: Option<CodeSection>,
 }
@@ -50,6 +52,7 @@ impl Module {
             tables: None,
             memories: None,
             exports: None,
+            start: None,
             data_count: None,
             codes: None,
         }
@@ -612,7 +615,11 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                 m.exports =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
-            SectionId::Start => {}
+            SectionId::Start => {
+                m.start = Some(
+                    decode_start_section(&mut reader, *item).map_err(MalformedError::Section)?,
+                );
+            }
             SectionId::Element => {}
             SectionId::Code => {
                 m.codes =
@@ -744,6 +751,21 @@ mod tests {
 
         let m = decode_module(bytes);
         assert!(m.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_start_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x08\x01\x00", // Start Section(8), index 0
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.start.is_some());
+        assert_eq!(m.start.unwrap().0, 0);
 
         Ok(())
     }

@@ -8,7 +8,7 @@ use crate::{
     instructions::{Instruction, InstructionError, decode_instruction},
     limits::MAX_WASM_FUNCTION_LOCALS,
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
-    types::{FuncType, RefType, TypeIdx, ValType},
+    types::{FuncIdx, FuncType, RefType, TypeIdx, ValType},
 };
 
 #[repr(u8)]
@@ -474,6 +474,23 @@ impl SectionEntry for ExportEntry {
 
         Ok(ExportEntry { name, kind, index })
     }
+}
+
+/// Start Section
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct StartSection(pub FuncIdx);
+
+pub fn decode_start_section(
+    reader: &mut Reader,
+    info: SectionInfo,
+) -> std::result::Result<StartSection, SectionError> {
+    let count: u32 = reader.read().map_err(|e| SectionError {
+        kind: SectionErrorKind::DataCount(e),
+        info,
+        idx: None,
+    })?;
+    Ok(StartSection(count))
 }
 
 /// Code Section
