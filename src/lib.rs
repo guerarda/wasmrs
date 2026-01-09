@@ -120,7 +120,7 @@ impl<'a> ModuleReader<'a> {
                 size,
             };
             if let Some(prev) = v.last() {
-                if info.id.order() < prev.id.order() {
+                if prev.id != SectionId::Custom && info.id.order() < prev.id.order() {
                     return Err(MalformedError::SectionOrder {
                         offset,
                         id,
