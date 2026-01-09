@@ -10,7 +10,7 @@ use crate::instructions::Instruction;
 use crate::reader::ReadErrorKind;
 use crate::sections::{
     CodeSection, DataCountSection, ExportSection, FunctionSection, MemorySection, SectionError,
-    SectionId, TypeSection, decode_data_count_section, decode_section,
+    SectionId, TableSection, TypeSection, decode_data_count_section, decode_section,
 };
 use crate::types::{FuncType, TypeIdx, ValType};
 use reader::{ReadError, Reader};
@@ -32,6 +32,7 @@ struct Module {
 
     types: Option<TypeSection>,
     functions: Option<FunctionSection>,
+    tables: Option<TableSection>,
     memories: Option<MemorySection>,
     exports: Option<ExportSection>,
     data_count: Option<DataCountSection>,
@@ -46,6 +47,7 @@ impl Module {
 
             types: None,
             functions: None,
+            tables: None,
             memories: None,
             exports: None,
             data_count: None,
@@ -250,6 +252,7 @@ impl From<ValType> for Value {
             ValType::F32 => Value::F32(0.0),
             ValType::F64 => Value::F64(0.0),
             ValType::V128 => unimplemented!(),
+            ValType::Ref(_) => unreachable!(),
         }
     }
 }
@@ -596,7 +599,10 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                 m.functions =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
-            SectionId::Table => {}
+            SectionId::Table => {
+                m.tables =
+                    Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
+            }
             SectionId::Memory => {
                 m.memories =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
@@ -670,16 +676,30 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_data_count_section() -> anyhow::Result<()> {
+    fn test_decode_table_section() -> anyhow::Result<()> {
+        // Func Ref, Limit Min only
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
-            b"\x0c\x01\x01", // Data Count section(12), u32(1)
+            b"\x04\x04\x01", // Table Section(4), 6 bytes, 1 entry
+            b"\x70\x00\x01", // fucn ref, limit min only
         ]
         .concat();
 
         let m = decode_module(bytes)?;
-        assert!(m.data_count.is_some());
-        assert_eq!(m.data_count.unwrap().0, 1);
+        assert!(m.tables.is_some());
+        assert_eq!(m.tables.unwrap().len(), 1);
+
+        // Extern Ref, Limit Min Max
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x04\x05\x01",     // Table Section(4), 6 bytes, 1 entry
+            b"\x6f\x01\x01\x02", // extern ref, limit min max
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.tables.is_some());
+        assert_eq!(m.tables.unwrap().len(), 1);
 
         Ok(())
     }
@@ -724,6 +744,21 @@ mod tests {
 
         let m = decode_module(bytes);
         assert!(m.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_data_count_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x0c\x01\x01", // Data Count section(12), u32(1)
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.data_count.is_some());
+        assert_eq!(m.data_count.unwrap().0, 1);
 
         Ok(())
     }

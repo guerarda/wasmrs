@@ -8,7 +8,7 @@ use crate::{
     instructions::{Instruction, InstructionError, decode_instruction},
     limits::MAX_WASM_FUNCTION_LOCALS,
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
-    types::{FuncType, TypeIdx, ValType},
+    types::{FuncType, RefType, TypeIdx, ValType},
 };
 
 #[repr(u8)]
@@ -145,10 +145,12 @@ pub enum SectionErrorKind {
     // Function Section
     FunctionIndex(ReadError),
 
+    // Table Section
+    TableElementRefType(ReadError),
+    TableLimit(LimitReadError),
+
     // Memory Section
-    MemoryLimitFlag(ReadError),
-    MemoryLimitMin(ReadError),
-    MemoryLimitMax(ReadError),
+    MemoryLimit(LimitReadError),
 
     // Export Section
     ExportName(ReadError),
@@ -176,9 +178,12 @@ impl Display for SectionErrorKind {
 
             SectionErrorKind::FunctionIndex(_) => write!(f, "reading the function type index"),
 
-            SectionErrorKind::MemoryLimitFlag(_) => write!(f, "reading the memory type limit flag"),
-            SectionErrorKind::MemoryLimitMin(_) => write!(f, "reading the memory type limit min"),
-            SectionErrorKind::MemoryLimitMax(_) => write!(f, "reading the memory type limit max"),
+            SectionErrorKind::TableElementRefType(_) => {
+                write!(f, "reading the table type element reference type")
+            }
+            SectionErrorKind::TableLimit(_) => write!(f, "reading the table type limit"),
+
+            SectionErrorKind::MemoryLimit(_) => write!(f, "reading the memory type limit"),
 
             SectionErrorKind::ExportName(_) => write!(f, "reading the export name"),
             SectionErrorKind::ExportDescKind(_) => write!(f, "reading the export kind"),
@@ -205,9 +210,10 @@ impl error::Error for SectionErrorKind {
 
             SectionErrorKind::FunctionIndex(e) => Some(e),
 
-            SectionErrorKind::MemoryLimitFlag(e) => Some(e),
-            SectionErrorKind::MemoryLimitMin(e) => Some(e),
-            SectionErrorKind::MemoryLimitMax(e) => Some(e),
+            SectionErrorKind::MemoryLimit(e) => Some(e),
+
+            SectionErrorKind::TableElementRefType(e) => Some(e),
+            SectionErrorKind::TableLimit(e) => Some(e),
 
             SectionErrorKind::ExportName(e) => Some(e),
             SectionErrorKind::ExportDescKind(e) => Some(e),
@@ -271,6 +277,39 @@ impl SectionEntry for FuncType {
     }
 }
 
+/// Table Section
+pub type TableSection = Vec<TableType>;
+
+#[derive(Debug)]
+pub struct TableType {
+    #[allow(dead_code)]
+    pub etype: RefType,
+    #[allow(dead_code)]
+    pub limit: Limit,
+}
+
+impl<'a> FromReader<'a> for RefType {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        let pos = reader.position() as usize;
+        reader
+            .read_u8()?
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
+
+impl SectionEntry for TableType {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        let etype = reader
+            .read()
+            .map_err(SectionErrorKind::TableElementRefType)?;
+
+        let limit = Limit::read(reader).map_err(SectionErrorKind::TableLimit)?;
+
+        Ok(TableType { etype, limit })
+    }
+}
+
 /// Function Section
 pub type FunctionSection = Vec<TypeIdx>;
 
@@ -322,6 +361,48 @@ pub struct Limit {
 }
 
 #[derive(Debug)]
+pub enum LimitReadError {
+    Flag(ReadError),
+    Min(ReadError),
+    Max(ReadError),
+}
+
+impl std::error::Error for LimitReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            LimitReadError::Flag(e) => Some(e),
+            LimitReadError::Min(e) => Some(e),
+            LimitReadError::Max(e) => Some(e),
+        }
+    }
+}
+
+impl std::fmt::Display for LimitReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LimitReadError::Flag(_) => write!(f, "reading the limit flag"),
+            LimitReadError::Min(_) => write!(f, "reading the limit min"),
+            LimitReadError::Max(_) => write!(f, "reading the limit max"),
+        }
+    }
+}
+
+impl Limit {
+    fn read(reader: &mut Reader) -> std::result::Result<Self, LimitReadError> {
+        let flag: LimitFlag = reader.read().map_err(LimitReadError::Flag)?;
+        let min: u32 = reader.read().map_err(LimitReadError::Min)?;
+
+        match flag {
+            LimitFlag::Min => Ok(Self { min, max: None }),
+            LimitFlag::MinMax => Ok(Self {
+                min,
+                max: Some(reader.read().map_err(LimitReadError::Max)?),
+            }),
+        }
+    }
+}
+
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct MemType(pub Limit);
 
@@ -329,16 +410,9 @@ pub type MemorySection = Vec<MemType>;
 
 impl SectionEntry for MemType {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let flag: LimitFlag = reader.read().map_err(SectionErrorKind::MemoryLimitFlag)?;
-        let min: u32 = reader.read().map_err(SectionErrorKind::MemoryLimitMin)?;
-
-        match flag {
-            LimitFlag::Min => Ok(MemType(Limit { min, max: None })),
-            LimitFlag::MinMax => Ok(MemType(Limit {
-                min,
-                max: Some(reader.read().map_err(SectionErrorKind::MemoryLimitMax)?),
-            })),
-        }
+        Limit::read(reader)
+            .map_err(SectionErrorKind::MemoryLimit)
+            .map(MemType)
     }
 }
 
