@@ -228,6 +228,33 @@ impl From<InstructionError> for SectionErrorKind {
     }
 }
 
+/// Utility for decoding sections that are vector of entries. These
+/// are most of the Sections present in a module.
+pub trait SectionEntry: Sized {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind>;
+}
+
+pub fn decode_section<T: SectionEntry>(
+    reader: &mut Reader,
+    info: SectionInfo,
+) -> std::result::Result<Vec<T>, SectionError> {
+    let len: u32 = reader.read().map_err(|e| SectionError {
+        kind: SectionErrorKind::EntryCount(e),
+        info,
+        idx: None,
+    })?;
+
+    (0..len)
+        .map(|idx| {
+            T::decode(reader).map_err(|kind| SectionError {
+                kind,
+                info,
+                idx: Some(idx as usize),
+            })
+        })
+        .collect()
+}
+
 /// Type Section
 pub type TypeSection = Vec<FuncType>;
 
