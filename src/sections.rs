@@ -258,60 +258,26 @@ pub fn decode_section<T: SectionEntry>(
 /// Type Section
 pub type TypeSection = Vec<FuncType>;
 
-fn read_type_entry(reader: &mut Reader) -> result::Result<FuncType, SectionErrorKind> {
-    let _: u8 = reader
-        .expect(0x60) // TODO Enum or const
-        .map_err(SectionErrorKind::FuncTypeMarker)?;
+impl SectionEntry for FuncType {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        let _: u8 = reader
+            .expect(0x60) // TODO Enum or const
+            .map_err(SectionErrorKind::FuncTypeMarker)?;
 
-    Ok(FuncType {
-        params: reader.read().map_err(SectionErrorKind::FuncTypeParams)?,
-        results: reader.read().map_err(SectionErrorKind::FuncTypeResults)?,
-    })
-}
-
-pub fn read_type_section(
-    reader: &mut Reader,
-    info: SectionInfo,
-) -> std::result::Result<TypeSection, SectionError> {
-    let len: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::EntryCount(e),
-        info,
-        idx: None,
-    })?;
-
-    (0..len)
-        .map(|idx| {
-            read_type_entry(reader).map_err(|kind| SectionError {
-                kind,
-                info,
-                idx: Some(idx as usize),
-            })
+        Ok(FuncType {
+            params: reader.read().map_err(SectionErrorKind::FuncTypeParams)?,
+            results: reader.read().map_err(SectionErrorKind::FuncTypeResults)?,
         })
-        .collect()
+    }
 }
 
 /// Function Section
 pub type FunctionSection = Vec<TypeIdx>;
 
-pub fn read_function_section(
-    reader: &mut Reader,
-    info: SectionInfo,
-) -> std::result::Result<FunctionSection, SectionError> {
-    let len: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::EntryCount(e),
-        info,
-        idx: None,
-    })?;
-
-    (0..len)
-        .map(|idx| {
-            TypeIdx::from_reader(reader).map_err(|e| SectionError {
-                kind: SectionErrorKind::FunctionIndex(e),
-                info,
-                idx: Some(idx as usize),
-            })
-        })
-        .collect()
+impl SectionEntry for TypeIdx {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        TypeIdx::from_reader(reader).map_err(SectionErrorKind::FunctionIndex)
+    }
 }
 
 /// Memory Section
@@ -361,38 +327,19 @@ pub struct MemType(pub Limit);
 
 pub type MemorySection = Vec<MemType>;
 
-fn read_memory_entry(reader: &mut Reader) -> std::result::Result<MemType, SectionErrorKind> {
-    let flag: LimitFlag = reader.read().map_err(SectionErrorKind::MemoryLimitFlag)?;
-    let min: u32 = reader.read().map_err(SectionErrorKind::MemoryLimitMin)?;
+impl SectionEntry for MemType {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        let flag: LimitFlag = reader.read().map_err(SectionErrorKind::MemoryLimitFlag)?;
+        let min: u32 = reader.read().map_err(SectionErrorKind::MemoryLimitMin)?;
 
-    match flag {
-        LimitFlag::Min => Ok(MemType(Limit { min, max: None })),
-        LimitFlag::MinMax => Ok(MemType(Limit {
-            min,
-            max: Some(reader.read().map_err(SectionErrorKind::MemoryLimitMax)?),
-        })),
+        match flag {
+            LimitFlag::Min => Ok(MemType(Limit { min, max: None })),
+            LimitFlag::MinMax => Ok(MemType(Limit {
+                min,
+                max: Some(reader.read().map_err(SectionErrorKind::MemoryLimitMax)?),
+            })),
+        }
     }
-}
-
-pub fn read_memory_section(
-    reader: &mut Reader,
-    info: SectionInfo,
-) -> std::result::Result<MemorySection, SectionError> {
-    let len: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::EntryCount(e),
-        info,
-        idx: None,
-    })?;
-
-    (0..len)
-        .map(|idx| {
-            read_memory_entry(reader).map_err(|kind| SectionError {
-                kind,
-                info,
-                idx: Some(idx as usize),
-            })
-        })
-        .collect()
 }
 
 /// Export Section
@@ -442,36 +389,17 @@ impl<'a> FromReader<'a> for ExportKind {
     }
 }
 
-fn read_export_entry(reader: &mut Reader) -> result::Result<ExportEntry, SectionErrorKind> {
-    let name = reader.read_name().map_err(SectionErrorKind::ExportName)?;
-    let kind = reader.read().map_err(SectionErrorKind::ExportDescKind)?;
+impl SectionEntry for ExportEntry {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        let name = reader.read_name().map_err(SectionErrorKind::ExportName)?;
+        let kind = reader.read().map_err(SectionErrorKind::ExportDescKind)?;
 
-    let index = reader
-        .read_u32()
-        .map_err(SectionErrorKind::ExportDescIndex)?;
+        let index = reader
+            .read_u32()
+            .map_err(SectionErrorKind::ExportDescIndex)?;
 
-    Ok(ExportEntry { name, kind, index })
-}
-
-pub fn read_export_section(
-    reader: &mut Reader,
-    info: SectionInfo,
-) -> std::result::Result<ExportSection, SectionError> {
-    let len: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::EntryCount(e),
-        info,
-        idx: None,
-    })?;
-
-    (0..len)
-        .map(|idx| {
-            read_export_entry(reader).map_err(|kind| SectionError {
-                kind,
-                info,
-                idx: Some(idx as usize),
-            })
-        })
-        .collect()
+        Ok(ExportEntry { name, kind, index })
+    }
 }
 
 /// Code Section
@@ -491,59 +419,40 @@ pub struct CodeEntry {
 
 pub type CodeSection = Vec<CodeEntry>;
 
-fn read_code_entry(reader: &mut Reader) -> result::Result<CodeEntry, SectionErrorKind> {
-    let size = reader.read_u32().map_err(SectionErrorKind::EntrySize)?;
-    let mut reader = reader.scoped(size).map_err(SectionErrorKind::EntrySize)?;
+impl SectionEntry for CodeEntry {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        let size = reader.read_u32().map_err(SectionErrorKind::EntrySize)?;
+        let mut reader = reader.scoped(size).map_err(SectionErrorKind::EntrySize)?;
 
-    let locals: Vec<FuncLocal> = reader.read().map_err(SectionErrorKind::CodeFuncLocal)?;
+        let locals: Vec<FuncLocal> = reader.read().map_err(SectionErrorKind::CodeFuncLocal)?;
 
-    // There's a limit for number of functions locals
-    // TODO It should consider function parameters as implicit locals
-    let _ = locals
-        .iter()
-        .try_fold(0u32, |acc, &FuncLocal { count, .. }| acc.checked_add(count))
-        .filter(|&n| n <= MAX_WASM_FUNCTION_LOCALS)
-        .ok_or(SectionErrorKind::CodeFuncTooManyLocals)?;
+        // There's a limit for number of functions locals
+        // TODO It should consider function parameters as implicit locals
+        let _ = locals
+            .iter()
+            .try_fold(0u32, |acc, &FuncLocal { count, .. }| acc.checked_add(count))
+            .filter(|&n| n <= MAX_WASM_FUNCTION_LOCALS)
+            .ok_or(SectionErrorKind::CodeFuncTooManyLocals)?;
 
-    let mut body = Vec::new();
-    while !reader.is_exhausted() {
-        let instr = decode_instruction(&mut reader)?;
-        body.push(instr);
-    }
+        let mut body = Vec::new();
+        while !reader.is_exhausted() {
+            let instr = decode_instruction(&mut reader)?;
+            body.push(instr);
+        }
 
-    Ok(CodeEntry {
-        size: size as usize,
-        locals,
-        body,
-    })
-}
-
-pub fn read_code_section(
-    reader: &mut Reader,
-    info: SectionInfo,
-) -> std::result::Result<CodeSection, SectionError> {
-    let len: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::EntryCount(e),
-        info,
-        idx: None,
-    })?;
-
-    (0..len)
-        .map(|idx| {
-            read_code_entry(reader).map_err(|kind| SectionError {
-                kind,
-                info,
-                idx: Some(idx as usize),
-            })
+        Ok(CodeEntry {
+            size: size as usize,
+            locals,
+            body,
         })
-        .collect()
+    }
 }
 
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct DataCountSection(pub u32);
 
-pub fn read_data_count_section(
+pub fn decode_data_count_section(
     reader: &mut Reader,
     info: SectionInfo,
 ) -> std::result::Result<DataCountSection, SectionError> {

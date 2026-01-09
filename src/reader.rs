@@ -26,7 +26,10 @@ impl<'a> Reader<'a> {
     }
 
     pub fn scoped(&mut self, size: u32) -> Result<Reader<'a>> {
-        let start = self.position();
+        self.scoped_at(self.position(), size)
+    }
+
+    pub fn scoped_at(&mut self, start: u64, size: u32) -> Result<Reader<'a>> {
         let end = start + size as u64;
 
         if end > self.range.end {

@@ -10,8 +10,7 @@ use crate::instructions::Instruction;
 use crate::reader::ReadErrorKind;
 use crate::sections::{
     CodeSection, DataCountSection, ExportSection, FunctionSection, MemorySection, SectionError,
-    SectionId, TypeSection, read_code_section, read_data_count_section, read_export_section,
-    read_function_section, read_memory_section, read_type_section,
+    SectionId, TypeSection, decode_data_count_section, decode_section,
 };
 use crate::types::{FuncType, TypeIdx, ValType};
 use reader::{ReadError, Reader};
@@ -590,34 +589,34 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
             SectionId::Custom => {}
             SectionId::Type => {
                 m.types =
-                    Some(read_type_section(&mut reader, *item).map_err(MalformedError::Section)?);
+                    Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Import => {}
             SectionId::Function => {
-                m.functions = Some(
-                    read_function_section(&mut reader, *item).map_err(MalformedError::Section)?,
-                );
+                m.functions =
+                    Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Table => {}
             SectionId::Memory => {
                 m.memories =
-                    Some(read_memory_section(&mut reader, *item).map_err(MalformedError::Section)?);
+                    Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Global => {}
             SectionId::Export => {
                 m.exports =
-                    Some(read_export_section(&mut reader, *item).map_err(MalformedError::Section)?);
+                    Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Start => {}
             SectionId::Element => {}
             SectionId::Code => {
                 m.codes =
-                    Some(read_code_section(&mut reader, *item).map_err(MalformedError::Section)?);
+                    Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Data => {}
             SectionId::DataCount => {
                 m.data_count = Some(
-                    read_data_count_section(&mut reader, *item).map_err(MalformedError::Section)?,
+                    decode_data_count_section(&mut reader, *item)
+                        .map_err(MalformedError::Section)?,
                 )
             }
         };
