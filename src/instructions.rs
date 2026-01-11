@@ -80,11 +80,11 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
     }
 }
 
-fn decode_arg<'a, T: FromReader<'a>>(
+fn decode_arg<'a, T: FromReader<'a, Error = ReadError>>(
     reader: &mut Reader<'a>,
     instr: &'static str,
 ) -> Result<T, InstructionError> {
-    reader.read().map_err(|e| InstructionError {
+    reader.read().map_err(|e: ReadError| InstructionError {
         offset: e.offset,
         kind: InstructionErrorKind::ExpectedArgument(e),
         instr: Some(instr),

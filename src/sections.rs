@@ -7,7 +7,7 @@ use std::{
 use crate::{
     instructions::{Instruction, InstructionError, decode_instruction},
     limits::MAX_WASM_FUNCTION_LOCALS,
-    reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
+    reader::{FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, Result},
     types::{FuncIdx, FuncType, RefType, TypeIdx, ValType},
 };
 
@@ -144,6 +144,10 @@ pub enum SectionErrorKind {
 
     // Import Section
     Import(ReadError),
+    ImportDescTypeIdx(ReadError),
+    ImportDescTableType(ReadError),
+    ImportDescMemType(ReadError),
+    ImportDescGlobalType(GlobalTypeReadError),
 
     // Function Section
     FunctionIndex(ReadError),
@@ -156,8 +160,7 @@ pub enum SectionErrorKind {
     MemoryLimit(LimitReadError),
 
     // Global Section
-    GlobalType(ReadError),
-    GlobalMutability(ReadError),
+    GlobalType(GlobalTypeReadError),
     GlobalExpression(InstructionError),
 
     // Export Section
@@ -184,6 +187,15 @@ impl Display for SectionErrorKind {
             SectionErrorKind::FuncTypeParams(_) => write!(f, "reading the function param types"),
             SectionErrorKind::FuncTypeResults(_) => write!(f, "reading the function result types"),
             SectionErrorKind::Import(_) => write!(f, "reading import"),
+            SectionErrorKind::ImportDescTypeIdx(_) => write!(f, "reading import descriptor: func"),
+            SectionErrorKind::ImportDescTableType(_) => {
+                write!(f, "reading import descriptor: table")
+            }
+            SectionErrorKind::ImportDescMemType(_) => write!(f, "reading import descriptor: mem"),
+            SectionErrorKind::ImportDescGlobalType(_) => {
+                write!(f, "reading import descriptor: global")
+            }
+
             SectionErrorKind::FunctionIndex(_) => write!(f, "reading the function type index"),
 
             SectionErrorKind::TableElementRefType(_) => {
@@ -194,9 +206,6 @@ impl Display for SectionErrorKind {
             SectionErrorKind::MemoryLimit(_) => write!(f, "reading the memory type limit"),
 
             SectionErrorKind::GlobalType(_) => write!(f, "reading the global type"),
-            SectionErrorKind::GlobalMutability(_) => {
-                write!(f, "reading the global mutability flag")
-            }
             SectionErrorKind::GlobalExpression(_) => write!(f, "reading the global expression"),
 
             SectionErrorKind::ExportName(_) => write!(f, "reading the export name"),
@@ -223,6 +232,10 @@ impl error::Error for SectionErrorKind {
             SectionErrorKind::FuncTypeResults(e) => Some(e),
 
             SectionErrorKind::Import(e) => Some(e),
+            SectionErrorKind::ImportDescTypeIdx(e) => Some(e),
+            SectionErrorKind::ImportDescTableType(e) => Some(e),
+            SectionErrorKind::ImportDescMemType(e) => Some(e),
+            SectionErrorKind::ImportDescGlobalType(e) => Some(e),
 
             SectionErrorKind::FunctionIndex(e) => Some(e),
 
@@ -232,7 +245,6 @@ impl error::Error for SectionErrorKind {
             SectionErrorKind::TableLimit(e) => Some(e),
 
             SectionErrorKind::GlobalType(e) => Some(e),
-            SectionErrorKind::GlobalMutability(e) => Some(e),
             SectionErrorKind::GlobalExpression(e) => Some(e),
 
             SectionErrorKind::ExportName(e) => Some(e),
@@ -283,12 +295,32 @@ pub fn decode_section<T: SectionEntry>(
 
 /// Type Section
 pub type TypeSection = Vec<FuncType>;
+struct FuncTypeMarker(u8);
+
+impl<'a> FromReader<'a> for FuncTypeMarker {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let offset = reader.position() as usize;
+        let v = reader.read_u8()?;
+
+        if v == 0x60 {
+            Ok(FuncTypeMarker(v))
+        } else {
+            Err(ReadError {
+                offset,
+                kind: ReadErrorKind::UnexpectedValue {
+                    value: v.to_string(),
+                    expected: 0x60.to_string(),
+                },
+            })
+        }
+    }
+}
 
 impl SectionEntry for FuncType {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let _: u8 = reader
-            .expect(0x60) // TODO Enum or const
-            .map_err(SectionErrorKind::FuncTypeMarker)?;
+        let _: FuncTypeMarker = reader.read().map_err(SectionErrorKind::FuncTypeMarker)?;
 
         Ok(FuncType {
             params: reader.read().map_err(SectionErrorKind::FuncTypeParams)?,
@@ -326,6 +358,8 @@ impl TryFrom<u8> for ImportDescType {
 }
 
 impl<'a> FromReader<'a> for ImportDescType {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         let pos = reader.position() as usize;
         reader
@@ -366,7 +400,7 @@ impl SectionEntry for ImportEntry {
             ImportDescType::Mem => MemType::decode(reader).map(ImportDesc::Mem),
             ImportDescType::Global => reader
                 .read()
-                .map_err(SectionErrorKind::Import)
+                .map_err(SectionErrorKind::ImportDescGlobalType)
                 .map(ImportDesc::Global),
         }?;
 
@@ -390,6 +424,8 @@ pub struct TableType {
 }
 
 impl<'a> FromReader<'a> for RefType {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         let pos = reader.position() as usize;
         reader
@@ -405,7 +441,7 @@ impl SectionEntry for TableType {
             .read()
             .map_err(SectionErrorKind::TableElementRefType)?;
 
-        let limit = Limit::read(reader).map_err(SectionErrorKind::TableLimit)?;
+        let limit = Limit::from_reader(reader).map_err(SectionErrorKind::TableLimit)?;
 
         Ok(TableType { etype, limit })
     }
@@ -444,7 +480,9 @@ impl TryFrom<u8> for LimitFlag {
 }
 
 impl<'a> FromReader<'a> for LimitFlag {
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
         let pos = reader.position() as usize;
         reader
             .read_u8()?
@@ -488,8 +526,10 @@ impl std::fmt::Display for LimitReadError {
     }
 }
 
-impl Limit {
-    fn read(reader: &mut Reader) -> std::result::Result<Self, LimitReadError> {
+impl<'a> FromReader<'a> for Limit {
+    type Error = LimitReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
         let flag: LimitFlag = reader.read().map_err(LimitReadError::Flag)?;
         let min: u32 = reader.read().map_err(LimitReadError::Min)?;
 
@@ -511,7 +551,7 @@ pub type MemorySection = Vec<MemType>;
 
 impl SectionEntry for MemType {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        Limit::read(reader)
+        Limit::from_reader(reader)
             .map_err(SectionErrorKind::MemoryLimit)
             .map(MemType)
     }
@@ -542,6 +582,8 @@ impl TryFrom<u8> for MutabilityFlag {
 }
 
 impl<'a> FromReader<'a> for MutabilityFlag {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         let pos = reader.position() as usize;
         reader
@@ -557,11 +599,37 @@ pub struct GlobalType {
     mutflag: MutabilityFlag,
 }
 
-// TODO Associated Error
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum GlobalTypeReadError {
+    Type(ReadError),
+    MutabilityFlag(ReadError),
+}
+
+impl std::error::Error for GlobalTypeReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Type(e) => Some(e),
+            Self::MutabilityFlag(e) => Some(e),
+        }
+    }
+}
+
+impl std::fmt::Display for GlobalTypeReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GlobalTypeReadError::Type(_) => write!(f, "reading its value type"),
+            GlobalTypeReadError::MutabilityFlag(_) => write!(f, "reading its mutability"),
+        }
+    }
+}
+
 impl<'a> FromReader<'a> for GlobalType {
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-        let type_ = reader.read()?;
-        let mutflag = reader.read()?;
+    type Error = GlobalTypeReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let type_ = reader.read().map_err(GlobalTypeReadError::Type)?;
+        let mutflag = reader.read().map_err(GlobalTypeReadError::MutabilityFlag)?;
 
         Ok(GlobalType { type_, mutflag })
     }
@@ -575,8 +643,7 @@ pub struct GlobalEntry {
 
 impl SectionEntry for GlobalEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let type_ = reader.read().map_err(SectionErrorKind::GlobalType)?;
-        let mutflag: MutabilityFlag = reader.read().map_err(SectionErrorKind::GlobalMutability)?;
+        let gt = GlobalType::from_reader(reader).map_err(SectionErrorKind::GlobalType)?;
 
         let mut body = Vec::new();
         while !reader.is_exhausted() {
@@ -589,10 +656,7 @@ impl SectionEntry for GlobalEntry {
             }
         }
 
-        Ok(GlobalEntry {
-            gt: GlobalType { type_, mutflag },
-            body,
-        })
+        Ok(GlobalEntry { gt, body })
     }
 }
 
@@ -634,6 +698,8 @@ pub struct ExportEntry {
 pub type ExportSection = Vec<ExportEntry>;
 
 impl<'a> FromReader<'a> for ExportKind {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         let pos = reader.position() as usize;
         reader
@@ -736,6 +802,8 @@ pub fn decode_data_count_section(
 }
 
 impl<'a> FromReader<'a> for FuncLocal {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         Ok(FuncLocal {
             count: reader.read()?,

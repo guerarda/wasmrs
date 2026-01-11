@@ -102,37 +102,8 @@ impl<'a> Reader<'a> {
         })
     }
 
-    pub fn read<T: FromReader<'a>>(&mut self) -> Result<T> {
+    pub fn read<T: FromReader<'a>>(&mut self) -> std::result::Result<T, T::Error> {
         T::from_reader(self)
-    }
-
-    pub fn expect<T>(&mut self, expected: T) -> Result<T>
-    where
-        T: FromReader<'a> + PartialEq + fmt::Debug,
-    {
-        let offset = self.position() as usize;
-        let v = self.read()?;
-
-        if v == expected {
-            Ok(v)
-        } else {
-            Err(ReadError {
-                offset,
-                kind: ReadErrorKind::UnexpectedValue {
-                    value: format!("{:?}", v),
-                    expected: format!("{:?}", expected),
-                },
-            })
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn read_vec<T, F>(&mut self, mut f: F) -> Result<Vec<T>>
-    where
-        F: FnMut(&mut Self) -> Result<T>,
-    {
-        let len = self.read_u32()?;
-        (0..len).map(|_| f(self)).collect()
     }
 
     pub fn read_name(&mut self) -> Result<String> {
@@ -166,17 +137,23 @@ pub type Result<T> = std::result::Result<T, ReadError>;
 
 /// FromReader Trait
 pub trait FromReader<'a>: Sized {
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self>;
+    type Error;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error>;
 }
 
-impl<'a, T: FromReader<'a>> FromReader<'a> for Vec<T> {
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+impl<'a, T: FromReader<'a, Error = ReadError>> FromReader<'a> for Vec<T> {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
         let len = reader.read_u32()?;
         (0..len).map(|_| T::from_reader(reader)).collect()
     }
 }
 
 impl<'a> FromReader<'a> for ValType {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         let pos = reader.position() as usize;
         reader
@@ -187,24 +164,32 @@ impl<'a> FromReader<'a> for ValType {
 }
 
 impl<'a> FromReader<'a> for u8 {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         reader.read_u8()
     }
 }
 
 impl<'a> FromReader<'a> for u32 {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         reader.read_u32()
     }
 }
 
 impl<'a> FromReader<'a> for i32 {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         reader.read_i32()
     }
 }
 
 impl<'a> FromReader<'a> for String {
+    type Error = ReadError;
+
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         reader.read_name()
     }
