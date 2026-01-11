@@ -9,9 +9,9 @@ mod reader;
 use crate::instructions::Instruction;
 use crate::reader::ReadErrorKind;
 use crate::sections::{
-    CodeSection, DataCountSection, ExportSection, FunctionSection, MemorySection, SectionError,
-    SectionId, StartSection, TableSection, TypeSection, decode_data_count_section, decode_section,
-    decode_start_section,
+    CodeSection, DataCountSection, ExportSection, FunctionSection, GlobalSection, ImportSection,
+    MemorySection, SectionError, SectionId, StartSection, TableSection, TypeSection,
+    decode_data_count_section, decode_section, decode_start_section,
 };
 use crate::types::{FuncType, TypeIdx, ValType};
 use reader::{ReadError, Reader};
@@ -32,9 +32,11 @@ struct Module {
     sections: Vec<SectionInfo>,
 
     types: Option<TypeSection>,
+    imports: Option<ImportSection>,
     functions: Option<FunctionSection>,
     tables: Option<TableSection>,
     memories: Option<MemorySection>,
+    globals: Option<GlobalSection>,
     exports: Option<ExportSection>,
     start: Option<StartSection>,
     data_count: Option<DataCountSection>,
@@ -48,9 +50,11 @@ impl Module {
             sections: Vec::new(),
 
             types: None,
+            imports: None,
             functions: None,
             tables: None,
             memories: None,
+            globals: None,
             exports: None,
             start: None,
             data_count: None,
@@ -527,7 +531,7 @@ pub enum MalformedError {
 impl std::fmt::Display for MalformedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MalformedError::Read(e) => write!(f, "{}", e),
+            MalformedError::Read(_) => write!(f, "Malformed module"),
             MalformedError::Preamble(_) => write!(f, "invalid module preamble"),
             MalformedError::DuplicateSection { offset, id, other } => {
                 write!(
@@ -597,7 +601,10 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                 m.types =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
-            SectionId::Import => {}
+            SectionId::Import => {
+                m.imports =
+                    Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
+            }
             SectionId::Function => {
                 m.functions =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
@@ -610,7 +617,10 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                 m.memories =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
-            SectionId::Global => {}
+            SectionId::Global => {
+                m.globals =
+                    Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
+            }
             SectionId::Export => {
                 m.exports =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
@@ -756,6 +766,21 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_global_section() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x06\x06\x01", // Global Section(6), one entry
+            b"\x7f\x00\x41\x00\x0b",
+        ]
+        .concat();
+        let m = decode_module(bytes)?;
+        assert!(m.globals.is_some());
+        assert_eq!(m.globals.unwrap().len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
     fn test_decode_start_section() -> anyhow::Result<()> {
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
@@ -826,6 +851,21 @@ mod tests {
 
         let m = decode_module(bytes);
         assert!(m.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_section2() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x06\x07\x01",
+            b"\x7e\x00",
+            b"\x42\xff\x7f\x0b",
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
 
         Ok(())
     }

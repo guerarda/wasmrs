@@ -204,6 +204,12 @@ impl<'a> FromReader<'a> for i32 {
     }
 }
 
+impl<'a> FromReader<'a> for String {
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        reader.read_name()
+    }
+}
+
 /// Errors
 #[derive(Debug)]
 #[non_exhaustive]
