@@ -1,7 +1,6 @@
 use crate::reader::InvalidEnumValueError;
 
 /// Indices​
-
 pub type TypeIdx = u32;
 pub type FuncIdx = u32;
 // pub type TableIdx = u32;

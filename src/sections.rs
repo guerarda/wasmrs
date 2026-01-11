@@ -109,7 +109,7 @@ pub struct SectionInfo {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct SectionError {
-    pub kind: SectionErrorKind,
+    pub kind: Box<SectionErrorKind>,
     pub info: SectionInfo,
     pub idx: Option<usize>,
 }
@@ -278,7 +278,7 @@ pub fn decode_section<T: SectionEntry>(
     info: SectionInfo,
 ) -> std::result::Result<Vec<T>, SectionError> {
     let len: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::EntryCount(e),
+        kind: Box::new(SectionErrorKind::EntryCount(e)),
         info,
         idx: None,
     })?;
@@ -286,7 +286,7 @@ pub fn decode_section<T: SectionEntry>(
     (0..len)
         .map(|idx| {
             T::decode(reader).map_err(|kind| SectionError {
-                kind,
+                kind: Box::new(kind),
                 info,
                 idx: Some(idx as usize),
             })
@@ -372,16 +372,23 @@ impl<'a> FromReader<'a> for ImportDescType {
 
 #[derive(Debug)]
 pub enum ImportDesc {
+    #[allow(dead_code)]
     Func(TypeIdx),
+    #[allow(dead_code)]
     Table(TableType),
+    #[allow(dead_code)]
     Mem(MemType),
+    #[allow(dead_code)]
     Global(GlobalType),
 }
 
 #[derive(Debug)]
 pub struct ImportEntry {
+    #[allow(dead_code)]
     pub mod_name: String,
+    #[allow(dead_code)]
     pub name: String,
+    #[allow(dead_code)]
     pub desc: ImportDesc,
 }
 
@@ -474,8 +481,7 @@ impl<'a> FromReader<'a> for TableType {
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
         let etype = reader.read().map_err(Self::Error::RefType)?;
-
-        let limit = Limit::from_reader(reader).map_err(Self::Error::Limit)?;
+        let limit = reader.read().map_err(Self::Error::Limit)?;
 
         Ok(TableType { etype, limit })
     }
@@ -656,7 +662,9 @@ impl<'a> FromReader<'a> for MutabilityFlag {
 
 #[derive(Debug)]
 pub struct GlobalType {
+    #[allow(dead_code)]
     type_: ValType,
+    #[allow(dead_code)]
     mutflag: MutabilityFlag,
 }
 
@@ -698,7 +706,9 @@ impl<'a> FromReader<'a> for GlobalType {
 
 #[derive(Debug)]
 pub struct GlobalEntry {
+    #[allow(dead_code)]
     gt: GlobalType,
+    #[allow(dead_code)]
     body: Vec<Instruction>,
 }
 
@@ -793,7 +803,7 @@ pub fn decode_start_section(
     info: SectionInfo,
 ) -> std::result::Result<StartSection, SectionError> {
     let count: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::DataCount(e),
+        kind: Box::new(SectionErrorKind::DataCount(e)),
         info,
         idx: None,
     })?;
@@ -855,7 +865,7 @@ pub fn decode_data_count_section(
     info: SectionInfo,
 ) -> std::result::Result<DataCountSection, SectionError> {
     let count: u32 = reader.read().map_err(|e| SectionError {
-        kind: SectionErrorKind::DataCount(e),
+        kind: Box::new(SectionErrorKind::DataCount(e)),
         info,
         idx: None,
     })?;
