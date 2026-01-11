@@ -143,21 +143,22 @@ pub enum SectionErrorKind {
     FuncTypeResults(ReadError),
 
     // Import Section
-    Import(ReadError),
-    ImportDescTypeIdx(ReadError),
-    ImportDescTableType(ReadError),
-    ImportDescMemType(ReadError),
-    ImportDescGlobalType(GlobalTypeReadError),
+    ImportModuleName(ReadError),
+    ImportEntityName(ReadError),
+    ImportDescType(ReadError),
+    ImportDescFunc(ReadError),
+    ImportDescTable(TableTypeReadError),
+    ImportDescMem(MemTypeReadError),
+    ImportDescGlobal(GlobalTypeReadError),
 
     // Function Section
     FunctionIndex(ReadError),
 
     // Table Section
-    TableElementRefType(ReadError),
-    TableLimit(LimitReadError),
+    Table(TableTypeReadError),
 
     // Memory Section
-    MemoryLimit(LimitReadError),
+    Memory(MemTypeReadError),
 
     // Global Section
     GlobalType(GlobalTypeReadError),
@@ -186,24 +187,23 @@ impl Display for SectionErrorKind {
             SectionErrorKind::FuncTypeMarker(_) => write!(f, "reading the functype marker"),
             SectionErrorKind::FuncTypeParams(_) => write!(f, "reading the function param types"),
             SectionErrorKind::FuncTypeResults(_) => write!(f, "reading the function result types"),
-            SectionErrorKind::Import(_) => write!(f, "reading import"),
-            SectionErrorKind::ImportDescTypeIdx(_) => write!(f, "reading import descriptor: func"),
-            SectionErrorKind::ImportDescTableType(_) => {
+            SectionErrorKind::ImportModuleName(_) => write!(f, "reading import module name"),
+            SectionErrorKind::ImportEntityName(_) => write!(f, "reading import entity name"),
+            SectionErrorKind::ImportDescType(_) => write!(f, "reding import descriptor type"),
+            SectionErrorKind::ImportDescFunc(_) => write!(f, "reading import descriptor: func"),
+            SectionErrorKind::ImportDescTable(_) => {
                 write!(f, "reading import descriptor: table")
             }
-            SectionErrorKind::ImportDescMemType(_) => write!(f, "reading import descriptor: mem"),
-            SectionErrorKind::ImportDescGlobalType(_) => {
+            SectionErrorKind::ImportDescMem(_) => write!(f, "reading import descriptor: mem"),
+            SectionErrorKind::ImportDescGlobal(_) => {
                 write!(f, "reading import descriptor: global")
             }
 
             SectionErrorKind::FunctionIndex(_) => write!(f, "reading the function type index"),
 
-            SectionErrorKind::TableElementRefType(_) => {
-                write!(f, "reading the table type element reference type")
-            }
-            SectionErrorKind::TableLimit(_) => write!(f, "reading the table type limit"),
+            SectionErrorKind::Table(_) => write!(f, "reading the table type"),
 
-            SectionErrorKind::MemoryLimit(_) => write!(f, "reading the memory type limit"),
+            SectionErrorKind::Memory(_) => write!(f, "reading the memory type"),
 
             SectionErrorKind::GlobalType(_) => write!(f, "reading the global type"),
             SectionErrorKind::GlobalExpression(_) => write!(f, "reading the global expression"),
@@ -231,18 +231,19 @@ impl error::Error for SectionErrorKind {
             SectionErrorKind::FuncTypeParams(e) => Some(e),
             SectionErrorKind::FuncTypeResults(e) => Some(e),
 
-            SectionErrorKind::Import(e) => Some(e),
-            SectionErrorKind::ImportDescTypeIdx(e) => Some(e),
-            SectionErrorKind::ImportDescTableType(e) => Some(e),
-            SectionErrorKind::ImportDescMemType(e) => Some(e),
-            SectionErrorKind::ImportDescGlobalType(e) => Some(e),
+            SectionErrorKind::ImportModuleName(e) => Some(e),
+            SectionErrorKind::ImportEntityName(e) => Some(e),
+            SectionErrorKind::ImportDescType(e) => Some(e),
+            SectionErrorKind::ImportDescFunc(e) => Some(e),
+            SectionErrorKind::ImportDescTable(e) => Some(e),
+            SectionErrorKind::ImportDescMem(e) => Some(e),
+            SectionErrorKind::ImportDescGlobal(e) => Some(e),
 
             SectionErrorKind::FunctionIndex(e) => Some(e),
 
-            SectionErrorKind::MemoryLimit(e) => Some(e),
+            SectionErrorKind::Memory(e) => Some(e),
 
-            SectionErrorKind::TableElementRefType(e) => Some(e),
-            SectionErrorKind::TableLimit(e) => Some(e),
+            SectionErrorKind::Table(e) => Some(e),
 
             SectionErrorKind::GlobalType(e) => Some(e),
             SectionErrorKind::GlobalExpression(e) => Some(e),
@@ -295,7 +296,7 @@ pub fn decode_section<T: SectionEntry>(
 
 /// Type Section
 pub type TypeSection = Vec<FuncType>;
-struct FuncTypeMarker(u8);
+struct FuncTypeMarker();
 
 impl<'a> FromReader<'a> for FuncTypeMarker {
     type Error = ReadError;
@@ -305,7 +306,7 @@ impl<'a> FromReader<'a> for FuncTypeMarker {
         let v = reader.read_u8()?;
 
         if v == 0x60 {
-            Ok(FuncTypeMarker(v))
+            Ok(FuncTypeMarker())
         } else {
             Err(ReadError {
                 offset,
@@ -386,21 +387,30 @@ pub struct ImportEntry {
 
 impl SectionEntry for ImportEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let mod_name: String = reader.read().map_err(SectionErrorKind::Import)?;
-        let name: String = reader.read().map_err(SectionErrorKind::Import)?;
+        let mod_name: String = reader.read().map_err(SectionErrorKind::ImportModuleName)?;
+        let name: String = reader.read().map_err(SectionErrorKind::ImportEntityName)?;
 
-        let itype: ImportDescType = reader.read().map_err(SectionErrorKind::Import)?;
+        let itype: ImportDescType = reader.read().map_err(SectionErrorKind::ImportDescType)?;
+
         let desc = match itype {
             ImportDescType::Func => reader
                 .read()
-                .map_err(SectionErrorKind::Import)
+                .map_err(SectionErrorKind::ImportDescFunc)
                 .map(ImportDesc::Func),
 
-            ImportDescType::Table => TableType::decode(reader).map(ImportDesc::Table),
-            ImportDescType::Mem => MemType::decode(reader).map(ImportDesc::Mem),
+            ImportDescType::Table => reader
+                .read()
+                .map_err(SectionErrorKind::ImportDescTable)
+                .map(ImportDesc::Table),
+
+            ImportDescType::Mem => reader
+                .read()
+                .map_err(SectionErrorKind::ImportDescMem)
+                .map(ImportDesc::Mem),
+
             ImportDescType::Global => reader
                 .read()
-                .map_err(SectionErrorKind::ImportDescGlobalType)
+                .map_err(SectionErrorKind::ImportDescGlobal)
                 .map(ImportDesc::Global),
         }?;
 
@@ -423,6 +433,30 @@ pub struct TableType {
     pub limit: Limit,
 }
 
+#[derive(Debug)]
+pub enum TableTypeReadError {
+    RefType(ReadError),
+    Limit(LimitReadError),
+}
+
+impl std::error::Error for TableTypeReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            TableTypeReadError::RefType(e) => Some(e),
+            TableTypeReadError::Limit(e) => Some(e),
+        }
+    }
+}
+
+impl std::fmt::Display for TableTypeReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TableTypeReadError::RefType(_) => write!(f, "reading its element reference type"),
+            TableTypeReadError::Limit(_) => write!(f, "reading its limits"),
+        }
+    }
+}
+
 impl<'a> FromReader<'a> for RefType {
     type Error = ReadError;
 
@@ -435,15 +469,21 @@ impl<'a> FromReader<'a> for RefType {
     }
 }
 
-impl SectionEntry for TableType {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let etype = reader
-            .read()
-            .map_err(SectionErrorKind::TableElementRefType)?;
+impl<'a> FromReader<'a> for TableType {
+    type Error = TableTypeReadError;
 
-        let limit = Limit::from_reader(reader).map_err(SectionErrorKind::TableLimit)?;
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let etype = reader.read().map_err(Self::Error::RefType)?;
+
+        let limit = Limit::from_reader(reader).map_err(Self::Error::Limit)?;
 
         Ok(TableType { etype, limit })
+    }
+}
+
+impl SectionEntry for TableType {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        reader.read().map_err(SectionErrorKind::Table)
     }
 }
 
@@ -549,11 +589,32 @@ pub struct MemType(pub Limit);
 
 pub type MemorySection = Vec<MemType>;
 
+impl<'a> FromReader<'a> for MemType {
+    type Error = MemTypeReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map_err(MemTypeReadError).map(Self)
+    }
+}
+
+#[derive(Debug)]
+pub struct MemTypeReadError(LimitReadError);
+
+impl std::error::Error for MemTypeReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+impl std::fmt::Display for MemTypeReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "reading its limits")
+    }
+}
+
 impl SectionEntry for MemType {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        Limit::from_reader(reader)
-            .map_err(SectionErrorKind::MemoryLimit)
-            .map(MemType)
+        reader.read().map_err(SectionErrorKind::Memory)
     }
 }
 
