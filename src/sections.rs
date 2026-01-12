@@ -162,7 +162,7 @@ pub enum SectionErrorKind {
 
     // Global Section
     GlobalType(GlobalTypeReadError),
-    GlobalExpression(InstructionError),
+    GlobalExpression(ConstExpressionReadError),
 
     // Export Section
     ExportName(ReadError),
@@ -719,25 +719,15 @@ pub struct GlobalEntry {
     #[allow(dead_code)]
     gt: GlobalType,
     #[allow(dead_code)]
-    body: Vec<Instruction>,
+    body: ConstExpression,
 }
 
 impl SectionEntry for GlobalEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let gt = reader.read().map_err(SectionErrorKind::GlobalType)?;
-
-        let mut body = Vec::new();
-        while !reader.is_exhausted() {
-            let instr = decode_instruction(reader).map_err(SectionErrorKind::GlobalExpression)?;
-            if instr != Instruction::End {
-                body.push(instr);
-            } else {
-                body.push(instr);
-                break;
-            }
-        }
-
-        Ok(GlobalEntry { gt, body })
+        Ok(GlobalEntry {
+            gt: reader.read().map_err(SectionErrorKind::GlobalType)?,
+            body: reader.read().map_err(SectionErrorKind::GlobalExpression)?,
+        })
     }
 }
 
@@ -912,7 +902,7 @@ impl<'a> FromReader<'a> for DataSegmentMode {
         let offset = reader.position() as usize;
         let flag: u32 = reader.read().map_err(Self::Error::Flag)?;
 
-        let mode = match flag {
+        match flag {
             0x00 => Ok(DataSegmentMode::Active {
                 mem_index: 0,
                 offset: reader.read().map_err(Self::Error::Expression)?,
@@ -928,9 +918,9 @@ impl<'a> FromReader<'a> for DataSegmentMode {
                     value: flag.to_string(),
                     expected: "0, 1 or 2".to_string(),
                 },
-            }),
-        };
-        mode.map_err(Self::Error::Flag)
+            })
+            .map_err(Self::Error::Flag),
+        }
     }
 }
 
