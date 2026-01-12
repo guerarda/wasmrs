@@ -32,19 +32,19 @@ pub enum SectionId {
 impl fmt::Display for SectionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            SectionId::Custom => f.pad("Custom(0)"),
-            SectionId::Type => f.pad("Type(1)"),
-            SectionId::Import => f.pad("Import(2)"),
-            SectionId::Function => f.pad("Function(3)"),
-            SectionId::Table => f.pad("Table(4)"),
-            SectionId::Memory => f.pad("Memory(5)"),
-            SectionId::Global => f.pad("Global(6)"),
-            SectionId::Export => f.pad("Export(7)"),
-            SectionId::Start => f.pad("Start(8)"),
-            SectionId::Element => f.pad("Element(9)"),
-            SectionId::Code => f.pad("Code(10)"),
-            SectionId::Data => f.pad("Data(11)"),
-            SectionId::DataCount => f.pad("Data Count(12)"),
+            Self::Custom => f.pad("Custom(0)"),
+            Self::Type => f.pad("Type(1)"),
+            Self::Import => f.pad("Import(2)"),
+            Self::Function => f.pad("Function(3)"),
+            Self::Table => f.pad("Table(4)"),
+            Self::Memory => f.pad("Memory(5)"),
+            Self::Global => f.pad("Global(6)"),
+            Self::Export => f.pad("Export(7)"),
+            Self::Start => f.pad("Start(8)"),
+            Self::Element => f.pad("Element(9)"),
+            Self::Code => f.pad("Code(10)"),
+            Self::Data => f.pad("Data(11)"),
+            Self::DataCount => f.pad("Data Count(12)"),
         }
     }
 }
@@ -54,19 +54,19 @@ impl TryFrom<u8> for SectionId {
 
     fn try_from(value: u8) -> result::Result<Self, Self::Error> {
         match value {
-            0x00 => Ok(SectionId::Custom),
-            0x01 => Ok(SectionId::Type),
-            0x02 => Ok(SectionId::Import),
-            0x03 => Ok(SectionId::Function),
-            0x04 => Ok(SectionId::Table),
-            0x05 => Ok(SectionId::Memory),
-            0x06 => Ok(SectionId::Global),
-            0x07 => Ok(SectionId::Export),
-            0x08 => Ok(SectionId::Start),
-            0x09 => Ok(SectionId::Element),
-            0x0a => Ok(SectionId::Code),
-            0x0b => Ok(SectionId::Data),
-            0x0c => Ok(SectionId::DataCount),
+            0x00 => Ok(Self::Custom),
+            0x01 => Ok(Self::Type),
+            0x02 => Ok(Self::Import),
+            0x03 => Ok(Self::Function),
+            0x04 => Ok(Self::Table),
+            0x05 => Ok(Self::Memory),
+            0x06 => Ok(Self::Global),
+            0x07 => Ok(Self::Export),
+            0x08 => Ok(Self::Start),
+            0x09 => Ok(Self::Element),
+            0x0a => Ok(Self::Code),
+            0x0b => Ok(Self::Data),
+            0x0c => Ok(Self::DataCount),
             _ => Err(InvalidEnumValueError {
                 value,
                 enum_name: std::any::type_name::<Self>(),
@@ -80,19 +80,19 @@ impl TryFrom<u8> for SectionId {
 impl SectionId {
     pub fn order(&self) -> u8 {
         match self {
-            SectionId::Custom => 0,
-            SectionId::Type => 1,
-            SectionId::Import => 2,
-            SectionId::Function => 3,
-            SectionId::Table => 4,
-            SectionId::Memory => 5,
-            SectionId::Global => 6,
-            SectionId::Export => 7,
-            SectionId::Start => 8,
-            SectionId::Element => 9,
-            SectionId::Code => 11,
-            SectionId::Data => 12,
-            SectionId::DataCount => 10,
+            Self::Custom => 0,
+            Self::Type => 1,
+            Self::Import => 2,
+            Self::Function => 3,
+            Self::Table => 4,
+            Self::Memory => 5,
+            Self::Global => 6,
+            Self::Export => 7,
+            Self::Start => 8,
+            Self::Element => 9,
+            Self::Code => 11,
+            Self::Data => 12,
+            Self::DataCount => 10,
         }
     }
 }
@@ -181,42 +181,42 @@ pub enum SectionErrorKind {
 impl Display for SectionErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SectionErrorKind::EntryCount(_) => write!(f, "reading the entry count"),
-            SectionErrorKind::EntrySize(_) => write!(f, "reading this entry size"),
+            Self::EntryCount(_) => write!(f, "reading the entry count"),
+            Self::EntrySize(_) => write!(f, "reading this entry size"),
 
-            SectionErrorKind::FuncTypeMarker(_) => write!(f, "reading the functype marker"),
-            SectionErrorKind::FuncTypeParams(_) => write!(f, "reading the function param types"),
-            SectionErrorKind::FuncTypeResults(_) => write!(f, "reading the function result types"),
-            SectionErrorKind::ImportModuleName(_) => write!(f, "reading import module name"),
-            SectionErrorKind::ImportEntityName(_) => write!(f, "reading import entity name"),
-            SectionErrorKind::ImportDescType(_) => write!(f, "reding import descriptor type"),
-            SectionErrorKind::ImportDescFunc(_) => write!(f, "reading import descriptor: func"),
-            SectionErrorKind::ImportDescTable(_) => {
+            Self::FuncTypeMarker(_) => write!(f, "reading the functype marker"),
+            Self::FuncTypeParams(_) => write!(f, "reading the function param types"),
+            Self::FuncTypeResults(_) => write!(f, "reading the function result types"),
+            Self::ImportModuleName(_) => write!(f, "reading import module name"),
+            Self::ImportEntityName(_) => write!(f, "reading import entity name"),
+            Self::ImportDescType(_) => write!(f, "reading import descriptor type"),
+            Self::ImportDescFunc(_) => write!(f, "reading import descriptor: func"),
+            Self::ImportDescTable(_) => {
                 write!(f, "reading import descriptor: table")
             }
-            SectionErrorKind::ImportDescMem(_) => write!(f, "reading import descriptor: mem"),
-            SectionErrorKind::ImportDescGlobal(_) => {
+            Self::ImportDescMem(_) => write!(f, "reading import descriptor: mem"),
+            Self::ImportDescGlobal(_) => {
                 write!(f, "reading import descriptor: global")
             }
 
-            SectionErrorKind::FunctionIndex(_) => write!(f, "reading the function type index"),
+            Self::FunctionIndex(_) => write!(f, "reading the function type index"),
 
-            SectionErrorKind::Table(_) => write!(f, "reading the table type"),
+            Self::Table(_) => write!(f, "reading the table type"),
 
-            SectionErrorKind::Memory(_) => write!(f, "reading the memory type"),
+            Self::Memory(_) => write!(f, "reading the memory type"),
 
-            SectionErrorKind::GlobalType(_) => write!(f, "reading the global type"),
-            SectionErrorKind::GlobalExpression(_) => write!(f, "reading the global expression"),
+            Self::GlobalType(_) => write!(f, "reading the global type"),
+            Self::GlobalExpression(_) => write!(f, "reading the global expression"),
 
-            SectionErrorKind::ExportName(_) => write!(f, "reading the export name"),
-            SectionErrorKind::ExportDescKind(_) => write!(f, "reading the export kind"),
-            SectionErrorKind::ExportDescIndex(_) => write!(f, "reading the export index"),
+            Self::ExportName(_) => write!(f, "reading the export name"),
+            Self::ExportDescKind(_) => write!(f, "reading the export kind"),
+            Self::ExportDescIndex(_) => write!(f, "reading the export index"),
 
-            SectionErrorKind::CodeFuncLocal(_) => write!(f, "reading function local"),
-            SectionErrorKind::CodeFuncTooManyLocals => write!(f, "checking function locals count"),
-            SectionErrorKind::CodeFuncBody(_) => write!(f, "reading function body"),
+            Self::CodeFuncLocal(_) => write!(f, "reading function local"),
+            Self::CodeFuncTooManyLocals => write!(f, "checking function locals count"),
+            Self::CodeFuncBody(_) => write!(f, "reading function body"),
 
-            SectionErrorKind::DataCount(_) => write!(f, "reading data count"),
+            Self::DataCount(_) => write!(f, "reading data count"),
         }
     }
 }
@@ -224,39 +224,39 @@ impl Display for SectionErrorKind {
 impl error::Error for SectionErrorKind {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            SectionErrorKind::EntryCount(e) => Some(e),
-            SectionErrorKind::EntrySize(e) => Some(e),
+            Self::EntryCount(e) => Some(e),
+            Self::EntrySize(e) => Some(e),
 
-            SectionErrorKind::FuncTypeMarker(e) => Some(e),
-            SectionErrorKind::FuncTypeParams(e) => Some(e),
-            SectionErrorKind::FuncTypeResults(e) => Some(e),
+            Self::FuncTypeMarker(e) => Some(e),
+            Self::FuncTypeParams(e) => Some(e),
+            Self::FuncTypeResults(e) => Some(e),
 
-            SectionErrorKind::ImportModuleName(e) => Some(e),
-            SectionErrorKind::ImportEntityName(e) => Some(e),
-            SectionErrorKind::ImportDescType(e) => Some(e),
-            SectionErrorKind::ImportDescFunc(e) => Some(e),
-            SectionErrorKind::ImportDescTable(e) => Some(e),
-            SectionErrorKind::ImportDescMem(e) => Some(e),
-            SectionErrorKind::ImportDescGlobal(e) => Some(e),
+            Self::ImportModuleName(e) => Some(e),
+            Self::ImportEntityName(e) => Some(e),
+            Self::ImportDescType(e) => Some(e),
+            Self::ImportDescFunc(e) => Some(e),
+            Self::ImportDescTable(e) => Some(e),
+            Self::ImportDescMem(e) => Some(e),
+            Self::ImportDescGlobal(e) => Some(e),
 
-            SectionErrorKind::FunctionIndex(e) => Some(e),
+            Self::FunctionIndex(e) => Some(e),
 
-            SectionErrorKind::Memory(e) => Some(e),
+            Self::Memory(e) => Some(e),
 
-            SectionErrorKind::Table(e) => Some(e),
+            Self::Table(e) => Some(e),
 
-            SectionErrorKind::GlobalType(e) => Some(e),
-            SectionErrorKind::GlobalExpression(e) => Some(e),
+            Self::GlobalType(e) => Some(e),
+            Self::GlobalExpression(e) => Some(e),
 
-            SectionErrorKind::ExportName(e) => Some(e),
-            SectionErrorKind::ExportDescKind(e) => Some(e),
-            SectionErrorKind::ExportDescIndex(e) => Some(e),
+            Self::ExportName(e) => Some(e),
+            Self::ExportDescKind(e) => Some(e),
+            Self::ExportDescIndex(e) => Some(e),
 
-            SectionErrorKind::CodeFuncBody(e) => Some(e),
-            SectionErrorKind::CodeFuncTooManyLocals => None,
-            SectionErrorKind::CodeFuncLocal(e) => Some(e),
+            Self::CodeFuncBody(e) => Some(e),
+            Self::CodeFuncTooManyLocals => None,
+            Self::CodeFuncLocal(e) => Some(e),
 
-            SectionErrorKind::DataCount(e) => Some(e),
+            Self::DataCount(e) => Some(e),
         }
     }
 }
@@ -449,8 +449,8 @@ pub enum TableTypeReadError {
 impl std::error::Error for TableTypeReadError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            TableTypeReadError::RefType(e) => Some(e),
-            TableTypeReadError::Limit(e) => Some(e),
+            Self::RefType(e) => Some(e),
+            Self::Limit(e) => Some(e),
         }
     }
 }
@@ -458,8 +458,8 @@ impl std::error::Error for TableTypeReadError {
 impl std::fmt::Display for TableTypeReadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TableTypeReadError::RefType(_) => write!(f, "reading its element reference type"),
-            TableTypeReadError::Limit(_) => write!(f, "reading its limits"),
+            Self::RefType(_) => write!(f, "reading its element reference type"),
+            Self::Limit(_) => write!(f, "reading its limits"),
         }
     }
 }
@@ -555,9 +555,9 @@ pub enum LimitReadError {
 impl std::error::Error for LimitReadError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            LimitReadError::Flag(e) => Some(e),
-            LimitReadError::Min(e) => Some(e),
-            LimitReadError::Max(e) => Some(e),
+            Self::Flag(e) => Some(e),
+            Self::Min(e) => Some(e),
+            Self::Max(e) => Some(e),
         }
     }
 }
@@ -565,9 +565,9 @@ impl std::error::Error for LimitReadError {
 impl std::fmt::Display for LimitReadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LimitReadError::Flag(_) => write!(f, "reading the limit flag"),
-            LimitReadError::Min(_) => write!(f, "reading the limit min"),
-            LimitReadError::Max(_) => write!(f, "reading the limit max"),
+            Self::Flag(_) => write!(f, "reading the limit flag"),
+            Self::Min(_) => write!(f, "reading the limit min"),
+            Self::Max(_) => write!(f, "reading the limit max"),
         }
     }
 }
@@ -576,14 +576,14 @@ impl<'a> FromReader<'a> for Limit {
     type Error = LimitReadError;
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let flag: LimitFlag = reader.read().map_err(LimitReadError::Flag)?;
-        let min: u32 = reader.read().map_err(LimitReadError::Min)?;
+        let flag: LimitFlag = reader.read().map_err(Self::Error::Flag)?;
+        let min: u32 = reader.read().map_err(Self::Error::Min)?;
 
         match flag {
             LimitFlag::Min => Ok(Self { min, max: None }),
             LimitFlag::MinMax => Ok(Self {
                 min,
-                max: Some(reader.read().map_err(LimitReadError::Max)?),
+                max: Some(reader.read().map_err(Self::Error::Max)?),
             }),
         }
     }
@@ -638,8 +638,8 @@ impl TryFrom<u8> for MutabilityFlag {
 
     fn try_from(value: u8) -> result::Result<Self, Self::Error> {
         match value {
-            0x00 => Ok(MutabilityFlag::Const),
-            0x01 => Ok(MutabilityFlag::Var),
+            0x00 => Ok(Self::Const),
+            0x01 => Ok(Self::Var),
             _ => Err(InvalidEnumValueError {
                 value,
                 enum_name: std::any::type_name::<Self>(),
@@ -687,8 +687,8 @@ impl std::error::Error for GlobalTypeReadError {
 impl std::fmt::Display for GlobalTypeReadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GlobalTypeReadError::Type(_) => write!(f, "reading its value type"),
-            GlobalTypeReadError::MutabilityFlag(_) => write!(f, "reading its mutability"),
+            Self::Type(_) => write!(f, "reading its value type"),
+            Self::MutabilityFlag(_) => write!(f, "reading its mutability"),
         }
     }
 }
@@ -697,8 +697,8 @@ impl<'a> FromReader<'a> for GlobalType {
     type Error = GlobalTypeReadError;
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let type_ = reader.read().map_err(GlobalTypeReadError::Type)?;
-        let mutflag = reader.read().map_err(GlobalTypeReadError::MutabilityFlag)?;
+        let type_ = reader.read().map_err(Self::Error::Type)?;
+        let mutflag = reader.read().map_err(Self::Error::MutabilityFlag)?;
 
         Ok(GlobalType { type_, mutflag })
     }
@@ -714,7 +714,7 @@ pub struct GlobalEntry {
 
 impl SectionEntry for GlobalEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let gt = GlobalType::from_reader(reader).map_err(SectionErrorKind::GlobalType)?;
+        let gt = reader.read().map_err(SectionErrorKind::GlobalType)?;
 
         let mut body = Vec::new();
         while !reader.is_exhausted() {
@@ -746,10 +746,10 @@ impl TryFrom<u8> for ExportKind {
 
     fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
         match value {
-            0x00 => Ok(ExportKind::Func),
-            0x01 => Ok(ExportKind::Table),
-            0x02 => Ok(ExportKind::Memory),
-            0x03 => Ok(ExportKind::Global),
+            0x00 => Ok(Self::Func),
+            0x01 => Ok(Self::Table),
+            0x02 => Ok(Self::Memory),
+            0x03 => Ok(Self::Global),
             _ => Err(InvalidEnumValueError {
                 value,
                 enum_name: std::any::type_name::<Self>(),
@@ -856,6 +856,10 @@ impl SectionEntry for CodeEntry {
     }
 }
 
+/// Data Section
+pub struct DataSegment {}
+
+/// Data Count Section
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct DataCountSection(pub u32);
