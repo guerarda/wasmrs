@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    instructions::{Instruction, InstructionError, decode_instruction},
+    instructions::{decode_instruction, Instruction, InstructionError},
     limits::MAX_WASM_FUNCTION_LOCALS,
     reader::{FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, Result},
     types::{FuncIdx, FuncType, RefType, TypeIdx, ValType},
@@ -134,6 +134,8 @@ impl error::Error for SectionError {
 #[non_exhaustive]
 pub enum SectionErrorKind {
     // Generic
+    SectionSize(ReadError),
+    SectionSizeMismatch { end: usize, expected: usize },
     EntryCount(ReadError),
     EntrySize(ReadError),
 
@@ -185,6 +187,13 @@ pub enum SectionErrorKind {
 impl Display for SectionErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::SectionSize(_) => write!(f, "section size out of range"),
+            Self::SectionSizeMismatch { end, expected } => write!(
+                f,
+                "section size mismatch, content ended at {a:#0x} ({a}), expected end: {b:#0x} ({b})",
+                a = end,
+                b = expected
+            ),
             Self::EntryCount(_) => write!(f, "reading the entry count"),
             Self::EntrySize(_) => write!(f, "reading this entry size"),
 
@@ -231,6 +240,8 @@ impl Display for SectionErrorKind {
 impl error::Error for SectionErrorKind {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            Self::SectionSize(e) => Some(e),
+            Self::SectionSizeMismatch { .. } => None,
             Self::EntryCount(e) => Some(e),
             Self::EntrySize(e) => Some(e),
 
@@ -287,21 +298,40 @@ pub fn decode_section<T: SectionEntry>(
     reader: &mut Reader,
     info: SectionInfo,
 ) -> std::result::Result<Vec<T>, SectionError> {
+    let mut reader = reader.scoped(info.size as u32).map_err(|e| SectionError {
+        kind: Box::new(SectionErrorKind::SectionSize(e)),
+        info,
+        idx: None,
+    })?;
+
     let len: u32 = reader.read().map_err(|e| SectionError {
         kind: Box::new(SectionErrorKind::EntryCount(e)),
         info,
         idx: None,
     })?;
 
-    (0..len)
+    let entries: std::result::Result<Vec<T>, SectionError> = (0..len)
         .map(|idx| {
-            T::decode(reader).map_err(|kind| SectionError {
+            T::decode(&mut reader).map_err(|kind| SectionError {
                 kind: Box::new(kind),
                 info,
                 idx: Some(idx as usize),
             })
         })
-        .collect()
+        .collect();
+
+    if entries.is_ok() && !reader.is_exhausted() {
+        Err(SectionError {
+            kind: Box::new(SectionErrorKind::SectionSizeMismatch {
+                end: reader.position() as usize,
+                expected: info.end as usize,
+            }),
+            info,
+            idx: None,
+        })
+    } else {
+        entries
+    }
 }
 
 /// Type Section
