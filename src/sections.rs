@@ -174,6 +174,10 @@ pub enum SectionErrorKind {
     CodeFuncTooManyLocals,
     CodeFuncBody(InstructionError),
 
+    // Data Section
+    DataSegmentMode(DataSegmentModeReadError),
+    DataSegment(ReadError),
+
     // DataCount Section
     DataCount(ReadError),
 }
@@ -216,6 +220,9 @@ impl Display for SectionErrorKind {
             Self::CodeFuncTooManyLocals => write!(f, "checking function locals count"),
             Self::CodeFuncBody(_) => write!(f, "reading function body"),
 
+            Self::DataSegmentMode(_) => write!(f, "reading data segment mode"),
+            Self::DataSegment(_) => write!(f, "reading data segment data"),
+
             Self::DataCount(_) => write!(f, "reading data count"),
         }
     }
@@ -255,6 +262,9 @@ impl error::Error for SectionErrorKind {
             Self::CodeFuncBody(e) => Some(e),
             Self::CodeFuncTooManyLocals => None,
             Self::CodeFuncLocal(e) => Some(e),
+
+            Self::DataSegmentMode(e) => Some(e),
+            Self::DataSegment(e) => Some(e),
 
             Self::DataCount(e) => Some(e),
         }
@@ -857,7 +867,91 @@ impl SectionEntry for CodeEntry {
 }
 
 /// Data Section
-pub struct DataSegment {}
+#[derive(Debug)]
+pub enum DataSegmentMode {
+    Active {
+        #[allow(dead_code)]
+        mem_index: u32,
+        #[allow(dead_code)]
+        offset: ConstExpression,
+    },
+    Passive,
+}
+
+#[derive(Debug)]
+pub enum DataSegmentModeReadError {
+    Flag(ReadError),
+    MemIndex(ReadError),
+    Expression(ConstExpressionReadError),
+}
+
+impl std::error::Error for DataSegmentModeReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Flag(e) => Some(e),
+            Self::MemIndex(e) => Some(e),
+            Self::Expression(e) => Some(e),
+        }
+    }
+}
+
+impl std::fmt::Display for DataSegmentModeReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Flag(_) => write!(f, "reading flag"),
+            Self::MemIndex(_) => write!(f, "reading mem index"),
+            Self::Expression(_) => write!(f, "reading expression"),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for DataSegmentMode {
+    type Error = DataSegmentModeReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let offset = reader.position() as usize;
+        let flag: u32 = reader.read().map_err(Self::Error::Flag)?;
+
+        let mode = match flag {
+            0x00 => Ok(DataSegmentMode::Active {
+                mem_index: 0,
+                offset: reader.read().map_err(Self::Error::Expression)?,
+            }),
+            0x01 => Ok(DataSegmentMode::Passive),
+            0x02 => Ok(DataSegmentMode::Active {
+                mem_index: reader.read().map_err(Self::Error::MemIndex)?,
+                offset: reader.read().map_err(Self::Error::Expression)?,
+            }),
+            _ => Err(ReadError {
+                offset,
+                kind: ReadErrorKind::UnexpectedValue {
+                    value: flag.to_string(),
+                    expected: "0, 1 or 2".to_string(),
+                },
+            }),
+        };
+        mode.map_err(Self::Error::Flag)
+    }
+}
+
+#[derive(Debug)]
+pub struct DataSegment {
+    #[allow(dead_code)]
+    pub mode: DataSegmentMode,
+    #[allow(dead_code)]
+    pub data: Vec<u8>,
+}
+
+pub type DataSection = Vec<DataSegment>;
+
+impl SectionEntry for DataSegment {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        Ok(Self {
+            mode: reader.read().map_err(SectionErrorKind::DataSegmentMode)?,
+            data: reader.read().map_err(SectionErrorKind::DataSegment)?,
+        })
+    }
+}
 
 /// Data Count Section
 #[derive(Debug)]
@@ -884,5 +978,53 @@ impl<'a> FromReader<'a> for FuncLocal {
             count: reader.read()?,
             valtype: reader.read()?,
         })
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct ConstExpression(Vec<Instruction>);
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ConstExpressionReadError {
+    Instruction(InstructionError),
+    MissingEnd,
+}
+
+impl std::error::Error for ConstExpressionReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Instruction(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for ConstExpressionReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Instruction(_) => write!(f, "reading instruction"),
+            Self::MissingEnd => write!(f, "missing end instruction"),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for ConstExpression {
+    type Error = ConstExpressionReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let mut expr = Vec::<Instruction>::new();
+
+        while !reader.is_exhausted() {
+            let instr = decode_instruction(reader).map_err(Self::Error::Instruction)?;
+            if instr != Instruction::End {
+                expr.push(instr);
+            } else {
+                expr.push(instr);
+                return Ok(Self(expr));
+            }
+        }
+        Err(Self::Error::MissingEnd)
     }
 }

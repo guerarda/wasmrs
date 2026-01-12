@@ -9,8 +9,8 @@ mod reader;
 use crate::instructions::Instruction;
 use crate::reader::ReadErrorKind;
 use crate::sections::{
-    CodeSection, DataCountSection, ExportSection, FunctionSection, GlobalSection, ImportSection,
-    MemorySection, SectionError, SectionId, StartSection, TableSection, TypeSection,
+    CodeSection, DataCountSection, DataSection, ExportSection, FunctionSection, GlobalSection,
+    ImportSection, MemorySection, SectionError, SectionId, StartSection, TableSection, TypeSection,
     decode_data_count_section, decode_section, decode_start_section,
 };
 use crate::types::{FuncType, TypeIdx, ValType};
@@ -41,6 +41,7 @@ struct Module {
     start: Option<StartSection>,
     data_count: Option<DataCountSection>,
     codes: Option<CodeSection>,
+    data: Option<DataSection>,
 }
 
 impl Module {
@@ -59,6 +60,7 @@ impl Module {
             start: None,
             data_count: None,
             codes: None,
+            data: None,
         }
     }
 }
@@ -636,7 +638,9 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                 m.codes =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
-            SectionId::Data => {}
+            SectionId::Data => {
+                m.data = Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
+            }
             SectionId::DataCount => {
                 m.data_count = Some(
                     decode_data_count_section(&mut reader, *item)
@@ -807,6 +811,57 @@ mod tests {
         let m = decode_module(bytes)?;
         assert!(m.data_count.is_some());
         assert_eq!(m.data_count.unwrap().0, 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_data_section() -> anyhow::Result<()> {
+        // Test passive data segments (flag 0x01)
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x0b\x05\x02", // Data section(11), two entries
+            b"\x01\x00",     // passive, empty data
+            b"\x01\x00",     // passive, empty data
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.data.is_some());
+        assert_eq!(m.data.unwrap().len(), 2);
+
+        // Test active data segment with implicit mem_index 0 (flag 0x00)
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x0b\x09\x01",     // Data section(11), size 9, one entry
+            b"\x00",             // flag 0x00: active, implicit mem_index 0
+            b"\x41\x00\x0b",     // offset expr: i32.const 0, end
+            b"\x03\x01\x02\x03", // data: length 3, bytes [1, 2, 3]
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.data.is_some());
+        let data = m.data.unwrap();
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0].data, vec![1, 2, 3]);
+
+        // Test active data segment with explicit mem_index (flag 0x02)
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x0b\x09\x01",     // Data section(11), size 9, one entry
+            b"\x02",             // flag 0x02: active, explicit mem_index
+            b"\x01",             // mem_index: 1
+            b"\x41\x10\x0b",     // offset expr: i32.const 16, end
+            b"\x02\xaa\xbb",     // data: length 2, bytes [0xAA, 0xBB]
+        ]
+        .concat();
+
+        let m = decode_module(bytes)?;
+        assert!(m.data.is_some());
+        let data = m.data.unwrap();
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0].data, vec![0xaa, 0xbb]);
 
         Ok(())
     }
