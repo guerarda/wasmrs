@@ -30,7 +30,7 @@ pub enum Instruction {
 
 pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
     let offset = reader.position() as usize;
-    let opcode = reader.read_u8().map_err(InstructionError::from)?;
+    let opcode = reader.read_u8()?;
     match opcode {
         0x01 => Ok(Instruction::Nop),
         0x04 => {
