@@ -59,7 +59,10 @@ impl<'a> Reader<'a> {
         let offset = self.cursor.position() as usize;
         std::io::Read::read_exact(self, buf).map_err(|e| ReadError {
             offset,
-            kind: ReadErrorKind::Read(e),
+            kind: ReadErrorKind::ReadExact {
+                len: buf.len(),
+                source: e,
+            },
         })
     }
 
@@ -107,8 +110,11 @@ impl<'a> Reader<'a> {
     }
 
     pub fn read_name(&mut self) -> Result<String> {
-        let offset = self.cursor.position() as usize;
-        let bytes: Vec<u8> = self.read()?;
+        let offset = self.position() as usize;
+
+        let len = self.read_u32()?;
+        let mut bytes = vec![0u8; len as usize];
+        self.read_exact(&mut bytes)?;
 
         String::from_utf8(bytes).map_err(|e| ReadError {
             offset,
@@ -209,6 +215,9 @@ impl Display for ReadError {
             ReadErrorKind::Decode(_) => {
                 write!(f, "decoding byte at offset {}", self.offset)
             }
+            ReadErrorKind::ReadExact { len, .. } => {
+                write!(f, "reading {len} bytes starting at offset {}", self.offset)
+            }
             ReadErrorKind::Read(_) => {
                 write!(f, "reading byte at offset {}", self.offset)
             }
@@ -247,6 +256,7 @@ impl Error for ReadError {
         match &self.kind {
             ReadErrorKind::Decode(e) => Some(e),
             ReadErrorKind::Read(e) => Some(e),
+            ReadErrorKind::ReadExact { source, .. } => Some(source),
             ReadErrorKind::InvalidEnumValue(e) => Some(e),
             ReadErrorKind::FromUtf8(e) => Some(e),
             _ => None,
@@ -259,6 +269,10 @@ impl Error for ReadError {
 pub enum ReadErrorKind {
     Decode(DecodeError),
     Read(io::Error),
+    ReadExact {
+        len: usize,
+        source: io::Error,
+    },
     FromUtf8(FromUtf8Error),
     InvalidEnumValue(InvalidEnumValueError),
     OutOfRange {
