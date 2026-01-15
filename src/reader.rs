@@ -10,6 +10,8 @@ use std::{
 
 use crate::types::ValType;
 
+use thiserror::Error;
+
 pub struct Reader<'a> {
     pub cursor: Cursor<&'a [u8]>,
     range: Range<u64>,
@@ -148,12 +150,29 @@ pub trait FromReader<'a>: Sized {
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error>;
 }
 
-impl<'a, T: FromReader<'a, Error = ReadError>> FromReader<'a> for Vec<T> {
-    type Error = ReadError;
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum VecReadError<E> {
+    #[error("reading the vector element count")]
+    Count(ReadError),
+
+    #[error("reading element at index {index}")]
+    Element {
+        index: usize,
+        #[source]
+        source: E,
+    },
+}
+impl<'a, T: FromReader<'a>> FromReader<'a> for Vec<T> {
+    type Error = VecReadError<T::Error>;
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let len = reader.read_u32()?;
-        (0..len).map(|_| T::from_reader(reader)).collect()
+        let len = reader.read_u32().map_err(VecReadError::Count)? as usize;
+        (0..len)
+            .map(|index| {
+                T::from_reader(reader).map_err(|source| VecReadError::Element { index, source })
+            })
+            .collect()
     }
 }
 

@@ -4,10 +4,14 @@ use std::{
     result,
 };
 
+use thiserror::Error;
+
 use crate::{
-    instructions::{decode_instruction, Instruction, InstructionError},
+    instructions::{Instruction, InstructionError, decode_instruction},
     limits::MAX_WASM_FUNCTION_LOCALS,
-    reader::{FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, Result},
+    reader::{
+        FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, Result, VecReadError,
+    },
     types::{FuncIdx, FuncType, RefType, TypeIdx, ValType},
 };
 
@@ -141,8 +145,8 @@ pub enum SectionErrorKind {
 
     // Type Section
     FuncTypeMarker(ReadError),
-    FuncTypeParams(ReadError),
-    FuncTypeResults(ReadError),
+    FuncTypeParams(VecReadError<ReadError>),
+    FuncTypeResults(VecReadError<ReadError>),
 
     // Import Section
     ImportModuleName(ReadError),
@@ -172,13 +176,16 @@ pub enum SectionErrorKind {
     ExportDescIndex(ReadError),
 
     // Code Section
-    CodeFuncLocal(ReadError),
+    CodeFuncLocal(VecReadError<ReadError>),
     CodeFuncTooManyLocals,
     CodeFuncBody(InstructionError),
 
+    // Element Section
+    ElementSection(ElementSectionReadError),
+
     // Data Section
     DataSegmentMode(DataSegmentModeReadError),
-    DataSegment(ReadError),
+    DataSegment(VecReadError<ReadError>),
 
     // DataCount Section
     DataCount(ReadError),
@@ -225,6 +232,8 @@ impl Display for SectionErrorKind {
             Self::ExportDescKind(_) => write!(f, "reading the export kind"),
             Self::ExportDescIndex(_) => write!(f, "reading the export index"),
 
+            Self::ElementSection(_) => write!(f, "reading the element section"),
+
             Self::CodeFuncLocal(_) => write!(f, "reading function local"),
             Self::CodeFuncTooManyLocals => write!(f, "checking function locals count"),
             Self::CodeFuncBody(_) => write!(f, "reading function body"),
@@ -269,6 +278,8 @@ impl error::Error for SectionErrorKind {
             Self::ExportName(e) => Some(e),
             Self::ExportDescKind(e) => Some(e),
             Self::ExportDescIndex(e) => Some(e),
+
+            Self::ElementSection(e) => Some(e),
 
             Self::CodeFuncBody(e) => Some(e),
             Self::CodeFuncTooManyLocals => None,
@@ -838,6 +849,239 @@ pub fn decode_start_section(
         idx: None,
     })?;
     Ok(StartSection(count))
+}
+
+/// Element Section
+#[derive(Debug)]
+pub enum ElementSegmentMode {
+    Passive,
+    Active {
+        table_index: Option<u32>,
+        offset: ConstExpression,
+    },
+    Declarative,
+}
+
+#[derive(Debug)]
+pub enum ElementSegmentModeReadError {
+    Flag(ReadError),
+    TableIndex(ReadError),
+    Type(ReadError),
+    Expression(ConstExpressionReadError),
+    Kind(ReadError),
+    Index(ReadError),
+}
+
+impl std::error::Error for ElementSegmentModeReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Flag(e) => Some(e),
+            Self::TableIndex(e) => Some(e),
+            Self::Expression(e) => Some(e),
+            Self::Type(e) => Some(e),
+            Self::Kind(e) => Some(e),
+            Self::Index(e) => Some(e),
+        }
+    }
+}
+
+impl std::fmt::Display for ElementSegmentModeReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Flag(_) => write!(f, "reading flag"),
+            Self::TableIndex(_) => write!(f, "reading table index"),
+            Self::Expression(_) => write!(f, "reading expression"),
+            Self::Type(_) => write!(f, "reading element type"),
+            Self::Kind(_) => write!(f, "reading element kind"),
+            Self::Index(_) => write!(f, "reading element index"),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for ElementSegmentMode {
+    type Error = ElementSegmentModeReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let offset = reader.position() as usize;
+        let flag: u32 = reader.read().map_err(Self::Error::Flag)?;
+
+        if (flag & !0b111) != 0 {
+            return Err(ReadError {
+                offset,
+                kind: ReadErrorKind::UnexpectedValue {
+                    value: flag.to_string(),
+                    expected: "0 <= flag <= 7 for element segment".to_string(),
+                },
+            })
+            .map_err(Self::Error::Flag);
+        }
+
+        let mode = if flag & 0b001 != 0 {
+            if flag & 0b010 != 0 {
+                ElementSegmentMode::Passive
+            } else {
+                ElementSegmentMode::Declarative
+            }
+        } else {
+            let table_index = if flag & 0b010 != 0 {
+                Some(reader.read().map_err(Self::Error::TableIndex)?)
+            } else {
+                None
+            };
+            ElementSegmentMode::Active {
+                table_index,
+                offset: reader.read().map_err(Self::Error::Expression)?,
+            }
+        };
+        Ok(mode)
+    }
+}
+
+#[derive(Debug)]
+pub struct ElementKindMarker();
+impl<'a> FromReader<'a> for ElementKindMarker {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let offset = reader.position() as usize;
+        let v = reader.read_u8()?;
+
+        if v == 0x00 {
+            Ok(ElementKindMarker())
+        } else {
+            Err(ReadError {
+                offset,
+                kind: ReadErrorKind::UnexpectedValue {
+                    value: v.to_string(),
+                    expected: 0x60.to_string(),
+                },
+            })
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FuncIndex(u32);
+
+impl<'a> FromReader<'a> for FuncIndex {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map(FuncIndex)
+    }
+}
+
+#[derive(Debug)]
+pub enum ElementSegmentItems {
+    Functions(Vec<FuncIndex>),
+    Expressions(RefType, Vec<ConstExpression>),
+}
+
+#[derive(Debug)]
+pub struct ElementSegment {
+    pub mode: ElementSegmentMode,
+    pub items: ElementSegmentItems,
+}
+
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum ElementSectionReadError {
+    #[error("reading mode flag")]
+    ModeFlag(#[source] ReadError),
+
+    #[error("reading mode table index")]
+    ModeTableIndex(#[source] ReadError),
+
+    #[error("reading mode type")]
+    ModeType(#[source] ReadError),
+
+    #[error("reading mode expression")]
+    ModeOffsetExpression(#[source] ConstExpressionReadError),
+
+    #[error("reading mode element kind")]
+    ModeKind(#[source] ReadError),
+
+    #[error("reading mode index")]
+    ModeIndex(#[source] ReadError),
+
+    #[error("reading segment functions")]
+    ItemsFunctions(#[source] VecReadError<ReadError>),
+
+    #[error("reading mode reference type")]
+    ItemsRefType(#[source] ReadError),
+
+    #[error("reading expressions")]
+    ItemsExpressions(#[source] VecReadError<ConstExpressionReadError>),
+}
+
+impl From<ElementSectionReadError> for SectionErrorKind {
+    fn from(value: ElementSectionReadError) -> Self {
+        Self::ElementSection(value)
+    }
+}
+
+pub type ElementSection = Vec<ElementSegment>;
+impl SectionEntry for ElementSegment {
+    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
+        let offset = reader.position() as usize;
+        let flag: u32 = reader.read().map_err(ElementSectionReadError::ModeFlag)?;
+
+        if (flag & !0b111) != 0 {
+            return Err(ReadError {
+                offset,
+                kind: ReadErrorKind::UnexpectedValue {
+                    value: flag.to_string(),
+                    expected: "0 <= flag <= 7 for element segment".to_string(),
+                },
+            })
+            .map_err(ElementSectionReadError::ModeFlag)?;
+        }
+
+        let mode = if flag & 0b001 != 0 {
+            if flag & 0b010 != 0 {
+                ElementSegmentMode::Passive
+            } else {
+                ElementSegmentMode::Declarative
+            }
+        } else {
+            let table_index = if flag & 0b010 != 0 {
+                Some(
+                    reader
+                        .read()
+                        .map_err(ElementSectionReadError::ModeTableIndex)?,
+                )
+            } else {
+                None
+            };
+            ElementSegmentMode::Active {
+                table_index,
+                offset: reader
+                    .read()
+                    .map_err(ElementSectionReadError::ModeOffsetExpression)?,
+            }
+        };
+
+        let items = if flag & 0b100 != 0 {
+            let rt: RefType = reader
+                .read()
+                .map_err(ElementSectionReadError::ItemsRefType)?;
+            let exprs: Vec<ConstExpression> = reader
+                .read()
+                .map_err(ElementSectionReadError::ItemsExpressions)
+                .map_err(SectionErrorKind::ElementSection)?;
+
+            ElementSegmentItems::Expressions(rt, exprs)
+        } else {
+            let _: ElementKindMarker = reader.read().map_err(ElementSectionReadError::ModeKind)?;
+            let functions: Vec<FuncIndex> = reader
+                .read()
+                .map_err(ElementSectionReadError::ItemsFunctions)
+                .map_err(SectionErrorKind::ElementSection)?;
+
+            ElementSegmentItems::Functions(functions)
+        };
+        Ok(Self { mode, items })
+    }
 }
 
 /// Code Section
