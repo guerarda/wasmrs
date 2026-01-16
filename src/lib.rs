@@ -528,14 +528,18 @@ pub enum MalformedError {
         other: SectionInfo,
     },
     Section(SectionError),
+    InconsistentLength {
+        section: SectionId,
+        other: SectionId,
+    },
 }
 
 impl std::fmt::Display for MalformedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MalformedError::Read(_) => write!(f, "Malformed module"),
-            MalformedError::Preamble(_) => write!(f, "invalid module preamble"),
-            MalformedError::DuplicateSection { offset, id, other } => {
+            Self::Read(_) => write!(f, "Malformed module"),
+            Self::Preamble(_) => write!(f, "invalid module preamble"),
+            Self::DuplicateSection { offset, id, other } => {
                 write!(
                     f,
                     "duplicate section: {id} section at offset {offset:#0x} ({offset}), previously seen at offset {other_offset:#0x} ({other_offset})",
@@ -544,7 +548,7 @@ impl std::fmt::Display for MalformedError {
                     other_offset = other.offset
                 )
             }
-            MalformedError::SectionOrder { offset, id, other } => {
+            Self::SectionOrder { offset, id, other } => {
                 write!(
                     f,
                     "section out of order: {id} section at offset {offset:#0x} ({offset}), appears after {other_id} at offset {other_offset:#0x} ({other_offset})",
@@ -554,7 +558,10 @@ impl std::fmt::Display for MalformedError {
                     other_offset = other.offset
                 )
             }
-            MalformedError::Section(_) => write!(f, "malformed section"),
+            Self::Section(_) => write!(f, "malformed section"),
+            Self::InconsistentLength { section, other } => {
+                write!(f, "inconsistent section lenght, {section} and {other}")
+            }
         }
     }
 }
@@ -562,11 +569,12 @@ impl std::fmt::Display for MalformedError {
 impl std::error::Error for MalformedError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            MalformedError::Read(e) => Some(e),
-            MalformedError::Preamble(e) => Some(e),
-            MalformedError::DuplicateSection { .. } => None,
-            MalformedError::SectionOrder { .. } => None,
-            MalformedError::Section(e) => Some(e),
+            Self::Read(e) => Some(e),
+            Self::Preamble(e) => Some(e),
+            Self::DuplicateSection { .. } => None,
+            Self::SectionOrder { .. } => None,
+            Self::Section(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -595,6 +603,7 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
         let start = item.start as usize;
         let end = item.end as usize;
 
+        // TODO Use Reader::scoped() or scoped_at()
         let mut reader = Reader::from_bytes(&m.bytes[..end], start);
 
         match item.id {
@@ -641,7 +650,18 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
             }
             SectionId::Data => {
-                m.data = Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
+                let data = decode_section(&mut reader, *item).map_err(MalformedError::Section)?;
+                // The number of data entry should match the data count section if present
+                if let Some(ref dc) = m.data_count {
+                    if data.len() != dc.0 as usize {
+                        return Err(MalformedError::InconsistentLength {
+                            section: item.id,
+                            other: SectionId::DataCount,
+                        }
+                        .into());
+                    }
+                }
+                m.data = Some(data);
             }
             SectionId::DataCount => {
                 m.data_count = Some(
@@ -650,6 +670,30 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                 )
             }
         };
+    }
+
+    // Verify that Function & Code have consistent length
+    let fs_len = m.functions.as_ref().map_or(0, |fs| fs.len());
+    let cs_len = m.codes.as_ref().map_or(0, |fs| fs.len());
+
+    if fs_len != cs_len {
+        return Err(MalformedError::InconsistentLength {
+            section: SectionId::Code,
+            other: SectionId::Function,
+        }
+        .into());
+    }
+
+    // Verify that Data & Data Count have consistent length
+    let ds_len = m.data.as_ref().map_or(0, |fs| fs.len());
+    let dc = m.data_count.as_ref().map_or(0, |dc| dc.0) as usize;
+
+    if ds_len != dc {
+        return Err(MalformedError::InconsistentLength {
+            section: SectionId::Data,
+            other: SectionId::DataCount,
+        }
+        .into());
     }
 
     Ok(m)
@@ -924,7 +968,7 @@ mod tests {
         ]
         .concat();
 
-        let m = decode_module(bytes)?;
+        let _ = decode_module(bytes)?;
 
         Ok(())
     }

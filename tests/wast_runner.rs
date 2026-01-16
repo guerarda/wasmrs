@@ -110,11 +110,16 @@ impl WastRunner {
                             .push((idx, line, "AssertMalformed", TestResult::Pass));
                     }
                     Err(_) => {
-                        // Panic counts as an error for malformed modules
-                        eprintln!("[{}] line {}: expected {:?}, got PANIC", idx, line, message);
-                        let _ = std::io::stderr().flush();
-                        self.results
-                            .push((idx, line, "AssertMalformed", TestResult::Pass));
+                        // Panic is not a proper validation error - it's a runtime crash
+                        self.results.push((
+                            idx,
+                            line,
+                            "AssertMalformed",
+                            TestResult::Fail {
+                                expected: format!("error: {}", message),
+                                actual: "PANIC in runtime".to_string(),
+                            },
+                        ));
                     }
                 }
             }
