@@ -3,8 +3,15 @@ use std::{
     fmt::{self, Display},
     result,
 };
+
+pub mod code;
+pub use code::CodeSection;
+
 pub mod data;
 pub use data::DataSection;
+
+pub mod data_count;
+pub use data_count::{DataCountSection, decode_data_count_section};
 
 pub mod element;
 pub use element::ElementSection;
@@ -12,29 +19,36 @@ pub use element::ElementSection;
 pub mod export;
 pub use export::ExportSection;
 
+pub mod function;
+pub use function::FunctionSection;
+
+pub mod global;
+pub use global::{GlobalSection, GlobalTypeReadError};
+
 pub mod import;
 pub use import::ImportSection;
 
+pub mod memory;
+pub use memory::{MemTypeReadError, MemorySection};
+
+pub mod start;
+pub use start::{StartSection, decode_start_section};
+
 pub mod table;
-pub use table::TableSection;
+pub use table::{TableSection, TableTypeReadError};
+
+pub mod type_;
+pub use type_::TypeSection;
 
 use crate::{
     binary::{
-        reader::{
-            FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, Result,
-            VecReadError,
-        },
+        reader::{InvalidEnumValueError, ReadError, Reader, VecReadError},
         sections::{
             data::DataSegmentModeReadError, element::ElementSectionReadError,
-            table::TableTypeReadError,
         },
-        types::{
-            ConstExpression, ConstExpressionReadError, FuncIdx, FuncType, Limit, LimitReadError,
-            TypeIdx, ValType,
-        },
+        types::ConstExpressionReadError,
     },
-    instructions::{Instruction, InstructionError, decode_instruction},
-    limits::MAX_WASM_FUNCTION_LOCALS,
+    instructions::InstructionError,
 };
 
 #[repr(u8)]
@@ -364,275 +378,5 @@ pub fn decode_section<T: SectionEntry>(
         })
     } else {
         entries
-    }
-}
-
-/// Type Section
-pub type TypeSection = Vec<FuncType>;
-struct FuncTypeMarker();
-
-impl<'a> FromReader<'a> for FuncTypeMarker {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let offset = reader.position() as usize;
-        let v = reader.read_u8()?;
-
-        if v == 0x60 {
-            Ok(FuncTypeMarker())
-        } else {
-            Err(ReadError {
-                offset,
-                kind: ReadErrorKind::UnexpectedValue {
-                    value: v.to_string(),
-                    expected: 0x60.to_string(),
-                },
-            })
-        }
-    }
-}
-
-impl SectionEntry for FuncType {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let _: FuncTypeMarker = reader.read().map_err(SectionErrorKind::FuncTypeMarker)?;
-
-        Ok(FuncType {
-            params: reader.read().map_err(SectionErrorKind::FuncTypeParams)?,
-            results: reader.read().map_err(SectionErrorKind::FuncTypeResults)?,
-        })
-    }
-}
-
-/// Function Section
-pub type FunctionSection = Vec<TypeIdx>;
-
-impl SectionEntry for TypeIdx {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        TypeIdx::from_reader(reader).map_err(SectionErrorKind::FunctionIndex)
-    }
-}
-
-/// Memory Section
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct MemType(pub Limit);
-
-pub type MemorySection = Vec<MemType>;
-
-impl<'a> FromReader<'a> for MemType {
-    type Error = MemTypeReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        reader.read().map_err(MemTypeReadError).map(Self)
-    }
-}
-
-#[derive(Debug)]
-pub struct MemTypeReadError(LimitReadError);
-
-impl std::error::Error for MemTypeReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        Some(&self.0)
-    }
-}
-
-impl std::fmt::Display for MemTypeReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "reading its limits")
-    }
-}
-
-impl SectionEntry for MemType {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        reader.read().map_err(SectionErrorKind::Memory)
-    }
-}
-
-/// Global Section
-pub type GlobalSection = Vec<GlobalEntry>;
-
-#[derive(Debug)]
-pub enum MutabilityFlag {
-    Const = 0x00,
-    Var = 0x01,
-}
-
-impl TryFrom<u8> for MutabilityFlag {
-    type Error = InvalidEnumValueError;
-
-    fn try_from(value: u8) -> result::Result<Self, Self::Error> {
-        match value {
-            0x00 => Ok(Self::Const),
-            0x01 => Ok(Self::Var),
-            _ => Err(InvalidEnumValueError {
-                value,
-                enum_name: std::any::type_name::<Self>(),
-            }),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for MutabilityFlag {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-        let pos = reader.position() as usize;
-        reader
-            .read_u8()?
-            .try_into()
-            .map_err(|e| ReadError::at_offset(e, pos))
-    }
-}
-
-#[derive(Debug)]
-pub struct GlobalType {
-    #[allow(dead_code)]
-    type_: ValType,
-    #[allow(dead_code)]
-    mutflag: MutabilityFlag,
-}
-
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum GlobalTypeReadError {
-    Type(ReadError),
-    MutabilityFlag(ReadError),
-}
-
-impl std::error::Error for GlobalTypeReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Type(e) => Some(e),
-            Self::MutabilityFlag(e) => Some(e),
-        }
-    }
-}
-
-impl std::fmt::Display for GlobalTypeReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Type(_) => write!(f, "reading its value type"),
-            Self::MutabilityFlag(_) => write!(f, "reading its mutability"),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for GlobalType {
-    type Error = GlobalTypeReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let type_ = reader.read().map_err(Self::Error::Type)?;
-        let mutflag = reader.read().map_err(Self::Error::MutabilityFlag)?;
-
-        Ok(GlobalType { type_, mutflag })
-    }
-}
-
-#[derive(Debug)]
-pub struct GlobalEntry {
-    #[allow(dead_code)]
-    gt: GlobalType,
-    #[allow(dead_code)]
-    body: ConstExpression,
-}
-
-impl SectionEntry for GlobalEntry {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        Ok(GlobalEntry {
-            gt: reader.read().map_err(SectionErrorKind::GlobalType)?,
-            body: reader.read().map_err(SectionErrorKind::GlobalExpression)?,
-        })
-    }
-}
-
-/// Start Section
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct StartSection(pub FuncIdx);
-
-pub fn decode_start_section(
-    reader: &mut Reader,
-    info: SectionInfo,
-) -> std::result::Result<StartSection, SectionError> {
-    let count: u32 = reader.read().map_err(|e| SectionError {
-        kind: Box::new(SectionErrorKind::DataCount(e)),
-        info,
-        idx: None,
-    })?;
-    Ok(StartSection(count))
-}
-
-/// Code Section
-#[derive(Debug)]
-pub struct FuncLocal {
-    pub count: u32,
-    pub valtype: ValType,
-}
-
-#[derive(Debug)]
-pub struct CodeEntry {
-    #[allow(dead_code)]
-    pub size: usize,
-    pub locals: Vec<FuncLocal>,
-    pub body: Vec<Instruction>,
-}
-
-pub type CodeSection = Vec<CodeEntry>;
-
-impl SectionEntry for CodeEntry {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let size = reader.read_u32().map_err(SectionErrorKind::EntrySize)?;
-        let mut reader = reader.scoped(size).map_err(SectionErrorKind::EntrySize)?;
-
-        let locals: Vec<FuncLocal> = reader.read().map_err(SectionErrorKind::CodeFuncLocal)?;
-
-        // There's a limit for number of functions locals
-        // TODO It should consider function parameters as implicit locals
-        let _ = locals
-            .iter()
-            .try_fold(0u32, |acc, &FuncLocal { count, .. }| acc.checked_add(count))
-            .filter(|&n| n <= MAX_WASM_FUNCTION_LOCALS)
-            .ok_or(SectionErrorKind::CodeFuncTooManyLocals)?;
-
-        let mut body = Vec::new();
-        while !reader.is_exhausted() {
-            let instr = decode_instruction(&mut reader)?;
-            body.push(instr);
-        }
-
-        Ok(CodeEntry {
-            size: size as usize,
-            locals,
-            body,
-        })
-    }
-}
-
-/// Data Count Section
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct DataCountSection(pub u32);
-
-pub fn decode_data_count_section(
-    reader: &mut Reader,
-    info: SectionInfo,
-) -> std::result::Result<DataCountSection, SectionError> {
-    let count: u32 = reader.read().map_err(|e| SectionError {
-        kind: Box::new(SectionErrorKind::DataCount(e)),
-        info,
-        idx: None,
-    })?;
-    Ok(DataCountSection(count))
-}
-
-impl<'a> FromReader<'a> for FuncLocal {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-        Ok(FuncLocal {
-            count: reader.read()?,
-            valtype: reader.read()?,
-        })
     }
 }

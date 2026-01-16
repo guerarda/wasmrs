@@ -1,6 +1,8 @@
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
-    sections::{GlobalType, MemType, SectionEntry, SectionErrorKind, table::TableType},
+    sections::{
+        global::GlobalType, memory::MemType, table::TableType, SectionEntry, SectionErrorKind,
+    },
     types::TypeIdx,
 };
 
