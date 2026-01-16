@@ -3,16 +3,25 @@ use std::{
     fmt::{self, Display},
     result,
 };
+pub mod data;
+pub use data::DataSection;
 
-use thiserror::Error;
+pub mod element;
+pub use element::ElementSection;
 
 use crate::{
+    binary::{
+        reader::{
+            FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, Result,
+            VecReadError,
+        },
+        sections::{data::DataSegmentModeReadError, element::ElementSectionReadError},
+        types::{
+            ConstExpression, ConstExpressionReadError, FuncIdx, FuncType, RefType, TypeIdx, ValType,
+        },
+    },
     instructions::{Instruction, InstructionError, decode_instruction},
     limits::MAX_WASM_FUNCTION_LOCALS,
-    reader::{
-        FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, Result, VecReadError,
-    },
-    types::{FuncIdx, FuncType, RefType, TypeIdx, ValType},
 };
 
 #[repr(u8)]
@@ -851,239 +860,6 @@ pub fn decode_start_section(
     Ok(StartSection(count))
 }
 
-/// Element Section
-#[derive(Debug)]
-pub enum ElementSegmentMode {
-    Passive,
-    Active {
-        table_index: Option<u32>,
-        offset: ConstExpression,
-    },
-    Declarative,
-}
-
-#[derive(Debug)]
-pub enum ElementSegmentModeReadError {
-    Flag(ReadError),
-    TableIndex(ReadError),
-    Type(ReadError),
-    Expression(ConstExpressionReadError),
-    Kind(ReadError),
-    Index(ReadError),
-}
-
-impl std::error::Error for ElementSegmentModeReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Flag(e) => Some(e),
-            Self::TableIndex(e) => Some(e),
-            Self::Expression(e) => Some(e),
-            Self::Type(e) => Some(e),
-            Self::Kind(e) => Some(e),
-            Self::Index(e) => Some(e),
-        }
-    }
-}
-
-impl std::fmt::Display for ElementSegmentModeReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Flag(_) => write!(f, "reading flag"),
-            Self::TableIndex(_) => write!(f, "reading table index"),
-            Self::Expression(_) => write!(f, "reading expression"),
-            Self::Type(_) => write!(f, "reading element type"),
-            Self::Kind(_) => write!(f, "reading element kind"),
-            Self::Index(_) => write!(f, "reading element index"),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for ElementSegmentMode {
-    type Error = ElementSegmentModeReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let offset = reader.position() as usize;
-        let flag: u32 = reader.read().map_err(Self::Error::Flag)?;
-
-        if (flag & !0b111) != 0 {
-            return Err(ReadError {
-                offset,
-                kind: ReadErrorKind::UnexpectedValue {
-                    value: flag.to_string(),
-                    expected: "0 <= flag <= 7 for element segment".to_string(),
-                },
-            })
-            .map_err(Self::Error::Flag);
-        }
-
-        let mode = if flag & 0b001 != 0 {
-            if flag & 0b010 != 0 {
-                ElementSegmentMode::Passive
-            } else {
-                ElementSegmentMode::Declarative
-            }
-        } else {
-            let table_index = if flag & 0b010 != 0 {
-                Some(reader.read().map_err(Self::Error::TableIndex)?)
-            } else {
-                None
-            };
-            ElementSegmentMode::Active {
-                table_index,
-                offset: reader.read().map_err(Self::Error::Expression)?,
-            }
-        };
-        Ok(mode)
-    }
-}
-
-#[derive(Debug)]
-pub struct ElementKindMarker();
-impl<'a> FromReader<'a> for ElementKindMarker {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let offset = reader.position() as usize;
-        let v = reader.read_u8()?;
-
-        if v == 0x00 {
-            Ok(ElementKindMarker())
-        } else {
-            Err(ReadError {
-                offset,
-                kind: ReadErrorKind::UnexpectedValue {
-                    value: v.to_string(),
-                    expected: 0x60.to_string(),
-                },
-            })
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct FuncIndex(u32);
-
-impl<'a> FromReader<'a> for FuncIndex {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        reader.read().map(FuncIndex)
-    }
-}
-
-#[derive(Debug)]
-pub enum ElementSegmentItems {
-    Functions(Vec<FuncIndex>),
-    Expressions(RefType, Vec<ConstExpression>),
-}
-
-#[derive(Debug)]
-pub struct ElementSegment {
-    pub mode: ElementSegmentMode,
-    pub items: ElementSegmentItems,
-}
-
-#[derive(Error, Debug)]
-#[non_exhaustive]
-pub enum ElementSectionReadError {
-    #[error("reading mode flag")]
-    ModeFlag(#[source] ReadError),
-
-    #[error("reading mode table index")]
-    ModeTableIndex(#[source] ReadError),
-
-    #[error("reading mode type")]
-    ModeType(#[source] ReadError),
-
-    #[error("reading mode expression")]
-    ModeOffsetExpression(#[source] ConstExpressionReadError),
-
-    #[error("reading mode element kind")]
-    ModeKind(#[source] ReadError),
-
-    #[error("reading mode index")]
-    ModeIndex(#[source] ReadError),
-
-    #[error("reading segment functions")]
-    ItemsFunctions(#[source] VecReadError<ReadError>),
-
-    #[error("reading mode reference type")]
-    ItemsRefType(#[source] ReadError),
-
-    #[error("reading expressions")]
-    ItemsExpressions(#[source] VecReadError<ConstExpressionReadError>),
-}
-
-impl From<ElementSectionReadError> for SectionErrorKind {
-    fn from(value: ElementSectionReadError) -> Self {
-        Self::ElementSection(value)
-    }
-}
-
-pub type ElementSection = Vec<ElementSegment>;
-impl SectionEntry for ElementSegment {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let offset = reader.position() as usize;
-        let flag: u32 = reader.read().map_err(ElementSectionReadError::ModeFlag)?;
-
-        if (flag & !0b111) != 0 {
-            return Err(ReadError {
-                offset,
-                kind: ReadErrorKind::UnexpectedValue {
-                    value: flag.to_string(),
-                    expected: "0 <= flag <= 7 for element segment".to_string(),
-                },
-            })
-            .map_err(ElementSectionReadError::ModeFlag)?;
-        }
-
-        let mode = if flag & 0b001 != 0 {
-            if flag & 0b010 != 0 {
-                ElementSegmentMode::Passive
-            } else {
-                ElementSegmentMode::Declarative
-            }
-        } else {
-            let table_index = if flag & 0b010 != 0 {
-                Some(
-                    reader
-                        .read()
-                        .map_err(ElementSectionReadError::ModeTableIndex)?,
-                )
-            } else {
-                None
-            };
-            ElementSegmentMode::Active {
-                table_index,
-                offset: reader
-                    .read()
-                    .map_err(ElementSectionReadError::ModeOffsetExpression)?,
-            }
-        };
-
-        let items = if flag & 0b100 != 0 {
-            let rt: RefType = reader
-                .read()
-                .map_err(ElementSectionReadError::ItemsRefType)?;
-            let exprs: Vec<ConstExpression> = reader
-                .read()
-                .map_err(ElementSectionReadError::ItemsExpressions)
-                .map_err(SectionErrorKind::ElementSection)?;
-
-            ElementSegmentItems::Expressions(rt, exprs)
-        } else {
-            let _: ElementKindMarker = reader.read().map_err(ElementSectionReadError::ModeKind)?;
-            let functions: Vec<FuncIndex> = reader
-                .read()
-                .map_err(ElementSectionReadError::ItemsFunctions)
-                .map_err(SectionErrorKind::ElementSection)?;
-
-            ElementSegmentItems::Functions(functions)
-        };
-        Ok(Self { mode, items })
-    }
-}
-
 /// Code Section
 #[derive(Debug)]
 pub struct FuncLocal {
@@ -1130,93 +906,6 @@ impl SectionEntry for CodeEntry {
     }
 }
 
-/// Data Section
-#[derive(Debug)]
-pub enum DataSegmentMode {
-    Active {
-        #[allow(dead_code)]
-        mem_index: u32,
-        #[allow(dead_code)]
-        offset: ConstExpression,
-    },
-    Passive,
-}
-
-#[derive(Debug)]
-pub enum DataSegmentModeReadError {
-    Flag(ReadError),
-    MemIndex(ReadError),
-    Expression(ConstExpressionReadError),
-}
-
-impl std::error::Error for DataSegmentModeReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Flag(e) => Some(e),
-            Self::MemIndex(e) => Some(e),
-            Self::Expression(e) => Some(e),
-        }
-    }
-}
-
-impl std::fmt::Display for DataSegmentModeReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Flag(_) => write!(f, "reading flag"),
-            Self::MemIndex(_) => write!(f, "reading mem index"),
-            Self::Expression(_) => write!(f, "reading expression"),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for DataSegmentMode {
-    type Error = DataSegmentModeReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let offset = reader.position() as usize;
-        let flag: u32 = reader.read().map_err(Self::Error::Flag)?;
-
-        match flag {
-            0x00 => Ok(DataSegmentMode::Active {
-                mem_index: 0,
-                offset: reader.read().map_err(Self::Error::Expression)?,
-            }),
-            0x01 => Ok(DataSegmentMode::Passive),
-            0x02 => Ok(DataSegmentMode::Active {
-                mem_index: reader.read().map_err(Self::Error::MemIndex)?,
-                offset: reader.read().map_err(Self::Error::Expression)?,
-            }),
-            _ => Err(ReadError {
-                offset,
-                kind: ReadErrorKind::UnexpectedValue {
-                    value: flag.to_string(),
-                    expected: "0, 1 or 2".to_string(),
-                },
-            })
-            .map_err(Self::Error::Flag),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct DataSegment {
-    #[allow(dead_code)]
-    pub mode: DataSegmentMode,
-    #[allow(dead_code)]
-    pub data: Vec<u8>,
-}
-
-pub type DataSection = Vec<DataSegment>;
-
-impl SectionEntry for DataSegment {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        Ok(Self {
-            mode: reader.read().map_err(SectionErrorKind::DataSegmentMode)?,
-            data: reader.read().map_err(SectionErrorKind::DataSegment)?,
-        })
-    }
-}
-
 /// Data Count Section
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -1242,53 +931,5 @@ impl<'a> FromReader<'a> for FuncLocal {
             count: reader.read()?,
             valtype: reader.read()?,
         })
-    }
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct ConstExpression(Vec<Instruction>);
-
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum ConstExpressionReadError {
-    Instruction(InstructionError),
-    MissingEnd,
-}
-
-impl std::error::Error for ConstExpressionReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Instruction(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for ConstExpressionReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Instruction(_) => write!(f, "reading instruction"),
-            Self::MissingEnd => write!(f, "missing end instruction"),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for ConstExpression {
-    type Error = ConstExpressionReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let mut expr = Vec::<Instruction>::new();
-
-        while !reader.is_exhausted() {
-            let instr = decode_instruction(reader).map_err(Self::Error::Instruction)?;
-            if instr != Instruction::End {
-                expr.push(instr);
-            } else {
-                expr.push(instr);
-                return Ok(Self(expr));
-            }
-        }
-        Err(Self::Error::MissingEnd)
     }
 }

@@ -3,25 +3,22 @@ use std::collections::hash_map::Entry;
 use std::io::{Seek, SeekFrom};
 use std::iter::repeat_n;
 
-mod leb128;
-mod reader;
+mod binary;
 
-use crate::instructions::Instruction;
-use crate::reader::ReadErrorKind;
-use crate::sections::{
+use crate::binary::sections::{
     CodeSection, DataCountSection, DataSection, ElementSection, ExportSection, FunctionSection,
     GlobalSection, ImportSection, MemorySection, SectionError, SectionId, StartSection,
     TableSection, TypeSection, decode_data_count_section, decode_section, decode_start_section,
 };
-use crate::types::{FuncType, TypeIdx, ValType};
-use reader::{ReadError, Reader};
+use crate::binary::types::{FuncType, TypeIdx, ValType};
+use crate::instructions::Instruction;
+use binary::reader::ReadErrorKind;
+use binary::reader::{ReadError, Reader};
 
-mod sections;
-use crate::sections::SectionInfo;
+use crate::binary::sections::SectionInfo;
 
 mod instructions;
 mod limits;
-mod types;
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
@@ -78,7 +75,7 @@ impl<'a> ModuleReader<'a> {
         }
     }
 
-    fn read_preamble(&mut self) -> reader::Result<()> {
+    fn read_preamble(&mut self) -> binary::reader::Result<()> {
         let mut buf = [0u8; 4];
 
         self.reader.read_exact(&mut buf)?;

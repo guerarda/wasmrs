@@ -1,6 +1,6 @@
 use crate::{
-    reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
-    types::ValType,
+    binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
+    binary::types::ValType,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]

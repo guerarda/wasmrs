@@ -1,4 +1,6 @@
-use crate::leb128::{self, DecodeError};
+mod leb128;
+
+use leb128::DecodeError;
 
 use std::{
     error::Error,
@@ -7,8 +9,6 @@ use std::{
     ops::Range,
     string::FromUtf8Error,
 };
-
-use crate::types::ValType;
 
 use thiserror::Error;
 
@@ -173,18 +173,6 @@ impl<'a, T: FromReader<'a>> FromReader<'a> for Vec<T> {
                 T::from_reader(reader).map_err(|source| VecReadError::Element { index, source })
             })
             .collect()
-    }
-}
-
-impl<'a> FromReader<'a> for ValType {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-        let pos = reader.position() as usize;
-        reader
-            .read_u8()?
-            .try_into()
-            .map_err(|e| ReadError::at_offset(e, pos))
     }
 }
 
