@@ -9,15 +9,28 @@ pub use data::DataSection;
 pub mod element;
 pub use element::ElementSection;
 
+pub mod export;
+pub use export::ExportSection;
+
+pub mod import;
+pub use import::ImportSection;
+
+pub mod table;
+pub use table::TableSection;
+
 use crate::{
     binary::{
         reader::{
             FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, Result,
             VecReadError,
         },
-        sections::{data::DataSegmentModeReadError, element::ElementSectionReadError},
+        sections::{
+            data::DataSegmentModeReadError, element::ElementSectionReadError,
+            table::TableTypeReadError,
+        },
         types::{
-            ConstExpression, ConstExpressionReadError, FuncIdx, FuncType, RefType, TypeIdx, ValType,
+            ConstExpression, ConstExpressionReadError, FuncIdx, FuncType, Limit, LimitReadError,
+            TypeIdx, ValType,
         },
     },
     instructions::{Instruction, InstructionError, decode_instruction},
@@ -390,169 +403,6 @@ impl SectionEntry for FuncType {
     }
 }
 
-/// Import Section
-pub type ImportSection = Vec<ImportEntry>;
-
-#[derive(Debug)]
-pub enum ImportDescType {
-    Func = 0x00,
-    Table = 0x01,
-    Mem = 0x02,
-    Global = 0x03,
-}
-
-impl TryFrom<u8> for ImportDescType {
-    type Error = InvalidEnumValueError;
-
-    fn try_from(value: u8) -> result::Result<Self, Self::Error> {
-        match value {
-            0x00 => Ok(Self::Func),
-            0x01 => Ok(Self::Table),
-            0x03 => Ok(Self::Mem),
-            0x04 => Ok(Self::Global),
-            _ => Err(InvalidEnumValueError {
-                value,
-                enum_name: std::any::type_name::<Self>(),
-            }),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for ImportDescType {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-        let pos = reader.position() as usize;
-        reader
-            .read_u8()?
-            .try_into()
-            .map_err(|e| ReadError::at_offset(e, pos))
-    }
-}
-
-#[derive(Debug)]
-pub enum ImportDesc {
-    #[allow(dead_code)]
-    Func(TypeIdx),
-    #[allow(dead_code)]
-    Table(TableType),
-    #[allow(dead_code)]
-    Mem(MemType),
-    #[allow(dead_code)]
-    Global(GlobalType),
-}
-
-#[derive(Debug)]
-pub struct ImportEntry {
-    #[allow(dead_code)]
-    pub mod_name: String,
-    #[allow(dead_code)]
-    pub name: String,
-    #[allow(dead_code)]
-    pub desc: ImportDesc,
-}
-
-impl SectionEntry for ImportEntry {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let mod_name: String = reader.read().map_err(SectionErrorKind::ImportModuleName)?;
-        let name: String = reader.read().map_err(SectionErrorKind::ImportEntityName)?;
-
-        let itype: ImportDescType = reader.read().map_err(SectionErrorKind::ImportDescType)?;
-
-        let desc = match itype {
-            ImportDescType::Func => reader
-                .read()
-                .map_err(SectionErrorKind::ImportDescFunc)
-                .map(ImportDesc::Func),
-
-            ImportDescType::Table => reader
-                .read()
-                .map_err(SectionErrorKind::ImportDescTable)
-                .map(ImportDesc::Table),
-
-            ImportDescType::Mem => reader
-                .read()
-                .map_err(SectionErrorKind::ImportDescMem)
-                .map(ImportDesc::Mem),
-
-            ImportDescType::Global => reader
-                .read()
-                .map_err(SectionErrorKind::ImportDescGlobal)
-                .map(ImportDesc::Global),
-        }?;
-
-        Ok(ImportEntry {
-            mod_name,
-            name,
-            desc,
-        })
-    }
-}
-
-/// Table Section
-pub type TableSection = Vec<TableType>;
-
-#[derive(Debug)]
-pub struct TableType {
-    #[allow(dead_code)]
-    pub etype: RefType,
-    #[allow(dead_code)]
-    pub limit: Limit,
-}
-
-#[derive(Debug)]
-pub enum TableTypeReadError {
-    RefType(ReadError),
-    Limit(LimitReadError),
-}
-
-impl std::error::Error for TableTypeReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::RefType(e) => Some(e),
-            Self::Limit(e) => Some(e),
-        }
-    }
-}
-
-impl std::fmt::Display for TableTypeReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::RefType(_) => write!(f, "reading its element reference type"),
-            Self::Limit(_) => write!(f, "reading its limits"),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for RefType {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-        let pos = reader.position() as usize;
-        reader
-            .read_u8()?
-            .try_into()
-            .map_err(|e| ReadError::at_offset(e, pos))
-    }
-}
-
-impl<'a> FromReader<'a> for TableType {
-    type Error = TableTypeReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let etype = reader.read().map_err(Self::Error::RefType)?;
-        let limit = reader.read().map_err(Self::Error::Limit)?;
-
-        Ok(TableType { etype, limit })
-    }
-}
-
-impl SectionEntry for TableType {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        reader.read().map_err(SectionErrorKind::Table)
-    }
-}
-
 /// Function Section
 pub type FunctionSection = Vec<TypeIdx>;
 
@@ -563,91 +413,6 @@ impl SectionEntry for TypeIdx {
 }
 
 /// Memory Section
-#[repr(u8)]
-#[derive(Debug, Eq, PartialEq)]
-pub enum LimitFlag {
-    Min = 0x00,
-    MinMax = 0x01,
-}
-
-impl TryFrom<u8> for LimitFlag {
-    type Error = InvalidEnumValueError;
-
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
-        match value {
-            0x00 => Ok(Self::Min),
-            0x01 => Ok(Self::MinMax),
-            _ => Err(InvalidEnumValueError {
-                value,
-                enum_name: std::any::type_name::<Self>(),
-            }),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for LimitFlag {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let pos = reader.position() as usize;
-        reader
-            .read_u8()?
-            .try_into()
-            .map_err(|e| ReadError::at_offset(e, pos))
-    }
-}
-
-#[derive(Debug)]
-pub struct Limit {
-    #[allow(dead_code)]
-    pub min: u32,
-    #[allow(dead_code)]
-    pub max: Option<u32>,
-}
-
-#[derive(Debug)]
-pub enum LimitReadError {
-    Flag(ReadError),
-    Min(ReadError),
-    Max(ReadError),
-}
-
-impl std::error::Error for LimitReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Flag(e) => Some(e),
-            Self::Min(e) => Some(e),
-            Self::Max(e) => Some(e),
-        }
-    }
-}
-
-impl std::fmt::Display for LimitReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Flag(_) => write!(f, "reading the limit flag"),
-            Self::Min(_) => write!(f, "reading the limit min"),
-            Self::Max(_) => write!(f, "reading the limit max"),
-        }
-    }
-}
-
-impl<'a> FromReader<'a> for Limit {
-    type Error = LimitReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let flag: LimitFlag = reader.read().map_err(Self::Error::Flag)?;
-        let min: u32 = reader.read().map_err(Self::Error::Min)?;
-
-        match flag {
-            LimitFlag::Min => Ok(Self { min, max: None }),
-            LimitFlag::MinMax => Ok(Self {
-                min,
-                max: Some(reader.read().map_err(Self::Error::Max)?),
-            }),
-        }
-    }
-}
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -778,68 +543,6 @@ impl SectionEntry for GlobalEntry {
             gt: reader.read().map_err(SectionErrorKind::GlobalType)?,
             body: reader.read().map_err(SectionErrorKind::GlobalExpression)?,
         })
-    }
-}
-
-/// Export Section
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ExportKind {
-    Func = 0x00,
-    Table = 0x01,
-    Memory = 0x02,
-    Global = 0x03,
-}
-
-impl TryFrom<u8> for ExportKind {
-    type Error = InvalidEnumValueError;
-
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
-        match value {
-            0x00 => Ok(Self::Func),
-            0x01 => Ok(Self::Table),
-            0x02 => Ok(Self::Memory),
-            0x03 => Ok(Self::Global),
-            _ => Err(InvalidEnumValueError {
-                value,
-                enum_name: std::any::type_name::<Self>(),
-            }),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ExportEntry {
-    pub name: String,
-    #[allow(dead_code)]
-    pub kind: ExportKind,
-    pub index: u32,
-}
-
-pub type ExportSection = Vec<ExportEntry>;
-
-impl<'a> FromReader<'a> for ExportKind {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
-        let pos = reader.position() as usize;
-        reader
-            .read_u8()?
-            .try_into()
-            .map_err(|e| ReadError::at_offset(e, pos))
-    }
-}
-
-impl SectionEntry for ExportEntry {
-    fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let name = reader.read_name().map_err(SectionErrorKind::ExportName)?;
-        let kind = reader.read().map_err(SectionErrorKind::ExportDescKind)?;
-
-        let index = reader
-            .read_u32()
-            .map_err(SectionErrorKind::ExportDescIndex)?;
-
-        Ok(ExportEntry { name, kind, index })
     }
 }
 

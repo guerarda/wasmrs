@@ -43,6 +43,18 @@ impl From<RefType> for ValType {
     }
 }
 
+impl<'a> FromReader<'a> for RefType {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let pos = reader.position() as usize;
+        reader
+            .read_u8()?
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
+
 /// ValType
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -141,5 +153,92 @@ impl<'a> FromReader<'a> for ConstExpression {
             }
         }
         Err(Self::Error::MissingEnd)
+    }
+}
+
+// Limit
+#[repr(u8)]
+#[derive(Debug, Eq, PartialEq)]
+pub enum LimitFlag {
+    Min = 0x00,
+    MinMax = 0x01,
+}
+
+impl TryFrom<u8> for LimitFlag {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(Self::Min),
+            0x01 => Ok(Self::MinMax),
+            _ => Err(InvalidEnumValueError {
+                value,
+                enum_name: std::any::type_name::<Self>(),
+            }),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for LimitFlag {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let pos = reader.position() as usize;
+        reader
+            .read_u8()?
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
+
+#[derive(Debug)]
+pub struct Limit {
+    #[allow(dead_code)]
+    pub min: u32,
+    #[allow(dead_code)]
+    pub max: Option<u32>,
+}
+
+#[derive(Debug)]
+pub enum LimitReadError {
+    Flag(ReadError),
+    Min(ReadError),
+    Max(ReadError),
+}
+
+impl std::error::Error for LimitReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Flag(e) => Some(e),
+            Self::Min(e) => Some(e),
+            Self::Max(e) => Some(e),
+        }
+    }
+}
+
+impl std::fmt::Display for LimitReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Flag(_) => write!(f, "reading the limit flag"),
+            Self::Min(_) => write!(f, "reading the limit min"),
+            Self::Max(_) => write!(f, "reading the limit max"),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for Limit {
+    type Error = LimitReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let flag: LimitFlag = reader.read().map_err(Self::Error::Flag)?;
+        let min: u32 = reader.read().map_err(Self::Error::Min)?;
+
+        match flag {
+            LimitFlag::Min => Ok(Self { min, max: None }),
+            LimitFlag::MinMax => Ok(Self {
+                min,
+                max: Some(reader.read().map_err(Self::Error::Max)?),
+            }),
+        }
     }
 }
