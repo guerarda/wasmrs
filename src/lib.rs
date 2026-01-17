@@ -685,15 +685,16 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
     }
 
     // Verify that Data & Data Count have consistent length
-    let ds_len = m.data.as_ref().map_or(0, |fs| fs.len());
-    let dc = m.data_count.as_ref().map_or(0, |dc| dc.0) as usize;
+    if let Some(dc) = &m.data_count {
+        let ds_len = m.data.as_ref().map_or(0, |fs| fs.len());
 
-    if ds_len != dc {
-        return Err(MalformedError::InconsistentLength {
-            section: SectionId::Data,
-            other: SectionId::DataCount,
+        if ds_len != dc.0 as usize {
+            return Err(MalformedError::InconsistentLength {
+                section: SectionId::Data,
+                other: SectionId::DataCount,
+            }
+            .into());
         }
-        .into());
     }
 
     Ok(m)
@@ -850,13 +851,16 @@ mod tests {
     fn test_decode_data_count_section() -> anyhow::Result<()> {
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
-            b"\x0c\x01\x01", // Data Count section(12), u32(1)
+            b"\x0c\x01\x02", // Data Count section(12), u32(1)
+            b"\x0b\x05\x02", // Data Section(11), 2 entries
+            b"\x01\x00",
+            b"\x01\x00",
         ]
         .concat();
 
         let m = decode_module(bytes)?;
         assert!(m.data_count.is_some());
-        assert_eq!(m.data_count.unwrap().0, 1);
+        assert_eq!(m.data_count.unwrap().0, 2);
 
         Ok(())
     }
