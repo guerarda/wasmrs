@@ -27,11 +27,31 @@ impl<'a> Reader<'a> {
         r
     }
 
-    pub fn scoped(&mut self, size: u32) -> Result<Reader<'a>> {
-        self.scoped_at(self.position(), size)
+    pub fn from_bytes_range(
+        bytes: &'a [u8],
+        start: usize,
+        end: usize,
+    ) -> std::result::Result<Self, ReadError> {
+        // Check that the range is valid for the slice
+        if bytes.get(start..end).is_none() {
+            return Err(ReadError {
+                offset: start as usize,
+                kind: ReadErrorKind::OutOfRange {
+                    size: (end - start) as u32,
+                    remaining: (bytes.len() - start) as u64,
+                },
+            });
+        }
+        let mut r = Reader {
+            cursor: Cursor::new(bytes),
+            range: (start as u64)..(end as u64),
+        };
+        r.cursor.set_position(start as u64);
+        Ok(r)
     }
 
-    pub fn scoped_at(&mut self, start: u64, size: u32) -> Result<Reader<'a>> {
+    pub fn scoped(&mut self, size: u32) -> Result<Reader<'a>> {
+        let start = self.position();
         let end = start + size as u64;
 
         if end > self.range.end {

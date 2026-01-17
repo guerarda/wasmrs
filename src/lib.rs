@@ -8,8 +8,8 @@ mod binary;
 use crate::binary::sections::custom::decode_custom_section;
 use crate::binary::sections::{
     CodeSection, CustomSection, DataCountSection, DataSection, ElementSection, ExportSection,
-    FunctionSection, GlobalSection, ImportSection, MemorySection, SectionError, SectionId,
-    StartSection, TableSection, TypeSection, decode_data_count_section, decode_section,
+    FunctionSection, GlobalSection, ImportSection, MemorySection, SectionError, SectionErrorKind,
+    SectionId, StartSection, TableSection, TypeSection, decode_data_count_section, decode_section,
     decode_start_section,
 };
 use crate::binary::types::{FuncType, TypeIdx, ValType};
@@ -607,8 +607,14 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
         let start = item.start as usize;
         let end = item.end as usize;
 
-        // TODO Use Reader::scoped() or scoped_at()
-        let mut reader = Reader::from_bytes(&m.bytes[..end], start);
+        let mut reader = Reader::from_bytes_range(&m.bytes, start, end)
+            .map_err(SectionErrorKind::SectionSize)
+            .map_err(|kind| SectionError {
+                kind: Box::new(kind),
+                info: *item,
+                idx: None,
+            })
+            .map_err(MalformedError::Section)?;
 
         match item.id {
             SectionId::Custom => {
