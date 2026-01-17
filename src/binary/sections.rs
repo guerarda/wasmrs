@@ -7,6 +7,9 @@ use std::{
 pub mod code;
 pub use code::CodeSection;
 
+pub mod custom;
+pub use custom::CustomSection;
+
 pub mod data;
 pub use data::DataSection;
 
@@ -44,7 +47,8 @@ use crate::{
     binary::{
         reader::{InvalidEnumValueError, ReadError, Reader, VecReadError},
         sections::{
-            data::DataSegmentModeReadError, element::ElementSectionReadError,
+            custom::CustomSectionReadError, data::DataSegmentModeReadError,
+            element::ElementSectionReadError,
         },
         types::ConstExpressionReadError,
     },
@@ -179,6 +183,9 @@ pub enum SectionErrorKind {
     EntryCount(ReadError),
     EntrySize(ReadError),
 
+    // Custom Section
+    CustomSection(CustomSectionReadError),
+
     // Type Section
     FuncTypeMarker(ReadError),
     FuncTypeParams(VecReadError<ReadError>),
@@ -240,6 +247,8 @@ impl Display for SectionErrorKind {
             Self::EntryCount(_) => write!(f, "reading the entry count"),
             Self::EntrySize(_) => write!(f, "reading this entry size"),
 
+            Self::CustomSection(_) => write!(f, "reading custom section"),
+
             Self::FuncTypeMarker(_) => write!(f, "reading the functype marker"),
             Self::FuncTypeParams(_) => write!(f, "reading the function param types"),
             Self::FuncTypeResults(_) => write!(f, "reading the function result types"),
@@ -289,6 +298,8 @@ impl error::Error for SectionErrorKind {
             Self::SectionSizeMismatch { .. } => None,
             Self::EntryCount(e) => Some(e),
             Self::EntrySize(e) => Some(e),
+
+            Self::CustomSection(e) => Some(e),
 
             Self::FuncTypeMarker(e) => Some(e),
             Self::FuncTypeParams(e) => Some(e),

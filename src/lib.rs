@@ -5,10 +5,12 @@ use std::iter::repeat_n;
 
 mod binary;
 
+use crate::binary::sections::custom::decode_custom_section;
 use crate::binary::sections::{
-    CodeSection, DataCountSection, DataSection, ElementSection, ExportSection, FunctionSection,
-    GlobalSection, ImportSection, MemorySection, SectionError, SectionId, StartSection,
-    TableSection, TypeSection, decode_data_count_section, decode_section, decode_start_section,
+    CodeSection, CustomSection, DataCountSection, DataSection, ElementSection, ExportSection,
+    FunctionSection, GlobalSection, ImportSection, MemorySection, SectionError, SectionId,
+    StartSection, TableSection, TypeSection, decode_data_count_section, decode_section,
+    decode_start_section,
 };
 use crate::binary::types::{FuncType, TypeIdx, ValType};
 use crate::instructions::Instruction;
@@ -28,6 +30,7 @@ struct Module {
     bytes: Vec<u8>,
     sections: Vec<SectionInfo>,
 
+    customs: Vec<CustomSection>,
     types: Option<TypeSection>,
     imports: Option<ImportSection>,
     functions: Option<FunctionSection>,
@@ -48,6 +51,7 @@ impl Module {
             bytes,
             sections: Vec::new(),
 
+            customs: vec![],
             types: None,
             imports: None,
             functions: None,
@@ -607,7 +611,11 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
         let mut reader = Reader::from_bytes(&m.bytes[..end], start);
 
         match item.id {
-            SectionId::Custom => {}
+            SectionId::Custom => {
+                m.customs.push(
+                    decode_custom_section(&mut reader, *item).map_err(MalformedError::Section)?,
+                );
+            }
             SectionId::Type => {
                 m.types =
                     Some(decode_section(&mut reader, *item).map_err(MalformedError::Section)?);
