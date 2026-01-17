@@ -3,9 +3,19 @@ name = "wasmrs"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+spec-tests = []
+
 [dependencies]
 anyhow = "1.0.100"
+libtest-mimic = "0.8.1"
 thiserror = "2.0.17"
 
 [dev-dependencies]
 wast = "223"
+
+
+[[test]]
+name = "wast_runner"
+harness = false
+required-features = ["spec-tests"]

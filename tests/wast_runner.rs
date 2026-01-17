@@ -1,225 +1,129 @@
-use std::collections::HashMap;
-use std::io::Write;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 
+use libtest_mimic::{Arguments, Failed, Trial};
 use wast::parser::{self, ParseBuffer};
 use wast::{Wast, WastDirective};
 
-use wasmrs::{ModuleHandle, Runtime};
+use wasmrs::Runtime;
 
-#[derive(Debug)]
-enum TestResult {
-    Pass,
-    Fail { expected: String, actual: String },
-    Skip,
+/// Represents a test case extracted from a WAST directive
+enum TestCase {
+    /// Module that should load successfully
+    Module { wasm_bytes: Vec<u8> },
+    /// Module that should fail to load with a malformed error
+    AssertMalformed {
+        wasm_bytes: Vec<u8>,
+        message: String,
+    },
 }
 
-struct WastRunner {
-    runtime: Runtime,
-    #[allow(dead_code)]
-    modules: HashMap<String, ModuleHandle>,
-    #[allow(dead_code)]
-    current_module: Option<ModuleHandle>,
-    results: Vec<(usize, usize, &'static str, TestResult)>, // (idx, line, kind, result)
+fn main() {
+    let args = Arguments::from_args();
+    let tests = collect_tests();
+    libtest_mimic::run(&args, tests).exit();
 }
 
-impl WastRunner {
-    fn new() -> Self {
-        WastRunner {
-            runtime: Runtime::default(),
-            modules: HashMap::new(),
-            current_module: None,
-            results: Vec::new(),
+fn collect_tests() -> Vec<Trial> {
+    let mut tests = Vec::new();
+
+    let spec_dir = Path::new("tests/spec");
+    let wast_files: Vec<_> = std::fs::read_dir(spec_dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|ext| ext == "wast"))
+        .collect();
+
+    for path in wast_files {
+        let contents = std::fs::read_to_string(&path).expect("failed to read wast file");
+        let buf = ParseBuffer::new(&contents).expect("failed to create parse buffer");
+        let wast: Wast = parser::parse(&buf).expect("failed to parse wast file");
+
+        let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
+
+        for (idx, directive) in wast.directives.into_iter().enumerate() {
+            let span = directive.span();
+            let (line, _col) = span.linecol_in(&contents);
+            let line = line + 1; // 1-indexed
+
+            let (kind, test_case): (&str, Option<TestCase>) = match directive {
+                WastDirective::Module(mut module) => {
+                    let wasm_bytes = module.encode().expect("failed to encode module");
+                    ("Module", Some(TestCase::Module { wasm_bytes }))
+                }
+                WastDirective::AssertMalformed {
+                    mut module,
+                    message,
+                    span: _,
+                } => {
+                    let wasm_bytes = module.encode().expect("failed to encode module");
+                    (
+                        "AssertMalformed",
+                        Some(TestCase::AssertMalformed {
+                            wasm_bytes,
+                            message: message.to_string(),
+                        }),
+                    )
+                }
+                WastDirective::AssertInvalid { .. } => ("AssertInvalid", None),
+                WastDirective::AssertReturn { .. } => ("AssertReturn", None),
+                WastDirective::AssertTrap { .. } => ("AssertTrap", None),
+                WastDirective::AssertExhaustion { .. } => ("AssertExhaustion", None),
+                WastDirective::AssertUnlinkable { .. } => ("AssertUnlinkable", None),
+                WastDirective::AssertException { .. } => ("AssertException", None),
+                WastDirective::AssertSuspension { .. } => ("AssertSuspension", None),
+                WastDirective::Invoke(_) => ("Invoke", None),
+                WastDirective::Register { .. } => ("Register", None),
+                WastDirective::Wait { .. } => ("Wait", None),
+                WastDirective::Thread(_) => ("Thread", None),
+                WastDirective::ModuleDefinition(_) => ("ModuleDefinition", None),
+                WastDirective::ModuleInstance { .. } => ("ModuleInstance", None),
+            };
+
+            let test_name = format!("{}::[{}]line_{}::{}", file_name, idx, line, kind);
+
+            let trial = match test_case {
+                Some(tc) => Trial::test(test_name, move || run_test_case(tc)),
+                None => Trial::test(test_name, || Ok(())).with_ignored_flag(true),
+            };
+
+            tests.push(trial);
         }
     }
 
-    /// Run a directive, collecting results without panicking
-    fn run_directive(&mut self, idx: usize, directive: WastDirective, source: &str) {
-        let span = directive.span();
-        let (line, _col) = span.linecol_in(source);
-        let line = line + 1; // 1-indexed
+    tests
+}
 
-        match directive {
-            WastDirective::Module(mut module) => {
-                let wasm_bytes = module.encode().expect("failed to encode module");
-                // Catch panics from incomplete runtime
-                let result =
-                    catch_unwind(AssertUnwindSafe(|| self.runtime.load_module(&wasm_bytes)));
-                match result {
-                    Ok(Ok(handle)) => {
-                        self.current_module = Some(handle);
-                        self.results.push((idx, line, "Module", TestResult::Pass));
-                    }
-                    Ok(Err(e)) => {
-                        self.results.push((
-                            idx,
-                            line,
-                            "Module",
-                            TestResult::Fail {
-                                expected: "Ok".to_string(),
-                                actual: e.to_string(),
-                            },
-                        ));
-                    }
-                    Err(_) => {
-                        self.results.push((
-                            idx,
-                            line,
-                            "Module",
-                            TestResult::Fail {
-                                expected: "Ok".to_string(),
-                                actual: "PANIC in runtime".to_string(),
-                            },
-                        ));
-                    }
-                }
+fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
+    let mut runtime = Runtime::default();
+
+    match test_case {
+        TestCase::Module { wasm_bytes } => {
+            let result = catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
+            match result {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(e)) => Err(Failed::from(format!("expected Ok, got {}", e))),
+                Err(_) => Err(Failed::from("expected Ok, got PANIC in runtime")),
             }
-            WastDirective::AssertMalformed {
-                mut module,
-                message,
-                span: _,
-            } => {
-                let wasm_bytes = module.encode().expect("failed to encode module");
-                // Catch panics from incomplete runtime
-                let result =
-                    catch_unwind(AssertUnwindSafe(|| self.runtime.load_module(&wasm_bytes)));
-                match result {
-                    Ok(Ok(_)) => {
-                        self.results.push((
-                            idx,
-                            line,
-                            "AssertMalformed",
-                            TestResult::Fail {
-                                expected: format!("error: {}", message),
-                                actual: "Ok".to_string(),
-                            },
-                        ));
-                    }
-                    Ok(Err(e)) => {
-                        // Test passed - we expected an error and got one
-                        eprintln!(
-                            "[{}] line {}: expected {:?}, got {:?}",
-                            idx,
-                            line,
-                            message,
-                            e.to_string()
-                        );
-                        let _ = std::io::stderr().flush();
-                        self.results
-                            .push((idx, line, "AssertMalformed", TestResult::Pass));
-                    }
-                    Err(_) => {
-                        // Panic is not a proper validation error - it's a runtime crash
-                        self.results.push((
-                            idx,
-                            line,
-                            "AssertMalformed",
-                            TestResult::Fail {
-                                expected: format!("error: {}", message),
-                                actual: "PANIC in runtime".to_string(),
-                            },
-                        ));
-                    }
-                }
-            }
-            _ => {
-                self.results.push((idx, line, "Other", TestResult::Skip));
+        }
+        TestCase::AssertMalformed {
+            wasm_bytes,
+            message,
+        } => {
+            let result = catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
+            match result {
+                Ok(Ok(_)) => Err(Failed::from(format!(
+                    "expected error '{}', got Ok",
+                    message
+                ))),
+                Ok(Err(_)) => Ok(()),
+                Err(_) => Err(Failed::from(format!(
+                    "expected error '{}', got PANIC in runtime",
+                    message
+                ))),
             }
         }
     }
-
-    fn print_summary(&self) {
-        let passed = self
-            .results
-            .iter()
-            .filter(|(_, _, _, r)| matches!(r, TestResult::Pass))
-            .count();
-        let failed = self
-            .results
-            .iter()
-            .filter(|(_, _, _, r)| matches!(r, TestResult::Fail { .. }))
-            .count();
-        let skipped = self
-            .results
-            .iter()
-            .filter(|(_, _, _, r)| matches!(r, TestResult::Skip))
-            .count();
-
-        eprintln!("\n=== SUMMARY ===");
-        eprintln!("Passed:  {}", passed);
-        eprintln!("Failed:  {}", failed);
-        eprintln!("Skipped: {}", skipped);
-        eprintln!("Total:   {}", self.results.len());
-        let _ = std::io::stderr().flush();
-
-        if failed > 0 {
-            eprintln!("\n=== FAILURES ===");
-            for (idx, line, kind, result) in &self.results {
-                if let TestResult::Fail { expected, actual } = result {
-                    eprintln!(
-                        "[{}] line {}: {} - expected: {}, got: {}",
-                        idx, line, kind, expected, actual
-                    );
-                }
-            }
-            let _ = std::io::stderr().flush();
-        }
-    }
-}
-
-fn run_wast_file(path: &Path) -> (usize, usize, usize) {
-    let contents = std::fs::read_to_string(path).expect("failed to read wast file");
-    let buf = ParseBuffer::new(&contents).expect("failed to create parse buffer");
-    let wast: Wast = parser::parse(&buf).expect("failed to parse wast file");
-
-    let mut runner = WastRunner::new();
-
-    for (idx, directive) in wast.directives.into_iter().enumerate() {
-        runner.run_directive(idx, directive, &contents);
-    }
-
-    runner.print_summary();
-
-    let passed = runner
-        .results
-        .iter()
-        .filter(|(_, _, _, r)| matches!(r, TestResult::Pass))
-        .count();
-    let failed = runner
-        .results
-        .iter()
-        .filter(|(_, _, _, r)| matches!(r, TestResult::Fail { .. }))
-        .count();
-    let skipped = runner
-        .results
-        .iter()
-        .filter(|(_, _, _, r)| matches!(r, TestResult::Skip))
-        .count();
-
-    (passed, failed, skipped)
-}
-
-#[test]
-#[ignore]
-fn run_binary_wast() {
-    let (passed, failed, skipped) = run_wast_file(Path::new("tests/spec/binary.wast"));
-    eprintln!(
-        "\nbinary.wast: {} passed, {} failed, {} skipped",
-        passed, failed, skipped
-    );
-    let _ = std::io::stderr().flush();
-    // Don't assert - we expect failures while runtime is incomplete
-}
-
-#[test]
-#[ignore]
-fn run_binary_leb128_wast() {
-    let (passed, failed, skipped) = run_wast_file(Path::new("tests/spec/binary-leb128.wast"));
-    eprintln!(
-        "\nbinary.wast: {} passed, {} failed, {} skipped",
-        passed, failed, skipped
-    );
-    let _ = std::io::stderr().flush();
-    // Don't assert - we expect failures while runtime is incomplete
 }
