@@ -154,7 +154,7 @@ pub trait FromReader<'a>: Sized {
 #[non_exhaustive]
 pub enum VecReadError<E> {
     #[error("reading the vector element count")]
-    Count(ReadError),
+    Count(#[source] ReadError),
 
     #[error("reading element at index {index}")]
     Element {
