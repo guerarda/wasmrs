@@ -227,7 +227,11 @@ impl SectionEntry for ElementSegment {
 
             ElementSegmentItems::Expressions(rt, exprs)
         } else {
-            let _: ElementKindMarker = reader.read().map_err(ElementSectionReadError::ModeKind)?;
+            if flag != 0 {
+                // Flag 0 doesn't have elemkind marker
+                let _: ElementKindMarker =
+                    reader.read().map_err(ElementSectionReadError::ModeKind)?;
+            }
             let functions: Vec<FuncIndex> = reader
                 .read()
                 .map_err(ElementSectionReadError::ItemsFunctions)
