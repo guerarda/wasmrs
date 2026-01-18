@@ -434,6 +434,9 @@ impl Runtime {
                     Instruction::I32Const(v) => {
                         self.value_stack.push(Value::I32(*v));
                     }
+                    Instruction::I64Const(v) => {
+                        self.value_stack.push(Value::I64(*v));
+                    }
                     Instruction::I32LeS => {
                         let rhs = self.value_stack.pop().unwrap();
                         let lhs = self.value_stack.pop().unwrap();

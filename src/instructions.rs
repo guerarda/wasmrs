@@ -21,6 +21,7 @@ pub enum Instruction {
     LocalTee(u32),
 
     I32Const(i32),
+    I64Const(i64),
     I32LeS,
 
     I32Add,
@@ -61,6 +62,11 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
         0x41 => {
             let v: i32 = decode_arg(reader, "i32.const")?;
             Ok(Instruction::I32Const(v))
+        }
+
+        0x42 => {
+            let v: i64 = decode_arg(reader, "i64.const")?;
+            Ok(Instruction::I64Const(v))
         }
 
         0x4c => Ok(Instruction::I32LeS),

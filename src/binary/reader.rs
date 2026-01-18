@@ -112,9 +112,25 @@ impl<'a> Reader<'a> {
         })
     }
 
+    pub fn read_u64(&mut self) -> Result<u64> {
+        let offset = self.cursor.position() as usize;
+        leb128::read_leb128_u64(self).map_err(|e| ReadError {
+            offset,
+            kind: ReadErrorKind::Decode(e),
+        })
+    }
+
     pub fn read_i32(&mut self) -> Result<i32> {
         let offset = self.cursor.position() as usize;
         leb128::read_leb128_i32(self).map_err(|e| ReadError {
+            offset,
+            kind: ReadErrorKind::Decode(e),
+        })
+    }
+
+    pub fn read_i64(&mut self) -> Result<i64> {
+        let offset = self.cursor.position() as usize;
+        leb128::read_leb128_i64(self).map_err(|e| ReadError {
             offset,
             kind: ReadErrorKind::Decode(e),
         })
@@ -192,11 +208,27 @@ impl<'a> FromReader<'a> for u32 {
     }
 }
 
+impl<'a> FromReader<'a> for u64 {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        reader.read_u64()
+    }
+}
+
 impl<'a> FromReader<'a> for i32 {
     type Error = ReadError;
 
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         reader.read_i32()
+    }
+}
+
+impl<'a> FromReader<'a> for i64 {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        reader.read_i64()
     }
 }
 

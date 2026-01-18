@@ -46,6 +46,38 @@ pub fn read_leb128_u32<R: std::io::Read>(reader: &mut R) -> Result<u32, DecodeEr
     }
 }
 
+/// Returns one unsigned 64-bit integer
+pub fn read_leb128_u64<R: std::io::Read>(reader: &mut R) -> Result<u64, DecodeError> {
+    const MAX_BYTES: u32 = u64::BITS / 7 + 1;
+    const MAX_LAST_BYTE: u8 = (1 << (u64::BITS % 7)) - 1;
+
+    let mut x = 0;
+    let mut s = 0;
+    let mut i = 0;
+
+    loop {
+        let v = read_u8(reader)?;
+
+        if i == MAX_BYTES {
+            return Err(DecodeError {
+                kind: DecodeErrorKind::TooManyBytes,
+            });
+        }
+        if v < 0x80 {
+            if i == MAX_BYTES - 1 && v > MAX_LAST_BYTE {
+                return Err(DecodeError {
+                    kind: DecodeErrorKind::ValueOverflow,
+                });
+            }
+            x |= u64::from(v) << s;
+            return Ok(x);
+        }
+        x |= u64::from(v & 0x7f) << s;
+        s += 7;
+        i += 1;
+    }
+}
+
 /// Returns one signed 32-bit integer
 pub fn read_leb128_i32<R: std::io::Read>(reader: &mut R) -> Result<i32, DecodeError> {
     const MAX_BYTES: u32 = u32::BITS / 7 + 1;
@@ -80,6 +112,45 @@ pub fn read_leb128_i32<R: std::io::Read>(reader: &mut R) -> Result<i32, DecodeEr
             return Ok(x);
         }
         x |= i32::from(v & 0x7f) << s;
+        s += 7;
+        i += 1;
+    }
+}
+
+/// Returns one signed 64-bit integer
+pub fn read_leb128_i64<R: std::io::Read>(reader: &mut R) -> Result<i64, DecodeError> {
+    const MAX_BYTES: u32 = u64::BITS / 7 + 1;
+
+    let mut x = 0;
+    let mut s = 0;
+    let mut i = 0;
+
+    loop {
+        let v = read_u8(reader)?;
+
+        if i == MAX_BYTES {
+            return Err(DecodeError {
+                kind: DecodeErrorKind::TooManyBytes,
+            });
+        }
+        if v < 0x80 {
+            if i == MAX_BYTES - 1 {
+                const MASK: u8 = ((-1i8 << ((u64::BITS % 7) - 1)) & 0x7f) as u8;
+                if v & MASK != 0 && v < MASK {
+                    return Err(DecodeError {
+                        kind: DecodeErrorKind::ValueOverflow,
+                    });
+                }
+            }
+
+            x |= i64::from(v) << s;
+            if i < MAX_BYTES - 1 && v >= 0x40 {
+                x |= !0 << (s + 7);
+            }
+
+            return Ok(x);
+        }
+        x |= i64::from(v & 0x7f) << s;
         s += 7;
         i += 1;
     }
@@ -195,6 +266,74 @@ mod tests {
         let mut slice = &[][..];
         assert!(read_leb128_u32(&mut slice).is_err());
     }
+
+    #[test]
+    fn test_leb128_decode_u64() {
+        let cases: &[(&[u8], u64)] = &[
+            (&[0x00], 0),
+            (&[0x01], 1),
+            (&[0x7F], 127),
+            (&[0x83, 0x00], 3),
+            (&[0x80, 0x01], 128),
+            (&[0xFF, 0x01], 255),
+            (&[0x80, 0x02], 256),
+            (&[0xE5, 0x8E, 0x26], 624485),
+            (&[0xFF, 0xFF, 0xFF, 0xFF, 0x0F], u32::MAX as u64),
+            (
+                &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01],
+                u64::MAX,
+            ),
+            (
+                &[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01],
+                1 << 63,
+            ),
+        ];
+
+        for (bytes, expected) in cases {
+            let mut slice = &bytes[..];
+            let result = read_leb128_u64(&mut slice)
+                .unwrap_or_else(|e| panic!("failed to decode {bytes:02X?}: {e}"));
+            assert_eq!(result, *expected);
+        }
+    }
+
+    #[test]
+    fn test_leb128_u64_overflow() {
+        let cases: &[&[u8]] = &[
+            // 10th byte must be 0x00 or 0x01 for valid u64
+            &[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02],
+            &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x03],
+            // Too many bytes
+            &[
+                0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01,
+            ],
+        ];
+
+        for bytes in cases {
+            let mut slice = &bytes[..];
+            assert!(
+                read_leb128_u64(&mut slice).is_err(),
+                "should overflow: {bytes:02X?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_leb128_u64_truncated() {
+        let cases: &[&[u8]] = &[&[0x80], &[0x80, 0x80]];
+
+        for bytes in cases {
+            let mut slice = &bytes[..];
+            assert!(read_leb128_u64(&mut slice).is_err());
+        }
+    }
+
+    #[test]
+    fn test_leb128_u64_empty() {
+        let mut slice = &[][..];
+        assert!(read_leb128_u64(&mut slice).is_err());
+    }
+
     #[test]
     fn test_leb128_decode_i32() {
         let cases: &[(&[u8], i32)] = &[
@@ -246,5 +385,70 @@ mod tests {
     fn test_leb128_i32_empty() {
         let mut slice = &[][..];
         assert!(read_leb128_i32(&mut slice).is_err());
+    }
+
+    #[test]
+    fn test_leb128_decode_i64() {
+        let cases: &[(&[u8], i64)] = &[
+            (&[0x00], 0),
+            (&[0x01], 1),
+            (&[0x7F], -1),
+            (&[0x80, 0x01], 128),
+            (&[0xFF, 0x00], 127),
+            (&[0x80, 0x7F], -128),
+            (&[0x81, 0x7F], -127),
+            (&[0xC0, 0x00], 64),
+            (&[0xC0, 0x7F], -64),
+            (&[0xBF, 0x7F], -65),
+            (&[0xE5, 0x8E, 0x26], 624485),
+            (
+                &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00],
+                i64::MAX,
+            ),
+            (
+                &[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x7F],
+                i64::MIN,
+            ),
+        ];
+
+        for (bytes, expected) in cases {
+            let mut slice = &bytes[..];
+            let result = read_leb128_i64(&mut slice)
+                .unwrap_or_else(|e| panic!("failed to decode {bytes:02X?}: {e}"));
+            assert_eq!(result, *expected);
+        }
+    }
+
+    #[test]
+    fn test_leb128_i64_overflow() {
+        let cases: &[&[u8]] = &[
+            // 10th byte must be 0x00 or 0x7F for valid i64
+            &[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01],
+            &[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x7E],
+            // Too many bytes
+            &[
+                0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01,
+            ],
+        ];
+
+        for bytes in cases {
+            let mut slice = &bytes[..];
+            assert!(
+                read_leb128_i64(&mut slice).is_err(),
+                "should overflow: {bytes:02X?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_leb128_i64_truncated() {
+        let mut slice = &[0x80][..];
+        assert!(read_leb128_i64(&mut slice).is_err());
+    }
+
+    #[test]
+    fn test_leb128_i64_empty() {
+        let mut slice = &[][..];
+        assert!(read_leb128_i64(&mut slice).is_err());
     }
 }
