@@ -14,7 +14,7 @@ pub fn decode_start_section(
     info: SectionInfo,
 ) -> std::result::Result<StartSection, SectionError> {
     let count: u32 = reader.read().map_err(|e| SectionError {
-        kind: Box::new(SectionErrorKind::DataCount(e)),
+        kind: Box::new(SectionErrorKind::DataCountSection(e)),
         info,
         idx: None,
     })?;

@@ -9,6 +9,6 @@ pub type FunctionSection = Vec<TypeIdx>;
 
 impl SectionEntry for TypeIdx {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        TypeIdx::from_reader(reader).map_err(SectionErrorKind::FunctionIndex)
+        TypeIdx::from_reader(reader).map_err(SectionErrorKind::FunctionSection)
     }
 }

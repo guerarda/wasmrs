@@ -52,6 +52,6 @@ impl<'a> FromReader<'a> for TableType {
 
 impl SectionEntry for TableType {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        reader.read().map_err(SectionErrorKind::Table)
+        reader.read().map_err(SectionErrorKind::TableSection)
     }
 }

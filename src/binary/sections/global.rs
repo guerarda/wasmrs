@@ -3,7 +3,7 @@ use std::{error, fmt, result};
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
     sections::{SectionEntry, SectionErrorKind},
-    types::{ConstExpression, ValType},
+    types::{ConstExpression, ConstExpressionReadError, ValType},
 };
 
 /// Global Section
@@ -97,8 +97,42 @@ pub struct GlobalEntry {
 impl SectionEntry for GlobalEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
         Ok(GlobalEntry {
-            gt: reader.read().map_err(SectionErrorKind::GlobalType)?,
-            body: reader.read().map_err(SectionErrorKind::GlobalExpression)?,
+            gt: reader.read().map_err(GlobalSectionReadError::GlobalType)?,
+            body: reader
+                .read()
+                .map_err(GlobalSectionReadError::GlobalExpression)?,
         })
+    }
+}
+
+/// Errors
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum GlobalSectionReadError {
+    GlobalType(GlobalTypeReadError),
+    GlobalExpression(ConstExpressionReadError),
+}
+
+impl error::Error for GlobalSectionReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::GlobalType(e) => Some(e),
+            Self::GlobalExpression(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for GlobalSectionReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GlobalType(_) => write!(f, "reading the global type"),
+            Self::GlobalExpression(_) => write!(f, "reading the global expression"),
+        }
+    }
+}
+
+impl From<GlobalSectionReadError> for SectionErrorKind {
+    fn from(value: GlobalSectionReadError) -> Self {
+        SectionErrorKind::GlobalSection(value)
     }
 }

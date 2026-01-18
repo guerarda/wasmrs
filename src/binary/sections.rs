@@ -43,16 +43,14 @@ pub use table::{TableSection, TableTypeReadError};
 pub mod type_;
 pub use type_::TypeSection;
 
-use crate::{
-    binary::{
-        reader::{InvalidEnumValueError, ReadError, Reader, VecReadError},
-        sections::{
-            custom::CustomSectionReadError, data::DataSegmentModeReadError,
-            element::ElementSectionReadError,
-        },
-        types::ConstExpressionReadError,
+use crate::binary::{
+    reader::{InvalidEnumValueError, ReadError, Reader},
+    sections::{
+        code::CodeSectionReadError, custom::CustomSectionReadError, data::DataSectionReadError,
+        element::ElementSectionReadError, export::ExportSectionReadError,
+        global::GlobalSectionReadError, import::ImportSectionReadError,
+        type_::TypeSectionReadError,
     },
-    instructions::InstructionError,
 };
 
 #[repr(u8)]
@@ -181,57 +179,20 @@ pub enum SectionErrorKind {
     SectionSize(ReadError),
     SectionSizeMismatch { end: usize, expected: usize },
     EntryCount(ReadError),
-    EntrySize(ReadError),
 
-    // Custom Section
+    // Section specific
     CustomSection(CustomSectionReadError),
-
-    // Type Section
-    FuncTypeMarker(ReadError),
-    FuncTypeParams(VecReadError<ReadError>),
-    FuncTypeResults(VecReadError<ReadError>),
-
-    // Import Section
-    ImportModuleName(ReadError),
-    ImportEntityName(ReadError),
-    ImportDescType(ReadError),
-    ImportDescFunc(ReadError),
-    ImportDescTable(TableTypeReadError),
-    ImportDescMem(MemTypeReadError),
-    ImportDescGlobal(GlobalTypeReadError),
-
-    // Function Section
-    FunctionIndex(ReadError),
-
-    // Table Section
-    Table(TableTypeReadError),
-
-    // Memory Section
-    Memory(MemTypeReadError),
-
-    // Global Section
-    GlobalType(GlobalTypeReadError),
-    GlobalExpression(ConstExpressionReadError),
-
-    // Export Section
-    ExportName(ReadError),
-    ExportDescKind(ReadError),
-    ExportDescIndex(ReadError),
-
-    // Code Section
-    CodeFuncLocal(VecReadError<ReadError>),
-    CodeFuncTooManyLocals,
-    CodeFuncBody(InstructionError),
-
-    // Element Section
+    TypeSection(TypeSectionReadError),
+    ImportSection(ImportSectionReadError),
+    FunctionSection(ReadError),
+    TableSection(TableTypeReadError),
+    MemorySection(MemTypeReadError),
+    GlobalSection(GlobalSectionReadError),
+    ExportSection(ExportSectionReadError),
+    CodeSection(CodeSectionReadError),
     ElementSection(ElementSectionReadError),
-
-    // Data Section
-    DataSegmentMode(DataSegmentModeReadError),
-    DataSegment(VecReadError<ReadError>),
-
-    // DataCount Section
-    DataCount(ReadError),
+    DataSection(DataSectionReadError),
+    DataCountSection(ReadError),
 }
 
 impl Display for SectionErrorKind {
@@ -245,48 +206,19 @@ impl Display for SectionErrorKind {
                 b = expected
             ),
             Self::EntryCount(_) => write!(f, "reading the entry count"),
-            Self::EntrySize(_) => write!(f, "reading this entry size"),
 
-            Self::CustomSection(_) => write!(f, "reading custom section"),
-
-            Self::FuncTypeMarker(_) => write!(f, "reading the functype marker"),
-            Self::FuncTypeParams(_) => write!(f, "reading the function param types"),
-            Self::FuncTypeResults(_) => write!(f, "reading the function result types"),
-            Self::ImportModuleName(_) => write!(f, "reading import module name"),
-            Self::ImportEntityName(_) => write!(f, "reading import entity name"),
-            Self::ImportDescType(_) => write!(f, "reading import descriptor type"),
-            Self::ImportDescFunc(_) => write!(f, "reading import descriptor: func"),
-            Self::ImportDescTable(_) => {
-                write!(f, "reading import descriptor: table")
-            }
-            Self::ImportDescMem(_) => write!(f, "reading import descriptor: mem"),
-            Self::ImportDescGlobal(_) => {
-                write!(f, "reading import descriptor: global")
-            }
-
-            Self::FunctionIndex(_) => write!(f, "reading the function type index"),
-
-            Self::Table(_) => write!(f, "reading the table type"),
-
-            Self::Memory(_) => write!(f, "reading the memory type"),
-
-            Self::GlobalType(_) => write!(f, "reading the global type"),
-            Self::GlobalExpression(_) => write!(f, "reading the global expression"),
-
-            Self::ExportName(_) => write!(f, "reading the export name"),
-            Self::ExportDescKind(_) => write!(f, "reading the export kind"),
-            Self::ExportDescIndex(_) => write!(f, "reading the export index"),
-
-            Self::ElementSection(_) => write!(f, "reading the element section"),
-
-            Self::CodeFuncLocal(_) => write!(f, "reading function local"),
-            Self::CodeFuncTooManyLocals => write!(f, "checking function locals count"),
-            Self::CodeFuncBody(_) => write!(f, "reading function body"),
-
-            Self::DataSegmentMode(_) => write!(f, "reading data segment mode"),
-            Self::DataSegment(_) => write!(f, "reading data segment data"),
-
-            Self::DataCount(_) => write!(f, "reading data count"),
+            Self::CustomSection(e) => e.fmt(f),
+            Self::TypeSection(e) => e.fmt(f),
+            Self::ImportSection(e) => e.fmt(f),
+            Self::FunctionSection(_) => write!(f, "reading the function type index"),
+            Self::TableSection(_) => write!(f, "reading the table type"),
+            Self::MemorySection(_) => write!(f, "reading the memory type"),
+            Self::GlobalSection(e) => e.fmt(f),
+            Self::ExportSection(e) => e.fmt(f),
+            Self::ElementSection(e) => e.fmt(f),
+            Self::CodeSection(e) => e.fmt(f),
+            Self::DataSection(e) => e.fmt(f),
+            Self::DataCountSection(_) => write!(f, "reading the data count"),
         }
     }
 }
@@ -297,52 +229,20 @@ impl error::Error for SectionErrorKind {
             Self::SectionSize(e) => Some(e),
             Self::SectionSizeMismatch { .. } => None,
             Self::EntryCount(e) => Some(e),
-            Self::EntrySize(e) => Some(e),
 
             Self::CustomSection(e) => Some(e),
-
-            Self::FuncTypeMarker(e) => Some(e),
-            Self::FuncTypeParams(e) => Some(e),
-            Self::FuncTypeResults(e) => Some(e),
-
-            Self::ImportModuleName(e) => Some(e),
-            Self::ImportEntityName(e) => Some(e),
-            Self::ImportDescType(e) => Some(e),
-            Self::ImportDescFunc(e) => Some(e),
-            Self::ImportDescTable(e) => Some(e),
-            Self::ImportDescMem(e) => Some(e),
-            Self::ImportDescGlobal(e) => Some(e),
-
-            Self::FunctionIndex(e) => Some(e),
-
-            Self::Memory(e) => Some(e),
-
-            Self::Table(e) => Some(e),
-
-            Self::GlobalType(e) => Some(e),
-            Self::GlobalExpression(e) => Some(e),
-
-            Self::ExportName(e) => Some(e),
-            Self::ExportDescKind(e) => Some(e),
-            Self::ExportDescIndex(e) => Some(e),
-
+            Self::TypeSection(e) => Some(e),
+            Self::ImportSection(e) => Some(e),
+            Self::FunctionSection(e) => Some(e),
+            Self::TableSection(e) => Some(e),
+            Self::MemorySection(e) => Some(e),
+            Self::GlobalSection(e) => Some(e),
+            Self::ExportSection(e) => Some(e),
             Self::ElementSection(e) => Some(e),
-
-            Self::CodeFuncBody(e) => Some(e),
-            Self::CodeFuncTooManyLocals => None,
-            Self::CodeFuncLocal(e) => Some(e),
-
-            Self::DataSegmentMode(e) => Some(e),
-            Self::DataSegment(e) => Some(e),
-
-            Self::DataCount(e) => Some(e),
+            Self::CodeSection(e) => Some(e),
+            Self::DataSection(e) => Some(e),
+            Self::DataCountSection(e) => Some(e),
         }
-    }
-}
-
-impl From<InstructionError> for SectionErrorKind {
-    fn from(value: InstructionError) -> Self {
-        SectionErrorKind::CodeFuncBody(value)
     }
 }
 

@@ -38,6 +38,6 @@ impl fmt::Display for MemTypeReadError {
 
 impl SectionEntry for MemType {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        reader.read().map_err(SectionErrorKind::Memory)
+        reader.read().map_err(SectionErrorKind::MemorySection)
     }
 }

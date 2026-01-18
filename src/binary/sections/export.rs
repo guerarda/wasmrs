@@ -1,3 +1,5 @@
+use std::{error, fmt};
+
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
     sections::{SectionEntry, SectionErrorKind},
@@ -30,16 +32,6 @@ impl TryFrom<u8> for ExportKind {
     }
 }
 
-#[derive(Debug)]
-pub struct ExportEntry {
-    pub name: String,
-    #[allow(dead_code)]
-    pub kind: ExportKind,
-    pub index: u32,
-}
-
-pub type ExportSection = Vec<ExportEntry>;
-
 impl<'a> FromReader<'a> for ExportKind {
     type Error = ReadError;
 
@@ -52,15 +44,64 @@ impl<'a> FromReader<'a> for ExportKind {
     }
 }
 
+#[derive(Debug)]
+pub struct ExportEntry {
+    pub name: String,
+    #[allow(dead_code)]
+    pub kind: ExportKind,
+    pub index: u32,
+}
+
+pub type ExportSection = Vec<ExportEntry>;
+
 impl SectionEntry for ExportEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let name = reader.read_name().map_err(SectionErrorKind::ExportName)?;
-        let kind = reader.read().map_err(SectionErrorKind::ExportDescKind)?;
+        let name = reader
+            .read_name()
+            .map_err(ExportSectionReadError::ExportName)?;
+        let kind = reader
+            .read()
+            .map_err(ExportSectionReadError::ExportDescKind)?;
 
         let index = reader
             .read_u32()
-            .map_err(SectionErrorKind::ExportDescIndex)?;
+            .map_err(ExportSectionReadError::ExportDescIndex)?;
 
         Ok(ExportEntry { name, kind, index })
+    }
+}
+
+/// Errors
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ExportSectionReadError {
+    ExportName(ReadError),
+    ExportDescKind(ReadError),
+    ExportDescIndex(ReadError),
+}
+
+impl error::Error for ExportSectionReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ExportName(e) => Some(e),
+            Self::ExportDescKind(e) => Some(e),
+            Self::ExportDescIndex(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for ExportSectionReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ExportName(_) => write!(f, "reading the export name"),
+            Self::ExportDescKind(_) => write!(f, "reading the export kind"),
+            Self::ExportDescIndex(_) => write!(f, "reading the export index"),
+        }
+    }
+}
+
+impl From<ExportSectionReadError> for SectionErrorKind {
+    fn from(value: ExportSectionReadError) -> Self {
+        SectionErrorKind::ExportSection(value)
     }
 }

@@ -1,5 +1,7 @@
+use core::{error, fmt};
+
 use crate::binary::{
-    reader::{FromReader, ReadError, ReadErrorKind, Reader},
+    reader::{FromReader, ReadError, ReadErrorKind, Reader, VecReadError},
     sections::{SectionEntry, SectionErrorKind},
     types::{ConstExpression, ConstExpressionReadError},
 };
@@ -85,8 +87,42 @@ pub type DataSection = Vec<DataSegment>;
 impl SectionEntry for DataSegment {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
         Ok(Self {
-            mode: reader.read().map_err(SectionErrorKind::DataSegmentMode)?,
-            data: reader.read().map_err(SectionErrorKind::DataSegment)?,
+            mode: reader
+                .read()
+                .map_err(DataSectionReadError::DataSegmentMode)?,
+            data: reader.read().map_err(DataSectionReadError::DataSegment)?,
         })
+    }
+}
+
+/// Errors
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum DataSectionReadError {
+    DataSegmentMode(DataSegmentModeReadError),
+    DataSegment(VecReadError<ReadError>),
+}
+
+impl error::Error for DataSectionReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::DataSegmentMode(e) => Some(e),
+            Self::DataSegment(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for DataSectionReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataSegmentMode(_) => write!(f, "reading data segment mode"),
+            Self::DataSegment(_) => write!(f, "reading data segment data"),
+        }
+    }
+}
+
+impl From<DataSectionReadError> for SectionErrorKind {
+    fn from(value: DataSectionReadError) -> Self {
+        SectionErrorKind::DataSection(value)
     }
 }

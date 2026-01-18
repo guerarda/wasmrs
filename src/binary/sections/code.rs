@@ -1,10 +1,13 @@
+use core::fmt;
+use std::error;
+
 use crate::{
     binary::{
-        reader::{FromReader, ReadError, Reader, Result},
+        reader::{FromReader, ReadError, Reader, Result, VecReadError},
         sections::{SectionEntry, SectionErrorKind},
         types::ValType,
     },
-    instructions::{Instruction, decode_instruction},
+    instructions::{Instruction, InstructionError, decode_instruction},
     limits::MAX_WASM_FUNCTION_LOCALS,
 };
 
@@ -27,10 +30,16 @@ pub type CodeSection = Vec<CodeEntry>;
 
 impl SectionEntry for CodeEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let size = reader.read_u32().map_err(SectionErrorKind::EntrySize)?;
-        let mut reader = reader.scoped(size).map_err(SectionErrorKind::EntrySize)?;
+        let size = reader
+            .read_u32()
+            .map_err(CodeSectionReadError::FunctionCodeSize)?;
+        let mut reader = reader
+            .scoped(size)
+            .map_err(CodeSectionReadError::FunctionCodeSize)?;
 
-        let locals: Vec<FuncLocal> = reader.read().map_err(SectionErrorKind::CodeFuncLocal)?;
+        let locals: Vec<FuncLocal> = reader
+            .read()
+            .map_err(CodeSectionReadError::FunctionLocals)?;
 
         // There's a limit for number of functions locals
         // TODO It should consider function parameters as implicit locals
@@ -38,11 +47,12 @@ impl SectionEntry for CodeEntry {
             .iter()
             .try_fold(0u32, |acc, &FuncLocal { count, .. }| acc.checked_add(count))
             .filter(|&n| n <= MAX_WASM_FUNCTION_LOCALS)
-            .ok_or(SectionErrorKind::CodeFuncTooManyLocals)?;
+            .ok_or(CodeSectionReadError::TooManyLocals)?;
 
         let mut body = Vec::new();
         while !reader.is_exhausted() {
-            let instr = decode_instruction(&mut reader)?;
+            let instr =
+                decode_instruction(&mut reader).map_err(CodeSectionReadError::FunctionBody)?;
             body.push(instr);
         }
 
@@ -62,5 +72,43 @@ impl<'a> FromReader<'a> for FuncLocal {
             count: reader.read()?,
             valtype: reader.read()?,
         })
+    }
+}
+
+/// Errors
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum CodeSectionReadError {
+    FunctionCodeSize(ReadError),
+    FunctionLocals(VecReadError<ReadError>),
+    TooManyLocals,
+    FunctionBody(InstructionError),
+}
+
+impl error::Error for CodeSectionReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::FunctionCodeSize(e) => Some(e),
+            Self::FunctionBody(e) => Some(e),
+            Self::TooManyLocals => None,
+            Self::FunctionLocals(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for CodeSectionReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FunctionCodeSize(_) => write!(f, "reading the function code byte size"),
+            Self::FunctionLocals(_) => write!(f, "reading function local"),
+            Self::TooManyLocals => write!(f, "checking function locals count"),
+            Self::FunctionBody(_) => write!(f, "reading function body"),
+        }
+    }
+}
+
+impl From<CodeSectionReadError> for SectionErrorKind {
+    fn from(value: CodeSectionReadError) -> Self {
+        SectionErrorKind::CodeSection(value)
     }
 }
