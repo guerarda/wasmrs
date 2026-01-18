@@ -130,6 +130,7 @@ impl<'a> ModuleReader<'a> {
             };
             if let Some(prev) = v.last()
                 && prev.id != SectionId::Custom
+                && info.id != SectionId::Custom
                 && info.id.order() < prev.id.order()
             {
                 return Err(MalformedError::SectionOrder {
