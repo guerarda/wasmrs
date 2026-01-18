@@ -2,25 +2,18 @@ mod leb128;
 
 use leb128::DecodeError;
 
-use std::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-    io::{self, BufRead, Cursor},
-    ops::Range,
-    string::FromUtf8Error,
-};
-
-use thiserror::Error;
+use std::io::BufRead;
+use std::{error, fmt, io, ops::Range, string::FromUtf8Error};
 
 pub struct Reader<'a> {
-    pub cursor: Cursor<&'a [u8]>,
+    pub cursor: io::Cursor<&'a [u8]>,
     range: Range<u64>,
 }
 
 impl<'a> Reader<'a> {
     pub fn from_bytes(bytes: &'a [u8], pos: usize) -> Self {
         let mut r = Reader {
-            cursor: Cursor::new(bytes),
+            cursor: io::Cursor::new(bytes),
             range: (pos as u64)..(bytes.len() as u64),
         };
         r.cursor.set_position(pos as u64);
@@ -43,7 +36,7 @@ impl<'a> Reader<'a> {
             });
         }
         let mut r = Reader {
-            cursor: Cursor::new(bytes),
+            cursor: io::Cursor::new(bytes),
             range: (start as u64)..(end as u64),
         };
         r.cursor.set_position(start as u64);
@@ -65,7 +58,7 @@ impl<'a> Reader<'a> {
         // Advance past the requested range
         self.cursor.set_position(end);
         let mut sub = Reader {
-            cursor: Cursor::new(self.cursor.get_ref()),
+            cursor: io::Cursor::new(self.cursor.get_ref()),
             range: start..end,
         };
         sub.cursor.set_position(start);
@@ -170,19 +163,6 @@ pub trait FromReader<'a>: Sized {
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error>;
 }
 
-#[derive(Error, Debug)]
-#[non_exhaustive]
-pub enum VecReadError<E> {
-    #[error("reading the vector element count")]
-    Count(#[source] ReadError),
-
-    #[error("reading element at index {index}")]
-    Element {
-        index: usize,
-        #[source]
-        source: E,
-    },
-}
 impl<'a, T: FromReader<'a>> FromReader<'a> for Vec<T> {
     type Error = VecReadError<T::Error>;
 
@@ -236,8 +216,8 @@ pub struct ReadError {
     pub kind: ReadErrorKind,
 }
 
-impl Display for ReadError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl fmt::Display for ReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
             ReadErrorKind::Decode(_) => {
                 write!(f, "decoding byte at offset {}", self.offset)
@@ -278,8 +258,8 @@ impl Display for ReadError {
     }
 }
 
-impl Error for ReadError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl error::Error for ReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match &self.kind {
             ReadErrorKind::Decode(e) => Some(e),
             ReadErrorKind::Read(e) => Some(e),
@@ -327,8 +307,8 @@ pub struct InvalidEnumValueError {
     pub enum_name: &'static str,
 }
 
-impl Display for InvalidEnumValueError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl fmt::Display for InvalidEnumValueError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{:#0x} is not a valid value for {}",
@@ -337,8 +317,8 @@ impl Display for InvalidEnumValueError {
     }
 }
 
-impl Error for InvalidEnumValueError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl error::Error for InvalidEnumValueError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }
 }
@@ -353,6 +333,40 @@ impl ReadError {
     pub fn at_offset(error: impl Into<ReadErrorKind>, offset: usize) -> Self {
         let kind = error.into();
         ReadError { offset, kind }
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum VecReadError<E> {
+    //#[error("reading the vector element count")]
+    Count(ReadError),
+
+    //#[error("reading element at index {index}")]
+    Element { index: usize, source: E },
+}
+
+impl<E> error::Error for VecReadError<E>
+where
+    E: error::Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Count(e) => Some(e),
+            Self::Element { source, .. } => Some(source),
+        }
+    }
+}
+
+impl<E> fmt::Display for VecReadError<E>
+where
+    E: std::error::Error + 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Count(_) => write!(f, "reading the vector element count"),
+            Self::Element { index, .. } => write!(f, "reading element at {index}"),
+        }
     }
 }
 

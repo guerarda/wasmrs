@@ -2,7 +2,7 @@ use core::fmt;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
-    io::{self},
+    io,
 };
 
 /// Returns one byte

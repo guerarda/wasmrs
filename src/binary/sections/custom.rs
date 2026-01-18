@@ -1,5 +1,5 @@
+use core::{error, fmt};
 use std::ops::Range;
-use thiserror::Error;
 
 use crate::binary::{
     reader::{ReadError, Reader},
@@ -13,13 +13,6 @@ pub struct CustomSection {
     pub name: String,
     #[allow(dead_code)]
     pub data_span: Range<usize>,
-}
-
-#[derive(Error, Debug)]
-#[non_exhaustive]
-pub enum CustomSectionReadError {
-    #[error("reading the module name")]
-    Name(#[source] ReadError),
 }
 
 pub fn decode_custom_section(
@@ -38,4 +31,27 @@ pub fn decode_custom_section(
 
     let data_span = reader.position() as usize..info.end as usize;
     Ok(CustomSection { name, data_span })
+}
+
+/// Errors
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum CustomSectionReadError {
+    Name(ReadError),
+}
+
+impl error::Error for CustomSectionReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Name(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for CustomSectionReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Name(_) => write!(f, "reading the name"),
+        }
+    }
 }

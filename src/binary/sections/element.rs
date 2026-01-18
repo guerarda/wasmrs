@@ -1,5 +1,3 @@
-use thiserror::Error;
-
 use std::{error, fmt, result};
 
 use crate::binary::{
@@ -138,37 +136,6 @@ pub struct ElementSegment {
     pub items: ElementSegmentItems,
 }
 
-#[derive(Error, Debug)]
-#[non_exhaustive]
-pub enum ElementSectionReadError {
-    #[error("reading mode flag")]
-    ModeFlag(#[source] ReadError),
-
-    #[error("reading mode table index")]
-    ModeTableIndex(#[source] ReadError),
-
-    #[error("reading mode type")]
-    ModeType(#[source] ReadError),
-
-    #[error("reading mode expression")]
-    ModeOffsetExpression(#[source] ConstExpressionReadError),
-
-    #[error("reading mode element kind")]
-    ModeKind(#[source] ReadError),
-
-    #[error("reading mode index")]
-    ModeIndex(#[source] ReadError),
-
-    #[error("reading segment functions")]
-    ItemsFunctions(#[source] VecReadError<ReadError>),
-
-    #[error("reading mode reference type")]
-    ItemsRefType(#[source] ReadError),
-
-    #[error("reading expressions")]
-    ItemsExpressions(#[source] VecReadError<ConstExpressionReadError>),
-}
-
 impl From<ElementSectionReadError> for SectionErrorKind {
     fn from(value: ElementSectionReadError) -> Self {
         Self::ElementSection(value)
@@ -240,5 +207,52 @@ impl SectionEntry for ElementSegment {
             ElementSegmentItems::Functions(functions)
         };
         Ok(Self { mode, items })
+    }
+}
+
+/// Errors
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ElementSectionReadError {
+    ModeFlag(ReadError),
+    ModeTableIndex(ReadError),
+    ModeType(ReadError),
+    ModeOffsetExpression(ConstExpressionReadError),
+    ModeKind(ReadError),
+    ModeIndex(ReadError),
+    ItemsFunctions(VecReadError<ReadError>),
+    ItemsRefType(ReadError),
+    ItemsExpressions(VecReadError<ConstExpressionReadError>),
+}
+
+impl error::Error for ElementSectionReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::ModeFlag(e) => Some(e),
+            Self::ModeTableIndex(e) => Some(e),
+            Self::ModeType(e) => Some(e),
+            Self::ModeOffsetExpression(e) => Some(e),
+            Self::ModeKind(e) => Some(e),
+            Self::ModeIndex(e) => Some(e),
+            Self::ItemsFunctions(e) => Some(e),
+            Self::ItemsRefType(e) => Some(e),
+            Self::ItemsExpressions(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for ElementSectionReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ModeFlag(_) => write!(f, "reading mode flag"),
+            Self::ModeTableIndex(_) => write!(f, "reading mode table index"),
+            Self::ModeType(_) => write!(f, "reading mode type"),
+            Self::ModeOffsetExpression(_) => write!(f, "reading mode expression"),
+            Self::ModeKind(_) => write!(f, "reading mode element kind"),
+            Self::ModeIndex(_) => write!(f, "reading mode index"),
+            Self::ItemsFunctions(_) => write!(f, "reading segment functions"),
+            Self::ItemsRefType(_) => write!(f, "reading mode reference type"),
+            Self::ItemsExpressions(_) => write!(f, "reading expressoins"),
+        }
     }
 }
