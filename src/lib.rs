@@ -28,7 +28,7 @@ const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
 
 #[derive(Debug)]
-struct Module {
+pub struct Module {
     bytes: Vec<u8>,
     sections: Vec<SectionInfo>,
 
@@ -575,6 +575,16 @@ impl Runtime {
         let module = decode_module(bytes.to_vec())?;
         let handle = self.instantiate_module(&module);
         Ok(handle)
+    }
+
+    // Parse module
+    pub fn parse_module(&self, bytes: &[u8]) -> result::Result<Module, Error> {
+        decode_module(bytes.to_vec())
+    }
+
+    // Validate module
+    pub fn validate_module(&self, _: &Module) -> result::Result<(), Error> {
+        Ok(())
     }
 }
 

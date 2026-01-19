@@ -6,7 +6,7 @@ use wast::core::{NanPattern, WastArgCore, WastRetCore};
 use wast::parser::{self, ParseBuffer};
 use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
-use wasmrs::{Runtime, Value};
+use wasmrs::{Error, Runtime, Value};
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
 #[derive(Debug, Clone)]
@@ -310,45 +310,45 @@ fn collect_tests() -> Vec<Trial> {
                     }
                 }
 
-                // WastDirective::AssertInvalid {
-                //     mut module,
-                //     message,
-                //     span: _,
-                // } => {
-                //     // Flush pending first
-                //     flush_pending(
-                //         &mut tests,
-                //         &file_name,
-                //         &mut pending_module,
-                //         &mut pending_assertions,
-                //     );
+                WastDirective::AssertInvalid {
+                    mut module,
+                    message,
+                    span: _,
+                } => {
+                    // Flush pending first
+                    flush_pending(
+                        &mut tests,
+                        &file_name,
+                        &mut pending_module,
+                        &mut pending_assertions,
+                    );
 
-                //     match module.to_test() {
-                //         Ok(QuoteWatTest::Binary(wasm_bytes)) => {
-                //             let test_name =
-                //                 format!("{}::[{}]line_{}::AssertInvalid", file_name, idx, line);
-                //             let tc = TestCase::AssertInvalid {
-                //                 wasm_bytes,
-                //                 message: message.to_string(),
-                //             };
-                //             tests.push(Trial::test(test_name, move || run_test_case(tc)));
-                //         }
-                //         Ok(QuoteWatTest::Text(_)) => {
-                //             let test_name = format!(
-                //                 "{}::[{}]line_{}::AssertInvalid (text)",
-                //                 file_name, idx, line
-                //             );
-                //             tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
-                //         }
-                //         Err(_) => {
-                //             let test_name = format!(
-                //                 "{}::[{}]line_{}::AssertInvalid (unparseable)",
-                //                 file_name, idx, line
-                //             );
-                //             tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
-                //         }
-                //     }
-                // }
+                    match module.to_test() {
+                        Ok(QuoteWatTest::Binary(wasm_bytes)) => {
+                            let test_name =
+                                format!("{}::[{}]line_{}::AssertInvalid", file_name, idx, line);
+                            let tc = TestCase::AssertInvalid {
+                                wasm_bytes,
+                                message: message.to_string(),
+                            };
+                            tests.push(Trial::test(test_name, move || run_test_case(tc)));
+                        }
+                        Ok(QuoteWatTest::Text(_)) => {
+                            let test_name = format!(
+                                "{}::[{}]line_{}::AssertInvalid (text)",
+                                file_name, idx, line
+                            );
+                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                        }
+                        Err(_) => {
+                            let test_name = format!(
+                                "{}::[{}]line_{}::AssertInvalid (unparseable)",
+                                file_name, idx, line
+                            );
+                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                        }
+                    }
+                }
 
                 WastDirective::AssertTrap { exec, message, .. } => {
                     if let WastExecute::Invoke(invoke) = exec {
@@ -378,7 +378,6 @@ fn collect_tests() -> Vec<Trial> {
                 // Other directives remain ignored
                 other => {
                     let kind = match other {
-                        WastDirective::AssertInvalid { .. } => "AssertInvalid",
                         WastDirective::AssertExhaustion { .. } => "AssertExhaustion",
                         WastDirective::AssertUnlinkable { .. } => "AssertUnlinkable",
                         WastDirective::AssertException { .. } => "AssertException",
@@ -414,7 +413,10 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
 
     match test_case {
         TestCase::Module { wasm_bytes } => {
-            let result = catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let module = runtime.parse_module(&wasm_bytes)?;
+                runtime.validate_module(&module)
+            }));
             match result {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(e)) => Err(Failed::from(format!("expected Ok, got {}", e))),
@@ -425,15 +427,19 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             wasm_bytes,
             message,
         } => {
-            let result = catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
+            let result = catch_unwind(AssertUnwindSafe(|| runtime.parse_module(&wasm_bytes)));
             match result {
                 Ok(Ok(_)) => Err(Failed::from(format!(
-                    "expected error '{}', got Ok",
+                    "expected malformed error '{}', got Ok",
                     message
                 ))),
-                Ok(Err(_)) => Ok(()),
+                Ok(Err(Error::Malformed(_))) => Ok(()), // Expected malformed error
+                Ok(Err(e)) => Err(Failed::from(format!(
+                    "expected malformed error '{}', got different error: {}",
+                    message, e
+                ))),
                 Err(_) => Err(Failed::from(format!(
-                    "expected error '{}', got PANIC in runtime",
+                    "expected malformed error '{}', got PANIC",
                     message
                 ))),
             }
@@ -443,15 +449,22 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             wasm_bytes,
             message,
         } => {
-            let result = catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let module = runtime.parse_module(&wasm_bytes)?;
+                runtime.validate_module(&module)
+            }));
             match result {
                 Ok(Ok(_)) => Err(Failed::from(format!(
-                    "expected error '{}', got Ok",
+                    "expected validation error '{}', got Ok",
                     message
                 ))),
-                Ok(Err(_)) => Ok(()), // Any error (not panic) is acceptable
+                Ok(Err(Error::Invalid)) => Ok(()), // Expected invalid error
+                Ok(Err(e)) => Err(Failed::from(format!(
+                    "expected validation error '{}', got different error: {}",
+                    message, e
+                ))),
                 Err(_) => Err(Failed::from(format!(
-                    "expected error '{}', got PANIC in runtime",
+                    "expected validation error '{}', got PANIC",
                     message
                 ))),
             }
