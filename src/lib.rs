@@ -537,9 +537,21 @@ impl Runtime {
                     Instruction::I32Mul => self.binary_op_i32(|a, b| a.wrapping_mul(b)),
                     Instruction::I32DivS => self.try_binary_op_i32(|a, b| a.checked_div(b))?,
                     Instruction::I32DivU => self.try_binary_op_u32(|a, b| a.checked_div(b))?,
-                    Instruction::I32RemS => self.try_binary_op_i32(|a, b| a.checked_rem(b))?,
+                    Instruction::I32RemS => self.try_binary_op_i32(|a, b| {
+                        if b == 0 {
+                            None
+                        } else {
+                            Some(a.wrapping_rem(b))
+                        }
+                    })?,
 
-                    Instruction::I32RemU => self.try_binary_op_u32(|a, b| a.checked_rem(b))?,
+                    Instruction::I32RemU => self.try_binary_op_u32(|a, b| {
+                        if b == 0 {
+                            None
+                        } else {
+                            Some(a.wrapping_rem(b))
+                        }
+                    })?,
                     Instruction::I32And => self.binary_op_i32(|a, b| BitAnd::bitand(a, b)),
                     Instruction::I32Or => self.binary_op_i32(|a, b| BitOr::bitor(a, b)),
                     Instruction::I32Xor => self.binary_op_i32(|a, b| BitXor::bitxor(a, b)),
