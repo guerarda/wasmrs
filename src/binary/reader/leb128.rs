@@ -14,147 +14,90 @@ pub fn read_u8<R: std::io::Read>(reader: &mut R) -> Result<u8, DecodeError> {
     Ok(buf[0])
 }
 
-/// Returns one unsigned 32-bit integer
-pub fn read_leb128_u32<R: std::io::Read>(reader: &mut R) -> Result<u32, DecodeError> {
-    const MAX_BYTES: u32 = u32::BITS / 7 + 1;
-    const MAX_LAST_BYTE: u8 = (1 << (u32::BITS % 7)) - 1;
+// Macro for decoding u32 and u64
+macro_rules! impl_read_leb128_unsigned {
+    ($name: ident, $ty: ty) => {
+        pub fn $name<R: std::io::Read>(reader: &mut R) -> Result<$ty, DecodeError> {
+            const MAX_BYTES: u32 = <$ty>::BITS / 7 + 1;
+            const MAX_LAST_BYTE: u8 = (1 << (<$ty>::BITS % 7)) - 1;
 
-    let mut x = 0;
-    let mut s = 0;
-    let mut i = 0;
+            let mut x: $ty = 0;
+            let mut s = 0;
+            let mut i = 0;
 
-    loop {
-        let v = read_u8(reader)?;
+            loop {
+                let v = read_u8(reader)?;
 
-        if i == MAX_BYTES {
-            return Err(DecodeError {
-                kind: DecodeErrorKind::TooManyBytes,
-            });
-        }
-        if v < 0x80 {
-            if i == MAX_BYTES - 1 && v > MAX_LAST_BYTE {
-                return Err(DecodeError {
-                    kind: DecodeErrorKind::ValueOverflow,
-                });
-            }
-            x |= u32::from(v) << s;
-            return Ok(x);
-        }
-        x |= u32::from(v & 0x7f) << s;
-        s += 7;
-        i += 1;
-    }
-}
-
-/// Returns one unsigned 64-bit integer
-pub fn read_leb128_u64<R: std::io::Read>(reader: &mut R) -> Result<u64, DecodeError> {
-    const MAX_BYTES: u32 = u64::BITS / 7 + 1;
-    const MAX_LAST_BYTE: u8 = (1 << (u64::BITS % 7)) - 1;
-
-    let mut x = 0;
-    let mut s = 0;
-    let mut i = 0;
-
-    loop {
-        let v = read_u8(reader)?;
-
-        if i == MAX_BYTES {
-            return Err(DecodeError {
-                kind: DecodeErrorKind::TooManyBytes,
-            });
-        }
-        if v < 0x80 {
-            if i == MAX_BYTES - 1 && v > MAX_LAST_BYTE {
-                return Err(DecodeError {
-                    kind: DecodeErrorKind::ValueOverflow,
-                });
-            }
-            x |= u64::from(v) << s;
-            return Ok(x);
-        }
-        x |= u64::from(v & 0x7f) << s;
-        s += 7;
-        i += 1;
-    }
-}
-
-/// Returns one signed 32-bit integer
-pub fn read_leb128_i32<R: std::io::Read>(reader: &mut R) -> Result<i32, DecodeError> {
-    const MAX_BYTES: u32 = u32::BITS / 7 + 1;
-
-    let mut x = 0;
-    let mut s = 0;
-    let mut i = 0;
-
-    loop {
-        let v = read_u8(reader)?;
-
-        if i == MAX_BYTES {
-            return Err(DecodeError {
-                kind: DecodeErrorKind::TooManyBytes,
-            });
-        }
-        if v < 0x80 {
-            if i == MAX_BYTES - 1 {
-                const MASK: u8 = ((-1i8 << ((u32::BITS % 7) - 1)) & 0x7f) as u8;
-                if v & MASK != 0 && v < MASK {
+                if i == MAX_BYTES {
                     return Err(DecodeError {
-                        kind: DecodeErrorKind::ValueOverflow,
+                        kind: DecodeErrorKind::TooManyBytes,
                     });
                 }
+                if v < 0x80 {
+                    if i == MAX_BYTES - 1 && v > MAX_LAST_BYTE {
+                        return Err(DecodeError {
+                            kind: DecodeErrorKind::ValueOverflow,
+                        });
+                    }
+                    x |= <$ty>::from(v) << s;
+                    return Ok(x);
+                }
+                x |= <$ty>::from(v & 0x7f) << s;
+                s += 7;
+                i += 1;
             }
-
-            x |= i32::from(v) << s;
-            if i < MAX_BYTES - 1 && v >= 0x40 {
-                x |= !0 << (s + 7);
-            }
-
-            return Ok(x);
         }
-        x |= i32::from(v & 0x7f) << s;
-        s += 7;
-        i += 1;
-    }
+    };
 }
 
-/// Returns one signed 64-bit integer
-pub fn read_leb128_i64<R: std::io::Read>(reader: &mut R) -> Result<i64, DecodeError> {
-    const MAX_BYTES: u32 = u64::BITS / 7 + 1;
+impl_read_leb128_unsigned!(read_leb128_u32, u32);
+impl_read_leb128_unsigned!(read_leb128_u64, u64);
 
-    let mut x = 0;
-    let mut s = 0;
-    let mut i = 0;
+// Macro for decoding i32 and i64
+macro_rules! impl_read_leb128_signed {
+    ($name: ident, $ty:ty) => {
+        pub fn $name<R: std::io::Read>(reader: &mut R) -> Result<$ty, DecodeError> {
+            const MAX_BYTES: u32 = <$ty>::BITS / 7 + 1;
 
-    loop {
-        let v = read_u8(reader)?;
+            let mut x = 0;
+            let mut s = 0;
+            let mut i = 0;
 
-        if i == MAX_BYTES {
-            return Err(DecodeError {
-                kind: DecodeErrorKind::TooManyBytes,
-            });
-        }
-        if v < 0x80 {
-            if i == MAX_BYTES - 1 {
-                const MASK: u8 = ((-1i8 << ((u64::BITS % 7) - 1)) & 0x7f) as u8;
-                if v & MASK != 0 && v < MASK {
+            loop {
+                let v = read_u8(reader)?;
+
+                if i == MAX_BYTES {
                     return Err(DecodeError {
-                        kind: DecodeErrorKind::ValueOverflow,
+                        kind: DecodeErrorKind::TooManyBytes,
                     });
                 }
-            }
+                if v < 0x80 {
+                    if i == MAX_BYTES - 1 {
+                        const MASK: u8 = ((-1i8 << ((<$ty>::BITS % 7) - 1)) & 0x7f) as u8;
+                        if v & MASK != 0 && v < MASK {
+                            return Err(DecodeError {
+                                kind: DecodeErrorKind::ValueOverflow,
+                            });
+                        }
+                    }
 
-            x |= i64::from(v) << s;
-            if i < MAX_BYTES - 1 && v >= 0x40 {
-                x |= !0 << (s + 7);
-            }
+                    x |= <$ty>::from(v) << s;
+                    if i < MAX_BYTES - 1 && v >= 0x40 {
+                        x |= !0 << (s + 7);
+                    }
 
-            return Ok(x);
+                    return Ok(x);
+                }
+                x |= <$ty>::from(v & 0x7f) << s;
+                s += 7;
+                i += 1;
+            }
         }
-        x |= i64::from(v & 0x7f) << s;
-        s += 7;
-        i += 1;
-    }
+    };
 }
+
+impl_read_leb128_signed!(read_leb128_i32, i32);
+impl_read_leb128_signed!(read_leb128_i64, i64);
 
 #[derive(Debug)]
 #[non_exhaustive]
