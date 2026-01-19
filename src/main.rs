@@ -36,7 +36,7 @@ mod tests {
         ];
 
         for (a, b, c) in cases {
-            let r = runtime.invoke(mh, "add", &[Value::I32(a), Value::I32(b)]);
+            let r = runtime.invoke(mh, "add", &[Value::I32(a), Value::I32(b)])?;
 
             assert_eq!(r.len(), 1);
             match r[0] {
@@ -64,7 +64,7 @@ mod tests {
         ];
 
         for (a, b) in cases {
-            let r = runtime.invoke(mh, "fib", &[Value::I32(a)]);
+            let r = runtime.invoke(mh, "fib", &[Value::I32(a)])?;
 
             assert_eq!(r.len(), 1);
             match r[0] {
@@ -90,7 +90,7 @@ mod tests {
         ];
 
         for (a, b, c) in cases {
-            let r = runtime.invoke(mh, "mul", &[Value::I32(a), Value::I32(b)]);
+            let r = runtime.invoke(mh, "mul", &[Value::I32(a), Value::I32(b)])?;
 
             assert_eq!(r.len(), 1);
             match r[0] {

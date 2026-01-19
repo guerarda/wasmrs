@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::io::{Seek, SeekFrom};
 use std::iter::repeat_n;
-use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
+use std::ops::{BitAnd, BitOr, BitXor};
+use std::result;
 
 mod binary;
 
@@ -342,7 +343,12 @@ impl Runtime {
         h
     }
 
-    pub fn invoke(&mut self, module: ModuleHandle, fn_name: &str, fn_args: &[Value]) -> Vec<Value> {
+    pub fn invoke(
+        &mut self,
+        module: ModuleHandle,
+        fn_name: &str,
+        fn_args: &[Value],
+    ) -> result::Result<Vec<Value>, Error> {
         let mi = self.module_registry.get_instance(module);
         let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
         let arity = self.store.get_func(funcaddr).ftype.results.len();
@@ -350,10 +356,10 @@ impl Runtime {
         self.value_stack.extend_from_slice(fn_args);
 
         self.call(funcaddr);
-        self.execute();
+        self.execute()?;
 
         let idx = self.value_stack.len() - arity;
-        self.value_stack.split_off(idx)
+        Ok(self.value_stack.split_off(idx))
     }
 
     fn call(&mut self, funcaddr: FuncAddr) {
@@ -408,6 +414,21 @@ impl Runtime {
         self.value_stack.push(Value::I32(res));
     }
 
+    fn try_binary_op_i32<F, R>(&mut self, binop: F) -> result::Result<(), Error>
+    where
+        F: FnOnce(i32, i32) -> Option<R>,
+        R: Into<i32>,
+    {
+        let rhs = self.value_stack.pop().unwrap();
+        let lhs = self.value_stack.pop().unwrap();
+        let res = match (lhs, rhs) {
+            (Value::I32(a), Value::I32(b)) => binop(a, b).ok_or(Error::Trap)?.into(),
+            _ => unreachable!(),
+        };
+        self.value_stack.push(Value::I32(res));
+        Ok(())
+    }
+
     fn binary_op_u32<F, R>(&mut self, binop: F)
     where
         F: FnOnce(u32, u32) -> R,
@@ -422,7 +443,22 @@ impl Runtime {
         self.value_stack.push(Value::I32(res as i32));
     }
 
-    fn execute(&mut self) {
+    fn try_binary_op_u32<F, R>(&mut self, binop: F) -> Result<(), Error>
+    where
+        F: FnOnce(u32, u32) -> Option<R>,
+        R: Into<u32>,
+    {
+        let rhs = self.value_stack.pop().unwrap();
+        let lhs = self.value_stack.pop().unwrap();
+        let res = match (lhs, rhs) {
+            (Value::I32(a), Value::I32(b)) => binop(a as u32, b as u32).ok_or(Error::Trap)?.into(),
+            _ => unreachable!(),
+        };
+        self.value_stack.push(Value::I32(res as i32));
+        Ok(())
+    }
+
+    fn execute(&mut self) -> result::Result<(), Error> {
         while let Some(frame) = self.call_stack.last_mut() {
             let func_inst = self.store.get_func(frame.funcaddr);
             let instrs = &func_inst.func.body;
@@ -496,19 +532,20 @@ impl Runtime {
                     Instruction::I32Popcnt => self.unary_op_i32(|a| a.count_ones() as i32),
 
                     // Arithmetic ops
-                    Instruction::I32Add => self.binary_op_i32(|a, b| Add::add(a, b)),
-                    Instruction::I32Sub => self.binary_op_i32(|a, b| Sub::sub(a, b)),
-                    Instruction::I32Mul => self.binary_op_i32(|a, b| Mul::mul(a, b)),
-                    Instruction::I32DivS => self.binary_op_i32(|a, b| Div::div(a, b)),
-                    Instruction::I32DivU => self.binary_op_u32(|a, b| Div::div(a, b)),
-                    Instruction::I32RemS => self.binary_op_i32(|a, b| Rem::rem(a, b)),
-                    Instruction::I32RemU => self.binary_op_u32(|a, b| Rem::rem(a, b)),
+                    Instruction::I32Add => self.binary_op_i32(|a, b| a.wrapping_add(b)),
+                    Instruction::I32Sub => self.binary_op_i32(|a, b| a.wrapping_sub(b)),
+                    Instruction::I32Mul => self.binary_op_i32(|a, b| a.wrapping_mul(b)),
+                    Instruction::I32DivS => self.try_binary_op_i32(|a, b| a.checked_div(b))?,
+                    Instruction::I32DivU => self.try_binary_op_u32(|a, b| a.checked_div(b))?,
+                    Instruction::I32RemS => self.try_binary_op_i32(|a, b| a.checked_rem(b))?,
+
+                    Instruction::I32RemU => self.try_binary_op_u32(|a, b| a.checked_rem(b))?,
                     Instruction::I32And => self.binary_op_i32(|a, b| BitAnd::bitand(a, b)),
                     Instruction::I32Or => self.binary_op_i32(|a, b| BitOr::bitor(a, b)),
                     Instruction::I32Xor => self.binary_op_i32(|a, b| BitXor::bitxor(a, b)),
-                    Instruction::I32Shl => self.binary_op_i32(|a, b| Shr::shr(a, b)),
-                    Instruction::I32ShrS => self.binary_op_i32(|a, b| Shl::shl(a, b)),
-                    Instruction::I32ShrU => self.binary_op_u32(|a, b| Shl::shl(a, b)),
+                    Instruction::I32Shl => self.binary_op_i32(|a, b| a.wrapping_shl(b as u32)),
+                    Instruction::I32ShrS => self.binary_op_i32(|a, b| a.wrapping_shr(b as u32)),
+                    Instruction::I32ShrU => self.binary_op_u32(|a, b| a.wrapping_shr(b)),
                     Instruction::I32Rotl => self.binary_op_i32(|a, b| a.rotate_left(b as u32)),
                     Instruction::I32Rotr => self.binary_op_i32(|a, b| a.rotate_right(b as u32)),
 
@@ -518,6 +555,7 @@ impl Runtime {
                 }
             }
         }
+        Ok(())
     }
 
     /// Decode and instantiate a module from bytes
