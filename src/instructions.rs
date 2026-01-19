@@ -22,8 +22,22 @@ pub enum Instruction {
 
     I32Const(i32),
     I64Const(i64),
-    I32LeS,
 
+    I32Eqz,
+    I32Eq,
+    I32Ne,
+    I32LtS,
+    I32LtU,
+    I32LeS,
+    I32LeU,
+    I32GtS,
+    I32GtU,
+    I32GeS,
+    I32GeU,
+
+    I32Clz,
+    I32Ctz,
+    I32Popcnt,
     I32Add,
     I32Sub,
     I32Mul,
@@ -39,6 +53,9 @@ pub enum Instruction {
     I32ShrU,
     I32Rotl,
     I32Rotr,
+
+    I32Extend8S,
+    I32Extend16S,
 }
 
 pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
@@ -81,8 +98,21 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
             Ok(Instruction::I64Const(v))
         }
 
+        0x45 => Ok(Instruction::I32Eqz),
+        0x46 => Ok(Instruction::I32Eq),
+        0x47 => Ok(Instruction::I32Ne),
+        0x48 => Ok(Instruction::I32LtS),
+        0x49 => Ok(Instruction::I32LtU),
+        0x4a => Ok(Instruction::I32GtS),
+        0x4b => Ok(Instruction::I32GtU),
         0x4c => Ok(Instruction::I32LeS),
+        0x4d => Ok(Instruction::I32LeU),
+        0x4e => Ok(Instruction::I32GeS),
+        0x4f => Ok(Instruction::I32GeU),
 
+        0x67 => Ok(Instruction::I32Clz),
+        0x68 => Ok(Instruction::I32Ctz),
+        0x69 => Ok(Instruction::I32Popcnt),
         0x6a => Ok(Instruction::I32Add),
         0x6b => Ok(Instruction::I32Sub),
         0x6c => Ok(Instruction::I32Mul),
@@ -98,6 +128,9 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
         0x76 => Ok(Instruction::I32ShrU),
         0x77 => Ok(Instruction::I32Rotl),
         0x78 => Ok(Instruction::I32Rotr),
+
+        0xc0 => Ok(Instruction::I32Extend8S),
+        0xc1 => Ok(Instruction::I32Extend16S),
 
         _ => Err(InstructionError {
             kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {
@@ -277,11 +310,54 @@ mod tests {
 
     #[test]
     fn test_decode_i32_comparison() {
-        let mut reader = Reader::from_bytes(&[0x4c], 0);
-        assert_eq!(
-            decode_instruction(&mut reader).unwrap(),
-            Instruction::I32LeS
-        );
+        let cases: &[(u8, Instruction)] = &[
+            (0x45, Instruction::I32Eqz),
+            (0x46, Instruction::I32Eq),
+            (0x47, Instruction::I32Ne),
+            (0x48, Instruction::I32LtS),
+            (0x49, Instruction::I32LtU),
+            (0x4a, Instruction::I32GtS),
+            (0x4b, Instruction::I32GtU),
+            (0x4c, Instruction::I32LeS),
+            (0x4d, Instruction::I32LeU),
+            (0x4e, Instruction::I32GeS),
+            (0x4f, Instruction::I32GeU),
+        ];
+
+        for (opcode, expected) in cases {
+            let bytes = [*opcode];
+            let mut reader = Reader::from_bytes(&bytes, 0);
+            assert_eq!(decode_instruction(&mut reader).unwrap(), *expected);
+        }
+    }
+
+    #[test]
+    fn test_decode_i32_unary() {
+        let cases: &[(u8, Instruction)] = &[
+            (0x67, Instruction::I32Clz),
+            (0x68, Instruction::I32Ctz),
+            (0x69, Instruction::I32Popcnt),
+        ];
+
+        for (opcode, expected) in cases {
+            let bytes = [*opcode];
+            let mut reader = Reader::from_bytes(&bytes, 0);
+            assert_eq!(decode_instruction(&mut reader).unwrap(), *expected);
+        }
+    }
+
+    #[test]
+    fn test_decode_i32_sign_extend() {
+        let cases: &[(u8, Instruction)] = &[
+            (0xc0, Instruction::I32Extend8S),
+            (0xc1, Instruction::I32Extend16S),
+        ];
+
+        for (opcode, expected) in cases {
+            let bytes = [*opcode];
+            let mut reader = Reader::from_bytes(&bytes, 0);
+            assert_eq!(decode_instruction(&mut reader).unwrap(), *expected);
+        }
     }
 
     #[test]
