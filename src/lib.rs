@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::io::{Seek, SeekFrom};
 use std::iter::repeat_n;
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub};
 
 mod binary;
 
@@ -380,6 +381,19 @@ impl Runtime {
         });
     }
 
+    fn binary_op_i32<F>(&mut self, binop: F)
+    where
+        F: FnOnce(i32, i32) -> i32,
+    {
+        let rhs = self.value_stack.pop().unwrap();
+        let lhs = self.value_stack.pop().unwrap();
+        let res = match (lhs, rhs) {
+            (Value::I32(a), Value::I32(b)) => binop(a, b),
+            _ => unreachable!(),
+        };
+        self.value_stack.push(Value::I32(res));
+    }
+
     fn execute(&mut self) {
         while let Some(frame) = self.call_stack.last_mut() {
             let func_inst = self.store.get_func(frame.funcaddr);
@@ -431,48 +445,27 @@ impl Runtime {
                     }
                     Instruction::LocalSet(_) => todo!(),
                     Instruction::LocalTee(_) => todo!(),
-                    Instruction::I32Const(v) => {
-                        self.value_stack.push(Value::I32(*v));
-                    }
-                    Instruction::I64Const(v) => {
-                        self.value_stack.push(Value::I64(*v));
-                    }
-                    Instruction::I32LeS => {
-                        let rhs = self.value_stack.pop().unwrap();
-                        let lhs = self.value_stack.pop().unwrap();
-                        let res = match (lhs, rhs) {
-                            (Value::I32(a), Value::I32(b)) => a <= b,
-                            _ => unreachable!(),
-                        };
-                        self.value_stack.push(Value::I32(res as i32));
-                    }
-                    Instruction::I32Add => {
-                        let rhs = self.value_stack.pop().unwrap();
-                        let lhs = self.value_stack.pop().unwrap();
-                        let res = match (lhs, rhs) {
-                            (Value::I32(a), Value::I32(b)) => a + b,
-                            _ => unreachable!(),
-                        };
-                        self.value_stack.push(Value::I32(res));
-                    }
-                    Instruction::I32Sub => {
-                        let rhs = self.value_stack.pop().unwrap();
-                        let lhs = self.value_stack.pop().unwrap();
-                        let res = match (lhs, rhs) {
-                            (Value::I32(a), Value::I32(b)) => a - b,
-                            _ => unreachable!(),
-                        };
-                        self.value_stack.push(Value::I32(res));
-                    }
-                    Instruction::I32Mul => {
-                        let rhs = self.value_stack.pop().unwrap();
-                        let lhs = self.value_stack.pop().unwrap();
-                        let res = match (lhs, rhs) {
-                            (Value::I32(a), Value::I32(b)) => a * b,
-                            _ => unreachable!(),
-                        };
-                        self.value_stack.push(Value::I32(res));
-                    }
+
+                    Instruction::I32Const(v) => self.value_stack.push(Value::I32(*v)),
+                    Instruction::I64Const(v) => self.value_stack.push(Value::I64(*v)),
+
+                    // TODO Cecked ops
+                    Instruction::I32LeS => self.binary_op_i32(|a, b| (a <= b) as i32),
+                    Instruction::I32Add => self.binary_op_i32(|a, b| Add::add(a, b)),
+                    Instruction::I32Sub => self.binary_op_i32(|a, b| Sub::sub(a, b)),
+                    Instruction::I32Mul => self.binary_op_i32(|a, b| Mul::mul(a, b)),
+                    Instruction::I32DivS => self.binary_op_i32(|a, b| Div::div(a, b)),
+                    Instruction::I32DivU => todo!(),
+                    Instruction::I32RemS => self.binary_op_i32(|a, b| Rem::rem(a, b)),
+                    Instruction::I32RemU => todo!(),
+                    Instruction::I32And => self.binary_op_i32(|a, b| BitAnd::bitand(a, b)),
+                    Instruction::I32Or => self.binary_op_i32(|a, b| BitOr::bitor(a, b)),
+                    Instruction::I32Xor => self.binary_op_i32(|a, b| BitXor::bitxor(a, b)),
+                    Instruction::I32Shl => self.binary_op_i32(|a, b| Shr::shr(a, b)),
+                    Instruction::I32ShrS => self.binary_op_i32(|a, b| Shl::shl(a, b)),
+                    Instruction::I32ShrU => todo!(),
+                    Instruction::I32Rotl => self.binary_op_i32(|a, b| a.rotate_left(b as u32)),
+                    Instruction::I32Rotr => self.binary_op_i32(|a, b| a.rotate_right(b as u32)),
                 }
             }
         }

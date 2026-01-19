@@ -27,6 +27,18 @@ pub enum Instruction {
     I32Add,
     I32Sub,
     I32Mul,
+    I32DivS,
+    I32DivU,
+    I32RemS,
+    I32RemU,
+    I32And,
+    I32Or,
+    I32Xor,
+    I32Shl,
+    I32ShrS,
+    I32ShrU,
+    I32Rotl,
+    I32Rotr,
 }
 
 pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
@@ -74,6 +86,18 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
         0x6a => Ok(Instruction::I32Add),
         0x6b => Ok(Instruction::I32Sub),
         0x6c => Ok(Instruction::I32Mul),
+        0x6d => Ok(Instruction::I32DivS),
+        0x6e => Ok(Instruction::I32DivU),
+        0x6f => Ok(Instruction::I32RemS),
+        0x70 => Ok(Instruction::I32RemU),
+        0x71 => Ok(Instruction::I32And),
+        0x72 => Ok(Instruction::I32Or),
+        0x73 => Ok(Instruction::I32Xor),
+        0x74 => Ok(Instruction::I32Shl),
+        0x75 => Ok(Instruction::I32ShrS),
+        0x76 => Ok(Instruction::I32ShrU),
+        0x77 => Ok(Instruction::I32Rotl),
+        0x78 => Ok(Instruction::I32Rotr),
 
         _ => Err(InstructionError {
             kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {
@@ -182,5 +206,178 @@ impl From<ReadError> for InstructionError {
             instr: None,
             offset,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::binary::reader::Reader;
+
+    #[test]
+    fn test_decode_control_flow() {
+        // Nop
+        let mut reader = Reader::from_bytes(&[0x01], 0);
+        assert_eq!(decode_instruction(&mut reader).unwrap(), Instruction::Nop);
+
+        // Else
+        let mut reader = Reader::from_bytes(&[0x05], 0);
+        assert_eq!(decode_instruction(&mut reader).unwrap(), Instruction::Else);
+
+        // End
+        let mut reader = Reader::from_bytes(&[0x0b], 0);
+        assert_eq!(decode_instruction(&mut reader).unwrap(), Instruction::End);
+
+        // If with i32 block type
+        let mut reader = Reader::from_bytes(&[0x04, 0x7f], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::If(ValType::I32)
+        );
+    }
+
+    #[test]
+    fn test_decode_i32_arithmetic() {
+        let cases: &[(u8, Instruction)] = &[
+            (0x6a, Instruction::I32Add),
+            (0x6b, Instruction::I32Sub),
+            (0x6c, Instruction::I32Mul),
+            (0x6d, Instruction::I32DivS),
+            (0x6e, Instruction::I32DivU),
+            (0x6f, Instruction::I32RemS),
+            (0x70, Instruction::I32RemU),
+        ];
+
+        for (opcode, expected) in cases {
+            let bytes = [*opcode];
+            let mut reader = Reader::from_bytes(&bytes, 0);
+            assert_eq!(decode_instruction(&mut reader).unwrap(), *expected);
+        }
+    }
+
+    #[test]
+    fn test_decode_i32_bitwise() {
+        let cases: &[(u8, Instruction)] = &[
+            (0x71, Instruction::I32And),
+            (0x72, Instruction::I32Or),
+            (0x73, Instruction::I32Xor),
+            (0x74, Instruction::I32Shl),
+            (0x75, Instruction::I32ShrS),
+            (0x76, Instruction::I32ShrU),
+            (0x77, Instruction::I32Rotl),
+            (0x78, Instruction::I32Rotr),
+        ];
+
+        for (opcode, expected) in cases {
+            let bytes = [*opcode];
+            let mut reader = Reader::from_bytes(&bytes, 0);
+            assert_eq!(decode_instruction(&mut reader).unwrap(), *expected);
+        }
+    }
+
+    #[test]
+    fn test_decode_i32_comparison() {
+        let mut reader = Reader::from_bytes(&[0x4c], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I32LeS
+        );
+    }
+
+    #[test]
+    fn test_decode_local_ops() {
+        // LocalGet
+        let mut reader = Reader::from_bytes(&[0x20, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::LocalGet(0)
+        );
+        let mut reader = Reader::from_bytes(&[0x20, 0x05], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::LocalGet(5)
+        );
+
+        // LocalSet
+        let mut reader = Reader::from_bytes(&[0x21, 0x01], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::LocalSet(1)
+        );
+
+        // LocalTee
+        let mut reader = Reader::from_bytes(&[0x22, 0x02], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::LocalTee(2)
+        );
+    }
+
+    #[test]
+    fn test_decode_call() {
+        let mut reader = Reader::from_bytes(&[0x10, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::Call(0)
+        );
+
+        let mut reader = Reader::from_bytes(&[0x10, 0x0a], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::Call(10)
+        );
+    }
+
+    #[test]
+    fn test_decode_const() {
+        // I32Const
+        let mut reader = Reader::from_bytes(&[0x41, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I32Const(0)
+        );
+
+        let mut reader = Reader::from_bytes(&[0x41, 0x2a], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I32Const(42)
+        );
+
+        let mut reader = Reader::from_bytes(&[0x41, 0x7f], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I32Const(-1)
+        );
+
+        // I64Const
+        let mut reader = Reader::from_bytes(&[0x42, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I64Const(0)
+        );
+
+        // 100 in signed LEB128 needs two bytes to avoid sign extension
+        let mut reader = Reader::from_bytes(&[0x42, 0xe4, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I64Const(100)
+        );
+    }
+
+    #[test]
+    fn test_decode_invalid_opcode() {
+        let mut reader = Reader::from_bytes(&[0xff], 0);
+        assert!(decode_instruction(&mut reader).is_err());
+    }
+
+    #[test]
+    fn test_decode_truncated_argument() {
+        // i32.const without argument
+        let mut reader = Reader::from_bytes(&[0x41], 0);
+        assert!(decode_instruction(&mut reader).is_err());
+
+        // local.get without index
+        let mut reader = Reader::from_bytes(&[0x20], 0);
+        assert!(decode_instruction(&mut reader).is_err());
     }
 }
