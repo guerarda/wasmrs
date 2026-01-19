@@ -94,7 +94,7 @@ mod tests {
 
             assert_eq!(r.len(), 1);
             match r[0] {
-                Value::I32(v) => assert_eq!(v, c, "{} + {} = {}", a, b, c),
+                Value::I32(v) => assert_eq!(v, c, "{} * {} = {}", a, b, c),
                 _ => panic!(),
             }
         }
