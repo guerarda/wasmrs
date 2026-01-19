@@ -107,12 +107,26 @@ fn value_matches(actual: &Value, expected: &TestRet) -> bool {
     }
 }
 
-/// A single assertion to run against a loaded module
-struct Assertion {
+/// A single assertion expecting success
+struct ReturnAssertion {
     line: usize,
     func_name: String,
     args: Vec<TestArg>,
     expected: Vec<TestRet>,
+}
+
+/// A single assertion expecting a trap
+struct TrapAssertion {
+    line: usize,
+    func_name: String,
+    args: Vec<TestArg>,
+    message: String,
+}
+
+/// Union of assertion types
+enum Assertion {
+    Return(ReturnAssertion),
+    Trap(TrapAssertion),
 }
 
 /// Represents a test case extracted from a WAST directive
@@ -178,11 +192,18 @@ fn collect_tests() -> Vec<Trial> {
                     let tc = TestCase::Module { wasm_bytes };
                     tests.push(Trial::test(test_name, move || run_test_case(tc)));
                 } else {
-                    // Module with assertions
-                    let count = assertions.len();
+                    // Module with assertions - count by type
+                    let return_count = assertions
+                        .iter()
+                        .filter(|a| matches!(a, Assertion::Return(_)))
+                        .count();
+                    let trap_count = assertions
+                        .iter()
+                        .filter(|a| matches!(a, Assertion::Trap(_)))
+                        .count();
                     let test_name = format!(
-                        "{}::[{}]line_{}::ModuleWithAssertions({})",
-                        file_name, idx, line, count
+                        "{}::[{}]line_{}::ModuleWithAssertions({} return, {} trap)",
+                        file_name, idx, line, return_count, trap_count
                     );
                     let tc = TestCase::ModuleWithAssertions {
                         wasm_bytes,
@@ -222,12 +243,12 @@ fn collect_tests() -> Vec<Trial> {
 
                         match (args, expected) {
                             (Some(args), Some(expected)) => {
-                                pending_assertions.push(Assertion {
+                                pending_assertions.push(Assertion::Return(ReturnAssertion {
                                     line,
                                     func_name: invoke.name.to_string(),
                                     args,
                                     expected,
-                                });
+                                }));
                             }
                             _ => {
                                 // Unsupported types - create ignored test
@@ -329,10 +350,34 @@ fn collect_tests() -> Vec<Trial> {
                 //     }
                 // }
 
+                WastDirective::AssertTrap { exec, message, .. } => {
+                    if let WastExecute::Invoke(invoke) = exec {
+                        let args: Option<Vec<_>> =
+                            invoke.args.iter().map(convert_wast_arg).collect();
+                        if let Some(args) = args {
+                            pending_assertions.push(Assertion::Trap(TrapAssertion {
+                                line,
+                                func_name: invoke.name.to_string(),
+                                args,
+                                message: message.to_string(),
+                            }));
+                        } else {
+                            // Unsupported arg types - ignore
+                            let test_name =
+                                format!("{}::[{}]line_{}::AssertTrap", file_name, idx, line);
+                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                        }
+                    } else {
+                        // Non-invoke assert_trap - ignore for now
+                        let test_name =
+                            format!("{}::[{}]line_{}::AssertTrap(non-invoke)", file_name, idx, line);
+                        tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                    }
+                }
+
                 // Other directives remain ignored
                 other => {
                     let kind = match other {
-                        WastDirective::AssertTrap { .. } => "AssertTrap",
                         WastDirective::AssertInvalid { .. } => "AssertInvalid",
                         WastDirective::AssertExhaustion { .. } => "AssertExhaustion",
                         WastDirective::AssertUnlinkable { .. } => "AssertUnlinkable",
@@ -429,42 +474,75 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             let total = assertions.len();
 
             for assertion in assertions {
-                let runtime_args: Vec<_> = assertion.args.iter().map(test_arg_to_value).collect();
+                match assertion {
+                    Assertion::Return(a) => {
+                        let runtime_args: Vec<_> =
+                            a.args.iter().map(test_arg_to_value).collect();
 
-                let result = catch_unwind(AssertUnwindSafe(|| {
-                    runtime.invoke(mh, &assertion.func_name, &runtime_args)
-                }));
+                        let result = catch_unwind(AssertUnwindSafe(|| {
+                            runtime.invoke(mh, &a.func_name, &runtime_args)
+                        }));
 
-                let actual = match result {
-                    Ok(values) => values,
-                    Err(_) => {
-                        failures.push(format!(
-                            "line {}: invoke '{}' panicked",
-                            assertion.line, assertion.func_name
-                        ));
-                        continue;
+                        let actual = match result {
+                            Ok(Ok(values)) => values,
+                            Ok(Err(e)) => {
+                                failures.push(format!(
+                                    "line {}: '{}' trapped: {}",
+                                    a.line, a.func_name, e
+                                ));
+                                continue;
+                            }
+                            Err(_) => {
+                                failures.push(format!(
+                                    "line {}: '{}' panicked",
+                                    a.line, a.func_name
+                                ));
+                                continue;
+                            }
+                        };
+
+                        // Check result count
+                        if actual.len() != a.expected.len() {
+                            failures.push(format!(
+                                "line {}: '{}' returned {} values, expected {}",
+                                a.line, a.func_name, actual.len(), a.expected.len()
+                            ));
+                            continue;
+                        }
+
+                        // Check each value
+                        for (i, (act, exp)) in actual.iter().zip(a.expected.iter()).enumerate() {
+                            if !value_matches(act, exp) {
+                                failures.push(format!(
+                                    "line {}: '{}' result[{}] mismatch: got {:?}, expected {:?}",
+                                    a.line, a.func_name, i, act, exp
+                                ));
+                            }
+                        }
                     }
-                };
+                    Assertion::Trap(a) => {
+                        let runtime_args: Vec<_> =
+                            a.args.iter().map(test_arg_to_value).collect();
 
-                // Check result count
-                if actual.len() != assertion.expected.len() {
-                    failures.push(format!(
-                        "line {}: '{}' returned {} values, expected {}",
-                        assertion.line,
-                        assertion.func_name,
-                        actual.len(),
-                        assertion.expected.len()
-                    ));
-                    continue;
-                }
+                        let result = catch_unwind(AssertUnwindSafe(|| {
+                            runtime.invoke(mh, &a.func_name, &runtime_args)
+                        }));
 
-                // Check each value
-                for (i, (act, exp)) in actual.iter().zip(assertion.expected.iter()).enumerate() {
-                    if !value_matches(act, exp) {
-                        failures.push(format!(
-                            "line {}: '{}' result[{}] mismatch: got {:?}, expected {:?}",
-                            assertion.line, assertion.func_name, i, act, exp
-                        ));
+                        match result {
+                            Ok(Ok(_)) => {
+                                failures.push(format!(
+                                    "line {}: '{}' expected trap '{}', got success",
+                                    a.line, a.func_name, a.message
+                                ));
+                            }
+                            Ok(Err(_)) => {} // Expected trap - success
+                            Err(_) => {
+                                failures.push(format!(
+                                    "line {}: '{}' expected trap '{}', got panic",
+                                    a.line, a.func_name, a.message
+                                ));
+                            }
+                        }
                     }
                 }
             }
