@@ -99,7 +99,9 @@ fn value_matches(actual: &Value, expected: &TestRet) -> bool {
             TestF64Pattern::CanonicalNan => {
                 a.is_nan() && (a.to_bits() & 0x7fff_ffff_ffff_ffff) == 0x7ff8_0000_0000_0000
             }
-            TestF64Pattern::ArithmeticNan => a.is_nan() && (a.to_bits() & 0x0008_0000_0000_0000) != 0,
+            TestF64Pattern::ArithmeticNan => {
+                a.is_nan() && (a.to_bits() & 0x0008_0000_0000_0000) != 0
+            }
         },
         _ => false,
     }
@@ -119,6 +121,11 @@ enum TestCase {
     Module { wasm_bytes: Vec<u8> },
     /// Module that should fail to load with a malformed error
     AssertMalformed {
+        wasm_bytes: Vec<u8>,
+        message: String,
+    },
+    /// Module that should fail validation (type errors, etc.)
+    AssertInvalid {
         wasm_bytes: Vec<u8>,
         message: String,
     },
@@ -159,33 +166,32 @@ fn collect_tests() -> Vec<Trial> {
         let mut pending_assertions: Vec<Assertion> = Vec::new();
 
         // Helper to flush pending module + assertions as a test
-        let flush_pending =
-            |tests: &mut Vec<Trial>,
-             file_name: &str,
-             pending_module: &mut Option<(usize, usize, Vec<u8>)>,
-             pending_assertions: &mut Vec<Assertion>| {
-                if let Some((idx, line, wasm_bytes)) = pending_module.take() {
-                    let assertions = std::mem::take(pending_assertions);
-                    if assertions.is_empty() {
-                        // No assertions, just test module loading
-                        let test_name = format!("{}::[{}]line_{}::Module", file_name, idx, line);
-                        let tc = TestCase::Module { wasm_bytes };
-                        tests.push(Trial::test(test_name, move || run_test_case(tc)));
-                    } else {
-                        // Module with assertions
-                        let count = assertions.len();
-                        let test_name = format!(
-                            "{}::[{}]line_{}::ModuleWithAssertions({})",
-                            file_name, idx, line, count
-                        );
-                        let tc = TestCase::ModuleWithAssertions {
-                            wasm_bytes,
-                            assertions,
-                        };
-                        tests.push(Trial::test(test_name, move || run_test_case(tc)));
-                    }
+        let flush_pending = |tests: &mut Vec<Trial>,
+                             file_name: &str,
+                             pending_module: &mut Option<(usize, usize, Vec<u8>)>,
+                             pending_assertions: &mut Vec<Assertion>| {
+            if let Some((idx, line, wasm_bytes)) = pending_module.take() {
+                let assertions = std::mem::take(pending_assertions);
+                if assertions.is_empty() {
+                    // No assertions, just test module loading
+                    let test_name = format!("{}::[{}]line_{}::Module", file_name, idx, line);
+                    let tc = TestCase::Module { wasm_bytes };
+                    tests.push(Trial::test(test_name, move || run_test_case(tc)));
+                } else {
+                    // Module with assertions
+                    let count = assertions.len();
+                    let test_name = format!(
+                        "{}::[{}]line_{}::ModuleWithAssertions({})",
+                        file_name, idx, line, count
+                    );
+                    let tc = TestCase::ModuleWithAssertions {
+                        wasm_bytes,
+                        assertions,
+                    };
+                    tests.push(Trial::test(test_name, move || run_test_case(tc)));
                 }
-            };
+            }
+        };
 
         for (idx, directive) in wast.directives.into_iter().enumerate() {
             let span = directive.span();
@@ -283,10 +289,49 @@ fn collect_tests() -> Vec<Trial> {
                     }
                 }
 
+                WastDirective::AssertInvalid {
+                    mut module,
+                    message,
+                    span: _,
+                } => {
+                    // Flush pending first
+                    flush_pending(
+                        &mut tests,
+                        &file_name,
+                        &mut pending_module,
+                        &mut pending_assertions,
+                    );
+
+                    match module.to_test() {
+                        Ok(QuoteWatTest::Binary(wasm_bytes)) => {
+                            let test_name =
+                                format!("{}::[{}]line_{}::AssertInvalid", file_name, idx, line);
+                            let tc = TestCase::AssertInvalid {
+                                wasm_bytes,
+                                message: message.to_string(),
+                            };
+                            tests.push(Trial::test(test_name, move || run_test_case(tc)));
+                        }
+                        Ok(QuoteWatTest::Text(_)) => {
+                            let test_name = format!(
+                                "{}::[{}]line_{}::AssertInvalid (text)",
+                                file_name, idx, line
+                            );
+                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                        }
+                        Err(_) => {
+                            let test_name = format!(
+                                "{}::[{}]line_{}::AssertInvalid (unparseable)",
+                                file_name, idx, line
+                            );
+                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                        }
+                    }
+                }
+
                 // Other directives remain ignored
                 other => {
                     let kind = match other {
-                        WastDirective::AssertInvalid { .. } => "AssertInvalid",
                         WastDirective::AssertTrap { .. } => "AssertTrap",
                         WastDirective::AssertExhaustion { .. } => "AssertExhaustion",
                         WastDirective::AssertUnlinkable { .. } => "AssertUnlinkable",
@@ -341,6 +386,24 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                     message
                 ))),
                 Ok(Err(_)) => Ok(()),
+                Err(_) => Err(Failed::from(format!(
+                    "expected error '{}', got PANIC in runtime",
+                    message
+                ))),
+            }
+        }
+
+        TestCase::AssertInvalid {
+            wasm_bytes,
+            message,
+        } => {
+            let result = catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
+            match result {
+                Ok(Ok(_)) => Err(Failed::from(format!(
+                    "expected error '{}', got Ok",
+                    message
+                ))),
+                Ok(Err(_)) => Ok(()), // Any error (not panic) is acceptable
                 Err(_) => Err(Failed::from(format!(
                     "expected error '{}', got PANIC in runtime",
                     message
