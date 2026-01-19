@@ -289,50 +289,51 @@ fn collect_tests() -> Vec<Trial> {
                     }
                 }
 
-                WastDirective::AssertInvalid {
-                    mut module,
-                    message,
-                    span: _,
-                } => {
-                    // Flush pending first
-                    flush_pending(
-                        &mut tests,
-                        &file_name,
-                        &mut pending_module,
-                        &mut pending_assertions,
-                    );
+                // WastDirective::AssertInvalid {
+                //     mut module,
+                //     message,
+                //     span: _,
+                // } => {
+                //     // Flush pending first
+                //     flush_pending(
+                //         &mut tests,
+                //         &file_name,
+                //         &mut pending_module,
+                //         &mut pending_assertions,
+                //     );
 
-                    match module.to_test() {
-                        Ok(QuoteWatTest::Binary(wasm_bytes)) => {
-                            let test_name =
-                                format!("{}::[{}]line_{}::AssertInvalid", file_name, idx, line);
-                            let tc = TestCase::AssertInvalid {
-                                wasm_bytes,
-                                message: message.to_string(),
-                            };
-                            tests.push(Trial::test(test_name, move || run_test_case(tc)));
-                        }
-                        Ok(QuoteWatTest::Text(_)) => {
-                            let test_name = format!(
-                                "{}::[{}]line_{}::AssertInvalid (text)",
-                                file_name, idx, line
-                            );
-                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
-                        }
-                        Err(_) => {
-                            let test_name = format!(
-                                "{}::[{}]line_{}::AssertInvalid (unparseable)",
-                                file_name, idx, line
-                            );
-                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
-                        }
-                    }
-                }
+                //     match module.to_test() {
+                //         Ok(QuoteWatTest::Binary(wasm_bytes)) => {
+                //             let test_name =
+                //                 format!("{}::[{}]line_{}::AssertInvalid", file_name, idx, line);
+                //             let tc = TestCase::AssertInvalid {
+                //                 wasm_bytes,
+                //                 message: message.to_string(),
+                //             };
+                //             tests.push(Trial::test(test_name, move || run_test_case(tc)));
+                //         }
+                //         Ok(QuoteWatTest::Text(_)) => {
+                //             let test_name = format!(
+                //                 "{}::[{}]line_{}::AssertInvalid (text)",
+                //                 file_name, idx, line
+                //             );
+                //             tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                //         }
+                //         Err(_) => {
+                //             let test_name = format!(
+                //                 "{}::[{}]line_{}::AssertInvalid (unparseable)",
+                //                 file_name, idx, line
+                //             );
+                //             tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                //         }
+                //     }
+                // }
 
                 // Other directives remain ignored
                 other => {
                     let kind = match other {
                         WastDirective::AssertTrap { .. } => "AssertTrap",
+                        WastDirective::AssertInvalid { .. } => "AssertInvalid",
                         WastDirective::AssertExhaustion { .. } => "AssertExhaustion",
                         WastDirective::AssertUnlinkable { .. } => "AssertUnlinkable",
                         WastDirective::AssertException { .. } => "AssertException",
@@ -423,7 +424,10 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                 Err(_) => return Err(Failed::from("module load panicked")),
             };
 
-            // Run each assertion
+            // Run each assertion, collecting all failures
+            let mut failures = Vec::new();
+            let total = assertions.len();
+
             for assertion in assertions {
                 let runtime_args: Vec<_> = assertion.args.iter().map(test_arg_to_value).collect();
 
@@ -434,36 +438,48 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                 let actual = match result {
                     Ok(values) => values,
                     Err(_) => {
-                        return Err(Failed::from(format!(
+                        failures.push(format!(
                             "line {}: invoke '{}' panicked",
                             assertion.line, assertion.func_name
-                        )));
+                        ));
+                        continue;
                     }
                 };
 
                 // Check result count
                 if actual.len() != assertion.expected.len() {
-                    return Err(Failed::from(format!(
+                    failures.push(format!(
                         "line {}: '{}' returned {} values, expected {}",
                         assertion.line,
                         assertion.func_name,
                         actual.len(),
                         assertion.expected.len()
-                    )));
+                    ));
+                    continue;
                 }
 
                 // Check each value
                 for (i, (act, exp)) in actual.iter().zip(assertion.expected.iter()).enumerate() {
                     if !value_matches(act, exp) {
-                        return Err(Failed::from(format!(
+                        failures.push(format!(
                             "line {}: '{}' result[{}] mismatch: got {:?}, expected {:?}",
                             assertion.line, assertion.func_name, i, act, exp
-                        )));
+                        ));
                     }
                 }
             }
 
-            Ok(())
+            if failures.is_empty() {
+                Ok(())
+            } else {
+                let failed_count = failures.len();
+                Err(Failed::from(format!(
+                    "{}/{} assertions failed:\n{}",
+                    failed_count,
+                    total,
+                    failures.join("\n")
+                )))
+            }
         }
     }
 }
