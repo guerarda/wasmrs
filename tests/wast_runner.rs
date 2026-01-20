@@ -143,13 +143,13 @@ enum TestCase {
         message: String,
     },
     /// Module that should fail validation (type errors, etc.)
-    #[allow(dead_code)] // TODO: Enable once validate_module is implemented
     AssertInvalid {
         wasm_bytes: Vec<u8>,
         message: String,
     },
     /// Module with assertions to run against it
     ModuleWithAssertions {
+        idx: usize,
         wasm_bytes: Vec<u8>,
         assertions: Vec<Assertion>,
     },
@@ -200,15 +200,16 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
         let tests = file_tests.entry(file_name.clone()).or_default();
 
         // State for grouping Module + AssertReturns
-        let mut pending_module: Option<(usize, usize, Vec<u8>)> = None; // (idx, line, bytes)
+        let mut pending_module: Option<(usize, Vec<u8>)> = None; // (line, bytes)
         let mut pending_assertions: Vec<Assertion> = Vec::new();
 
         // Helper to flush pending module + assertions as a test
         let flush_pending = |tests: &mut Vec<(String, CollectedTest)>,
                              file_name: &str,
-                             pending_module: &mut Option<(usize, usize, Vec<u8>)>,
+                             pending_module: &mut Option<(usize, Vec<u8>)>,
                              pending_assertions: &mut Vec<Assertion>| {
-            if let Some((idx, line, wasm_bytes)) = pending_module.take() {
+            if let Some((line, wasm_bytes)) = pending_module.take() {
+                let idx = tests.len();
                 let assertions = std::mem::take(pending_assertions);
                 if assertions.is_empty() {
                     let test_name = format!("{}::[{}]line_{}::Module", file_name, idx, line);
@@ -228,6 +229,7 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                         file_name, idx, line, return_count, trap_count
                     );
                     let tc = TestCase::ModuleWithAssertions {
+                        idx,
                         wasm_bytes,
                         assertions,
                     };
@@ -251,7 +253,7 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                     );
 
                     let wasm_bytes = module.encode().expect("failed to encode module");
-                    pending_module = Some((idx, line, wasm_bytes));
+                    pending_module = Some((line, wasm_bytes));
                 }
 
                 WastDirective::AssertReturn { exec, results, .. } => {
@@ -272,14 +274,14 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                             }
                             _ => {
                                 let test_name =
-                                    format!("{}::[{}]line_{}::AssertReturn", file_name, idx, line);
+                                    format!("{}::[{}]line_{}::AssertReturn", file_name, tests.len(), line);
                                 tests.push((test_name, CollectedTest::Ignored));
                             }
                         }
                     } else {
                         let test_name = format!(
                             "{}::[{}]line_{}::AssertReturn(Get/Wat)",
-                            file_name, idx, line
+                            file_name, tests.len(), line
                         );
                         tests.push((test_name, CollectedTest::Ignored));
                     }
@@ -300,7 +302,7 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                     match module.to_test() {
                         Ok(QuoteWatTest::Binary(wasm_bytes)) => {
                             let test_name =
-                                format!("{}::[{}]line_{}::AssertMalformed", file_name, idx, line);
+                                format!("{}::[{}]line_{}::AssertMalformed", file_name, tests.len(), line);
                             let tc = TestCase::AssertMalformed {
                                 wasm_bytes,
                                 message: message.to_string(),
@@ -310,14 +312,14 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                         Ok(QuoteWatTest::Text(_)) => {
                             let test_name = format!(
                                 "{}::[{}]line_{}::AssertMalformed (text)",
-                                file_name, idx, line
+                                file_name, tests.len(), line
                             );
                             tests.push((test_name, CollectedTest::Ignored));
                         }
                         Err(_) => {
                             let test_name = format!(
                                 "{}::[{}]line_{}::AssertMalformed (unparseable)",
-                                file_name, idx, line
+                                file_name, tests.len(), line
                             );
                             tests.push((test_name, CollectedTest::Ignored));
                         }
@@ -339,22 +341,24 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                     match module.to_test() {
                         Ok(QuoteWatTest::Binary(wasm_bytes)) => {
                             let test_name =
-                                format!("{}::[{}]line_{}::AssertInvalid", file_name, idx, line);
-                            // TODO: Enable once validate_module is implemented
-                            let _ = (wasm_bytes, &message);
-                            tests.push((test_name, CollectedTest::Ignored));
+                                format!("{}::[{}]line_{}::AssertInvalid", file_name, tests.len(), line);
+                            let tc = TestCase::AssertInvalid {
+                                wasm_bytes,
+                                message: message.to_string(),
+                            };
+                            tests.push((test_name, CollectedTest::Run(tc)));
                         }
                         Ok(QuoteWatTest::Text(_)) => {
                             let test_name = format!(
                                 "{}::[{}]line_{}::AssertInvalid (text)",
-                                file_name, idx, line
+                                file_name, tests.len(), line
                             );
                             tests.push((test_name, CollectedTest::Ignored));
                         }
                         Err(_) => {
                             let test_name = format!(
                                 "{}::[{}]line_{}::AssertInvalid (unparseable)",
-                                file_name, idx, line
+                                file_name, tests.len(), line
                             );
                             tests.push((test_name, CollectedTest::Ignored));
                         }
@@ -374,13 +378,13 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                             }));
                         } else {
                             let test_name =
-                                format!("{}::[{}]line_{}::AssertTrap", file_name, idx, line);
+                                format!("{}::[{}]line_{}::AssertTrap", file_name, tests.len(), line);
                             tests.push((test_name, CollectedTest::Ignored));
                         }
                     } else {
                         let test_name = format!(
                             "{}::[{}]line_{}::AssertTrap(non-invoke)",
-                            file_name, idx, line
+                            file_name, tests.len(), line
                         );
                         tests.push((test_name, CollectedTest::Ignored));
                     }
@@ -400,7 +404,7 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                         WastDirective::ModuleInstance { .. } => "ModuleInstance",
                         _ => unreachable!(),
                     };
-                    let test_name = format!("{}::[{}]line_{}::{}", file_name, idx, line, kind);
+                    let test_name = format!("{}::[{}]line_{}::{}", file_name, tests.len(), line, kind);
                     tests.push((test_name, CollectedTest::Ignored));
                 }
             }
@@ -460,7 +464,8 @@ fn run_file_tests(file_name: &str, tests: Vec<(String, CollectedTest)>) -> Resul
                 if let Err(e) = run_test_case(tc) {
                     // Extract short name (remove file prefix)
                     let short_name = name.strip_prefix(&format!("{}::", file_name)).unwrap_or(&name);
-                    failures.push(format!("{}: {:?}", short_name, e));
+                    let msg = e.message().unwrap_or("(no message)");
+                    failures.push(format!("{}: {}", short_name, msg));
                 }
             }
             CollectedTest::Ignored => {
@@ -545,6 +550,7 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
         }
 
         TestCase::ModuleWithAssertions {
+            idx,
             wasm_bytes,
             assertions,
         } => {
@@ -573,14 +579,16 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                             Ok(Ok(values)) => values,
                             Ok(Err(e)) => {
                                 failures.push(format!(
-                                    "line {}: '{}' trapped: {}",
-                                    a.line, a.func_name, e
+                                    "[{}]line {}: '{}' trapped: {}",
+                                    idx, a.line, a.func_name, e
                                 ));
                                 continue;
                             }
                             Err(_) => {
-                                failures
-                                    .push(format!("line {}: '{}' panicked", a.line, a.func_name));
+                                failures.push(format!(
+                                    "[{}]line {}: '{}' panicked",
+                                    idx, a.line, a.func_name
+                                ));
                                 continue;
                             }
                         };
@@ -588,7 +596,8 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                         // Check result count
                         if actual.len() != a.expected.len() {
                             failures.push(format!(
-                                "line {}: '{}' returned {} values, expected {}",
+                                "[{}]line {}: '{}' returned {} values, expected {}",
+                                idx,
                                 a.line,
                                 a.func_name,
                                 actual.len(),
@@ -601,8 +610,8 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                         for (i, (act, exp)) in actual.iter().zip(a.expected.iter()).enumerate() {
                             if !value_matches(act, exp) {
                                 failures.push(format!(
-                                    "line {}: '{}' result[{}] mismatch: got {:?}, expected {:?}",
-                                    a.line, a.func_name, i, act, exp
+                                    "[{}]line {}: '{}' result[{}] mismatch: got {:?}, expected {:?}",
+                                    idx, a.line, a.func_name, i, act, exp
                                 ));
                             }
                         }
@@ -617,15 +626,15 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                         match result {
                             Ok(Ok(_)) => {
                                 failures.push(format!(
-                                    "line {}: '{}' expected trap '{}', got success",
-                                    a.line, a.func_name, a.message
+                                    "[{}]line {}: '{}' expected trap '{}', got success",
+                                    idx, a.line, a.func_name, a.message
                                 ));
                             }
                             Ok(Err(_)) => {} // Expected trap - success
                             Err(_) => {
                                 failures.push(format!(
-                                    "line {}: '{}' expected trap '{}', got panic",
-                                    a.line, a.func_name, a.message
+                                    "[{}]line {}: '{}' expected trap '{}', got panic",
+                                    idx, a.line, a.func_name, a.message
                                 ));
                             }
                         }
