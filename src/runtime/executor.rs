@@ -126,6 +126,9 @@ impl Runtime {
                         let funcaddr = mi.funcaddrs[*idx as usize];
                         self.call(funcaddr);
                     }
+                    Instruction::Drop => {
+                        self.value_stack.pop();
+                    }
                     Instruction::LocalGet(idx) => {
                         let v = frame.locals[*idx as usize];
                         self.value_stack.push(v)
