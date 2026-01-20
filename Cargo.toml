@@ -8,11 +8,10 @@ spec-tests = []
 
 [dependencies]
 anyhow = "1.0.100"
-libtest-mimic = "0.8.1"
 
 [dev-dependencies]
 wast = "223"
-
+libtest-mimic = "0.8.1"
 
 [[test]]
 name = "wast_runner"
