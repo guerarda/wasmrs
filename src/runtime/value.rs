@@ -1,4 +1,7 @@
-use crate::{binary::types::ValType, runtime::store::FuncAddr};
+use crate::{
+    binary::types::{RefType, ValType},
+    runtime::store::FuncAddr,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Value {
@@ -6,9 +9,9 @@ pub enum Value {
     I64(i64),
     F32(f32),
     F64(f64),
-    NullRef,
-    FuncRef(usize),
-    ExternRef(usize),
+    NullRef(RefType),
+    FuncRef(u32),
+    ExternRef(u32),
 }
 
 impl From<ValType> for Value {
@@ -19,7 +22,7 @@ impl From<ValType> for Value {
             ValType::F32 => Value::F32(0.0),
             ValType::F64 => Value::F64(0.0),
             ValType::V128 => unimplemented!(),
-            ValType::Ref(_) => unreachable!(),
+            ValType::Ref(rt) => Value::NullRef(rt),
         }
     }
 }

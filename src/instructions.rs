@@ -1,6 +1,6 @@
-use crate::{
-    binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
-    binary::types::ValType,
+use crate::binary::{
+    reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
+    types::{FuncIdx, RefType, ValType},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -56,6 +56,9 @@ pub enum Instruction {
 
     I32Extend8S,
     I32Extend16S,
+
+    RefNull(RefType),
+    RefFunc(FuncIdx),
 }
 
 pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
@@ -131,6 +134,15 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
 
         0xc0 => Ok(Instruction::I32Extend8S),
         0xc1 => Ok(Instruction::I32Extend16S),
+
+        0xd0 => {
+            let rt: RefType = decode_arg(reader, "ref.null")?;
+            Ok(Instruction::RefNull(rt))
+        }
+        0xd2 => {
+            let fi: FuncIdx = decode_arg(reader, "ref.func")?;
+            Ok(Instruction::RefFunc(fi))
+        }
 
         _ => Err(InstructionError {
             kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {

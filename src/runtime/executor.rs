@@ -187,6 +187,10 @@ impl Runtime {
                     // Sign extension ops
                     Instruction::I32Extend8S => self.unary_op_i32(|a| a as i8),
                     Instruction::I32Extend16S => self.unary_op_i32(|a| a as i16),
+
+                    // Ref
+                    Instruction::RefNull(rt) => self.value_stack.push(Value::NullRef(*rt)),
+                    Instruction::RefFunc(fi) => self.value_stack.push(Value::FuncRef(*fi)),
                 }
             }
         }
