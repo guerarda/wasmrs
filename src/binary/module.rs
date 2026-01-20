@@ -6,7 +6,6 @@ use super::sections::{
     SectionId, SectionInfo, StartSection, TableSection, TypeSection, decode_data_count_section,
     decode_section, decode_start_section,
 };
-use crate::Error;
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -216,12 +215,12 @@ impl<'a> ModuleReader<'a> {
 }
 
 /// Decode a module from bytes (parsing only, no instantiation)
-pub fn decode_bytes(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
+pub fn decode_bytes(bytes: Vec<u8>) -> std::result::Result<Module, MalformedError> {
     let mut m = Module::from_bytes(bytes);
 
     let mut r = ModuleReader::from_module(&m);
     r.read_preamble().map_err(MalformedError::Preamble)?;
-    m.sections = r.read_toc().map_err(Error::Malformed)?;
+    m.sections = r.read_toc()?;
 
     for item in m.sections.iter() {
         let start = item.start as usize;
@@ -292,8 +291,7 @@ pub fn decode_bytes(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
                     return Err(MalformedError::InconsistentLength {
                         section: item.id,
                         other: SectionId::DataCount,
-                    }
-                    .into());
+                    });
                 }
                 m.data = Some(data);
             }
@@ -314,8 +312,7 @@ pub fn decode_bytes(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
         return Err(MalformedError::InconsistentLength {
             section: SectionId::Code,
             other: SectionId::Function,
-        }
-        .into());
+        });
     }
 
     // Verify that Data & Data Count have consistent length
@@ -326,8 +323,7 @@ pub fn decode_bytes(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
             return Err(MalformedError::InconsistentLength {
                 section: SectionId::Data,
                 other: SectionId::DataCount,
-            }
-            .into());
+            });
         }
     }
 

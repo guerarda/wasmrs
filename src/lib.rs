@@ -44,7 +44,7 @@ impl From<MalformedError> for Error {
 
 // Parse module
 pub fn parse_module(bytes: &[u8]) -> result::Result<Module, Error> {
-    module::decode_bytes(bytes.to_vec())
+    Ok(module::decode_bytes(bytes.to_vec())?)
 }
 
 // Validate module
