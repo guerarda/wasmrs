@@ -6,14 +6,17 @@ mod binary;
 mod instructions;
 mod limits;
 pub mod runtime;
+mod validation;
 
 pub use binary::MalformedError;
+
+use validation::ValidationError;
 
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
     Malformed(MalformedError),
-    Invalid,
+    Invalid(ValidationError),
     Trap,
 }
 
@@ -21,7 +24,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Malformed(e) => write!(f, "malformed module: {}", e),
-            Error::Invalid => write!(f, "invalid module"),
+            Error::Invalid(e) => write!(f, "invalid module: {}", e),
             Error::Trap => write!(f, "trap"),
         }
     }
@@ -31,6 +34,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Malformed(e) => Some(e),
+            Self::Invalid(e) => Some(e),
             _ => None,
         }
     }
@@ -42,13 +46,18 @@ impl From<MalformedError> for Error {
     }
 }
 
+impl From<ValidationError> for Error {
+    fn from(value: ValidationError) -> Self {
+        Error::Invalid(value)
+    }
+}
+
 // Parse module
 pub fn parse_module(bytes: &[u8]) -> result::Result<Module, Error> {
     Ok(module::decode_bytes(bytes.to_vec())?)
 }
 
 // Validate module
-pub fn validate_module(_: &Module) -> result::Result<(), Error> {
-    // TODO
-    Ok(())
+pub fn validate_module(m: &Module) -> result::Result<(), Error> {
+    Ok(validation::validate_module(m)?)
 }

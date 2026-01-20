@@ -532,7 +532,7 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                     "expected validation error '{}', got Ok",
                     message
                 ))),
-                Ok(Err(Error::Invalid)) => Ok(()), // Expected invalid error
+                Ok(Err(Error::Invalid(_))) => Ok(()), // Expected invalid error
                 Ok(Err(e)) => Err(Failed::from(format!(
                     "expected validation error '{}', got different error: {}",
                     message, e
