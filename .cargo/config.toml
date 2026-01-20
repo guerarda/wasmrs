@@ -1,0 +1,2 @@
+[alias]
+spec-test = "test --test wast_runner --features spec-tests --"
