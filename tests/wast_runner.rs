@@ -2,6 +2,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 
 use libtest_mimic::{Arguments, Failed, Trial};
+use std::collections::HashMap;
 use wast::core::{NanPattern, WastArgCore, WastRetCore};
 use wast::parser::{self, ParseBuffer};
 use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
@@ -155,13 +156,31 @@ enum TestCase {
 }
 
 fn main() {
-    let args = Arguments::from_args();
-    let tests = collect_tests();
+    let mut detailed = false;
+    let args: Vec<String> = std::env::args()
+        .filter(|arg| {
+            if arg == "--detailed" {
+                detailed = true;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+    let args = Arguments::from_iter(args);
+    let tests = collect_tests(detailed);
     libtest_mimic::run(&args, tests).exit();
 }
 
-fn collect_tests() -> Vec<Trial> {
-    let mut tests = Vec::new();
+/// A collected test - either runnable or ignored
+enum CollectedTest {
+    Run(TestCase),
+    Ignored,
+}
+
+/// Collect test cases from all wast files, grouped by file
+fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
+    let mut file_tests: HashMap<String, Vec<(String, CollectedTest)>> = HashMap::new();
 
     let spec_dir = Path::new("tests/spec");
     let wast_files: Vec<_> = std::fs::read_dir(spec_dir)
@@ -178,25 +197,24 @@ fn collect_tests() -> Vec<Trial> {
         let wast: Wast = parser::parse(&buf).expect("failed to parse wast file");
 
         let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
+        let tests = file_tests.entry(file_name.clone()).or_default();
 
         // State for grouping Module + AssertReturns
         let mut pending_module: Option<(usize, usize, Vec<u8>)> = None; // (idx, line, bytes)
         let mut pending_assertions: Vec<Assertion> = Vec::new();
 
         // Helper to flush pending module + assertions as a test
-        let flush_pending = |tests: &mut Vec<Trial>,
+        let flush_pending = |tests: &mut Vec<(String, CollectedTest)>,
                              file_name: &str,
                              pending_module: &mut Option<(usize, usize, Vec<u8>)>,
                              pending_assertions: &mut Vec<Assertion>| {
             if let Some((idx, line, wasm_bytes)) = pending_module.take() {
                 let assertions = std::mem::take(pending_assertions);
                 if assertions.is_empty() {
-                    // No assertions, just test module loading
                     let test_name = format!("{}::[{}]line_{}::Module", file_name, idx, line);
                     let tc = TestCase::Module { wasm_bytes };
-                    tests.push(Trial::test(test_name, move || run_test_case(tc)));
+                    tests.push((test_name, CollectedTest::Run(tc)));
                 } else {
-                    // Module with assertions - count by type
                     let return_count = assertions
                         .iter()
                         .filter(|a| matches!(a, Assertion::Return(_)))
@@ -213,7 +231,7 @@ fn collect_tests() -> Vec<Trial> {
                         wasm_bytes,
                         assertions,
                     };
-                    tests.push(Trial::test(test_name, move || run_test_case(tc)));
+                    tests.push((test_name, CollectedTest::Run(tc)));
                 }
             }
         };
@@ -225,9 +243,8 @@ fn collect_tests() -> Vec<Trial> {
 
             match directive {
                 WastDirective::Module(mut module) => {
-                    // Flush any pending module + assertions first
                     flush_pending(
-                        &mut tests,
+                        tests,
                         &file_name,
                         &mut pending_module,
                         &mut pending_assertions,
@@ -238,7 +255,6 @@ fn collect_tests() -> Vec<Trial> {
                 }
 
                 WastDirective::AssertReturn { exec, results, .. } => {
-                    // Try to convert to an assertion
                     if let WastExecute::Invoke(invoke) = exec {
                         let args: Option<Vec<_>> =
                             invoke.args.iter().map(convert_wast_arg).collect();
@@ -255,21 +271,17 @@ fn collect_tests() -> Vec<Trial> {
                                 }));
                             }
                             _ => {
-                                // Unsupported types - create ignored test
                                 let test_name =
                                     format!("{}::[{}]line_{}::AssertReturn", file_name, idx, line);
-                                tests.push(
-                                    Trial::test(test_name, || Ok(())).with_ignored_flag(true),
-                                );
+                                tests.push((test_name, CollectedTest::Ignored));
                             }
                         }
                     } else {
-                        // WastExecute::Get or Wat not yet supported
                         let test_name = format!(
                             "{}::[{}]line_{}::AssertReturn(Get/Wat)",
                             file_name, idx, line
                         );
-                        tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                        tests.push((test_name, CollectedTest::Ignored));
                     }
                 }
 
@@ -278,15 +290,13 @@ fn collect_tests() -> Vec<Trial> {
                     message,
                     span: _,
                 } => {
-                    // Flush pending first
                     flush_pending(
-                        &mut tests,
+                        tests,
                         &file_name,
                         &mut pending_module,
                         &mut pending_assertions,
                     );
 
-                    // Handle as before
                     match module.to_test() {
                         Ok(QuoteWatTest::Binary(wasm_bytes)) => {
                             let test_name =
@@ -295,21 +305,21 @@ fn collect_tests() -> Vec<Trial> {
                                 wasm_bytes,
                                 message: message.to_string(),
                             };
-                            tests.push(Trial::test(test_name, move || run_test_case(tc)));
+                            tests.push((test_name, CollectedTest::Run(tc)));
                         }
                         Ok(QuoteWatTest::Text(_)) => {
                             let test_name = format!(
                                 "{}::[{}]line_{}::AssertMalformed (text)",
                                 file_name, idx, line
                             );
-                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                            tests.push((test_name, CollectedTest::Ignored));
                         }
                         Err(_) => {
                             let test_name = format!(
                                 "{}::[{}]line_{}::AssertMalformed (unparseable)",
                                 file_name, idx, line
                             );
-                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                            tests.push((test_name, CollectedTest::Ignored));
                         }
                     }
                 }
@@ -319,9 +329,8 @@ fn collect_tests() -> Vec<Trial> {
                     message,
                     span: _,
                 } => {
-                    // Flush pending first
                     flush_pending(
-                        &mut tests,
+                        tests,
                         &file_name,
                         &mut pending_module,
                         &mut pending_assertions,
@@ -332,27 +341,22 @@ fn collect_tests() -> Vec<Trial> {
                             let test_name =
                                 format!("{}::[{}]line_{}::AssertInvalid", file_name, idx, line);
                             // TODO: Enable once validate_module is implemented
-                            // let tc = TestCase::AssertInvalid {
-                            //     wasm_bytes,
-                            //     message: message.to_string(),
-                            // };
-                            // tests.push(Trial::test(test_name, move || run_test_case(tc)));
-                            let _ = (wasm_bytes, &message); // suppress unused warnings
-                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                            let _ = (wasm_bytes, &message);
+                            tests.push((test_name, CollectedTest::Ignored));
                         }
                         Ok(QuoteWatTest::Text(_)) => {
                             let test_name = format!(
                                 "{}::[{}]line_{}::AssertInvalid (text)",
                                 file_name, idx, line
                             );
-                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                            tests.push((test_name, CollectedTest::Ignored));
                         }
                         Err(_) => {
                             let test_name = format!(
                                 "{}::[{}]line_{}::AssertInvalid (unparseable)",
                                 file_name, idx, line
                             );
-                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                            tests.push((test_name, CollectedTest::Ignored));
                         }
                     }
                 }
@@ -369,22 +373,19 @@ fn collect_tests() -> Vec<Trial> {
                                 message: message.to_string(),
                             }));
                         } else {
-                            // Unsupported arg types - ignore
                             let test_name =
                                 format!("{}::[{}]line_{}::AssertTrap", file_name, idx, line);
-                            tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                            tests.push((test_name, CollectedTest::Ignored));
                         }
                     } else {
-                        // Non-invoke assert_trap - ignore for now
                         let test_name = format!(
                             "{}::[{}]line_{}::AssertTrap(non-invoke)",
                             file_name, idx, line
                         );
-                        tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                        tests.push((test_name, CollectedTest::Ignored));
                     }
                 }
 
-                // Other directives remain ignored
                 other => {
                     let kind = match other {
                         WastDirective::AssertExhaustion { .. } => "AssertExhaustion",
@@ -400,21 +401,85 @@ fn collect_tests() -> Vec<Trial> {
                         _ => unreachable!(),
                     };
                     let test_name = format!("{}::[{}]line_{}::{}", file_name, idx, line, kind);
-                    tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
+                    tests.push((test_name, CollectedTest::Ignored));
                 }
             }
         }
 
         // Flush any remaining module at end of file
         flush_pending(
-            &mut tests,
+            tests,
             &file_name,
             &mut pending_module,
             &mut pending_assertions,
         );
     }
 
-    tests
+    file_tests
+}
+
+fn collect_tests(detailed: bool) -> Vec<Trial> {
+    let file_tests = collect_file_test_cases();
+
+    if detailed {
+        // Detailed mode: one Trial per test case
+        let mut trials = Vec::new();
+        for (_file, tests) in file_tests {
+            for (name, collected) in tests {
+                match collected {
+                    CollectedTest::Run(tc) => {
+                        trials.push(Trial::test(name, move || run_test_case(tc)));
+                    }
+                    CollectedTest::Ignored => {
+                        trials.push(Trial::test(name, || Ok(())).with_ignored_flag(true));
+                    }
+                }
+            }
+        }
+        trials
+    } else {
+        // File-level mode: one Trial per file
+        let mut trials = Vec::new();
+        for (file_name, tests) in file_tests {
+            let trial_name = file_name.clone();
+            trials.push(Trial::test(trial_name, move || run_file_tests(&file_name, tests)));
+        }
+        trials
+    }
+}
+
+fn run_file_tests(file_name: &str, tests: Vec<(String, CollectedTest)>) -> Result<(), Failed> {
+    let mut failures = Vec::new();
+    let mut run_count = 0;
+    let mut ignored_count = 0;
+
+    for (name, collected) in tests {
+        match collected {
+            CollectedTest::Run(tc) => {
+                run_count += 1;
+                if let Err(e) = run_test_case(tc) {
+                    // Extract short name (remove file prefix)
+                    let short_name = name.strip_prefix(&format!("{}::", file_name)).unwrap_or(&name);
+                    failures.push(format!("{}: {:?}", short_name, e));
+                }
+            }
+            CollectedTest::Ignored => {
+                ignored_count += 1;
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Failed::from(format!(
+            "{}/{} failed ({} ignored):\n{}",
+            failures.len(),
+            run_count,
+            ignored_count,
+            failures.join("\n")
+        )))
+    }
 }
 
 fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
