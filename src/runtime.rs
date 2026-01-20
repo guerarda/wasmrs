@@ -1,7 +1,8 @@
 use std::{iter::repeat_n, result};
 
 use crate::{
-    Error, Module, decode_module,
+    Error, Module,
+    binary::module,
     runtime::{
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
@@ -125,7 +126,7 @@ impl Runtime {
 
     /// Decode and instantiate a module from bytes
     pub fn load_module(&mut self, bytes: &[u8]) -> std::result::Result<ModuleHandle, Error> {
-        let module = decode_module(bytes.to_vec())?;
+        let module = module::decode_bytes(bytes.to_vec())?;
         let handle = self.instantiate_module(&module);
         Ok(handle)
     }
