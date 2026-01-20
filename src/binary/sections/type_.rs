@@ -34,17 +34,11 @@ impl<'a> FromReader<'a> for FuncTypeMarker {
 
 impl SectionEntry for FuncType {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let _: FuncTypeMarker = reader
-            .read()
-            .map_err(TypeSectionReadError::FuncTypeMarker)?;
+        let _: FuncTypeMarker = reader.read().map_err(TypeSectionReadError::Marker)?;
 
         Ok(FuncType {
-            params: reader
-                .read()
-                .map_err(TypeSectionReadError::FuncTypeParams)?,
-            results: reader
-                .read()
-                .map_err(TypeSectionReadError::FuncTypeResults)?,
+            params: reader.read().map_err(TypeSectionReadError::Params)?,
+            results: reader.read().map_err(TypeSectionReadError::Results)?,
         })
     }
 }
@@ -53,17 +47,17 @@ impl SectionEntry for FuncType {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum TypeSectionReadError {
-    FuncTypeMarker(ReadError),
-    FuncTypeParams(VecReadError<ReadError>),
-    FuncTypeResults(VecReadError<ReadError>),
+    Marker(ReadError),
+    Params(VecReadError<ReadError>),
+    Results(VecReadError<ReadError>),
 }
 
 impl error::Error for TypeSectionReadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::FuncTypeMarker(e) => Some(e),
-            Self::FuncTypeParams(e) => Some(e),
-            Self::FuncTypeResults(e) => Some(e),
+            Self::Marker(e) => Some(e),
+            Self::Params(e) => Some(e),
+            Self::Results(e) => Some(e),
         }
     }
 }
@@ -71,9 +65,9 @@ impl error::Error for TypeSectionReadError {
 impl fmt::Display for TypeSectionReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::FuncTypeMarker(_) => write!(f, "reading the functype marker"),
-            Self::FuncTypeParams(_) => write!(f, "reading the function param types"),
-            Self::FuncTypeResults(_) => write!(f, "reading the function result types"),
+            Self::Marker(_) => write!(f, "reading the functype marker"),
+            Self::Params(_) => write!(f, "reading the function param types"),
+            Self::Results(_) => write!(f, "reading the function result types"),
         }
     }
 }

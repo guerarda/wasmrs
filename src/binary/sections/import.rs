@@ -73,36 +73,30 @@ pub struct ImportEntry {
 
 impl SectionEntry for ImportEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let mod_name: String = reader
-            .read()
-            .map_err(ImportSectionReadError::ImportModuleName)?;
-        let name: String = reader
-            .read()
-            .map_err(ImportSectionReadError::ImportEntityName)?;
+        let mod_name: String = reader.read().map_err(ImportSectionReadError::ModuleName)?;
+        let name: String = reader.read().map_err(ImportSectionReadError::EntityName)?;
 
-        let itype: ImportDescType = reader
-            .read()
-            .map_err(ImportSectionReadError::ImportDescType)?;
+        let itype: ImportDescType = reader.read().map_err(ImportSectionReadError::DescType)?;
 
         let desc = match itype {
             ImportDescType::Func => reader
                 .read()
-                .map_err(ImportSectionReadError::ImportDescFunc)
+                .map_err(ImportSectionReadError::DescFunc)
                 .map(ImportDesc::Func),
 
             ImportDescType::Table => reader
                 .read()
-                .map_err(ImportSectionReadError::ImportDescTable)
+                .map_err(ImportSectionReadError::DescTable)
                 .map(ImportDesc::Table),
 
             ImportDescType::Mem => reader
                 .read()
-                .map_err(ImportSectionReadError::ImportDescMem)
+                .map_err(ImportSectionReadError::DescMem)
                 .map(ImportDesc::Mem),
 
             ImportDescType::Global => reader
                 .read()
-                .map_err(ImportSectionReadError::ImportDescGlobal)
+                .map_err(ImportSectionReadError::DescGlobal)
                 .map(ImportDesc::Global),
         }?;
 
@@ -118,25 +112,25 @@ impl SectionEntry for ImportEntry {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ImportSectionReadError {
-    ImportModuleName(ReadError),
-    ImportEntityName(ReadError),
-    ImportDescType(ReadError),
-    ImportDescFunc(ReadError),
-    ImportDescTable(TableTypeReadError),
-    ImportDescMem(MemTypeReadError),
-    ImportDescGlobal(GlobalTypeReadError),
+    ModuleName(ReadError),
+    EntityName(ReadError),
+    DescType(ReadError),
+    DescFunc(ReadError),
+    DescTable(TableTypeReadError),
+    DescMem(MemTypeReadError),
+    DescGlobal(GlobalTypeReadError),
 }
 
 impl error::Error for ImportSectionReadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::ImportModuleName(e) => Some(e),
-            Self::ImportEntityName(e) => Some(e),
-            Self::ImportDescType(e) => Some(e),
-            Self::ImportDescFunc(e) => Some(e),
-            Self::ImportDescTable(e) => Some(e),
-            Self::ImportDescMem(e) => Some(e),
-            Self::ImportDescGlobal(e) => Some(e),
+            Self::ModuleName(e) => Some(e),
+            Self::EntityName(e) => Some(e),
+            Self::DescType(e) => Some(e),
+            Self::DescFunc(e) => Some(e),
+            Self::DescTable(e) => Some(e),
+            Self::DescMem(e) => Some(e),
+            Self::DescGlobal(e) => Some(e),
         }
     }
 }
@@ -144,15 +138,15 @@ impl error::Error for ImportSectionReadError {
 impl fmt::Display for ImportSectionReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ImportModuleName(_) => write!(f, "reading import module name"),
-            Self::ImportEntityName(_) => write!(f, "reading import entity name"),
-            Self::ImportDescType(_) => write!(f, "reading import descriptor type"),
-            Self::ImportDescFunc(_) => write!(f, "reading import descriptor: func"),
-            Self::ImportDescTable(_) => {
+            Self::ModuleName(_) => write!(f, "reading import module name"),
+            Self::EntityName(_) => write!(f, "reading import entity name"),
+            Self::DescType(_) => write!(f, "reading import descriptor type"),
+            Self::DescFunc(_) => write!(f, "reading import descriptor: func"),
+            Self::DescTable(_) => {
                 write!(f, "reading import descriptor: table")
             }
-            Self::ImportDescMem(_) => write!(f, "reading import descriptor: mem"),
-            Self::ImportDescGlobal(_) => {
+            Self::DescMem(_) => write!(f, "reading import descriptor: mem"),
+            Self::DescGlobal(_) => {
                 write!(f, "reading import descriptor: global")
             }
         }

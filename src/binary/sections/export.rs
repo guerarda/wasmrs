@@ -56,16 +56,12 @@ pub type ExportSection = Vec<ExportEntry>;
 
 impl SectionEntry for ExportEntry {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        let name = reader
-            .read_name()
-            .map_err(ExportSectionReadError::ExportName)?;
-        let kind = reader
-            .read()
-            .map_err(ExportSectionReadError::ExportDescKind)?;
+        let name = reader.read_name().map_err(ExportSectionReadError::Name)?;
+        let kind = reader.read().map_err(ExportSectionReadError::DescKind)?;
 
         let index = reader
             .read_u32()
-            .map_err(ExportSectionReadError::ExportDescIndex)?;
+            .map_err(ExportSectionReadError::DescIndex)?;
 
         Ok(ExportEntry { name, kind, index })
     }
@@ -75,17 +71,17 @@ impl SectionEntry for ExportEntry {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ExportSectionReadError {
-    ExportName(ReadError),
-    ExportDescKind(ReadError),
-    ExportDescIndex(ReadError),
+    Name(ReadError),
+    DescKind(ReadError),
+    DescIndex(ReadError),
 }
 
 impl error::Error for ExportSectionReadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::ExportName(e) => Some(e),
-            Self::ExportDescKind(e) => Some(e),
-            Self::ExportDescIndex(e) => Some(e),
+            Self::Name(e) => Some(e),
+            Self::DescKind(e) => Some(e),
+            Self::DescIndex(e) => Some(e),
         }
     }
 }
@@ -93,9 +89,9 @@ impl error::Error for ExportSectionReadError {
 impl fmt::Display for ExportSectionReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ExportName(_) => write!(f, "reading the export name"),
-            Self::ExportDescKind(_) => write!(f, "reading the export kind"),
-            Self::ExportDescIndex(_) => write!(f, "reading the export index"),
+            Self::Name(_) => write!(f, "reading the export name"),
+            Self::DescKind(_) => write!(f, "reading the export kind"),
+            Self::DescIndex(_) => write!(f, "reading the export index"),
         }
     }
 }
