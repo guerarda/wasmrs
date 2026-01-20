@@ -6,7 +6,10 @@ use wast::core::{NanPattern, WastArgCore, WastRetCore};
 use wast::parser::{self, ParseBuffer};
 use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
-use wasmrs::{Error, Runtime, Value};
+use wasmrs::Error;
+use wasmrs::runtime::Runtime;
+use wasmrs::runtime::value::Value;
+use wasmrs::{parse_module, validate_module};
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
 #[derive(Debug, Clone)]
@@ -373,8 +376,10 @@ fn collect_tests() -> Vec<Trial> {
                         }
                     } else {
                         // Non-invoke assert_trap - ignore for now
-                        let test_name =
-                            format!("{}::[{}]line_{}::AssertTrap(non-invoke)", file_name, idx, line);
+                        let test_name = format!(
+                            "{}::[{}]line_{}::AssertTrap(non-invoke)",
+                            file_name, idx, line
+                        );
                         tests.push(Trial::test(test_name, || Ok(())).with_ignored_flag(true));
                     }
                 }
@@ -418,8 +423,8 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
     match test_case {
         TestCase::Module { wasm_bytes } => {
             let result = catch_unwind(AssertUnwindSafe(|| {
-                let module = runtime.parse_module(&wasm_bytes)?;
-                runtime.validate_module(&module)
+                let module = parse_module(&wasm_bytes)?;
+                validate_module(&module)
             }));
             match result {
                 Ok(Ok(_)) => Ok(()),
@@ -431,7 +436,7 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             wasm_bytes,
             message,
         } => {
-            let result = catch_unwind(AssertUnwindSafe(|| runtime.parse_module(&wasm_bytes)));
+            let result = catch_unwind(AssertUnwindSafe(|| parse_module(&wasm_bytes)));
             match result {
                 Ok(Ok(_)) => Err(Failed::from(format!(
                     "expected malformed error '{}', got Ok",
@@ -454,8 +459,8 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             message,
         } => {
             let result = catch_unwind(AssertUnwindSafe(|| {
-                let module = runtime.parse_module(&wasm_bytes)?;
-                runtime.validate_module(&module)
+                let module = parse_module(&wasm_bytes)?;
+                validate_module(&module)
             }));
             match result {
                 Ok(Ok(_)) => Err(Failed::from(format!(
@@ -493,8 +498,7 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             for assertion in assertions {
                 match assertion {
                     Assertion::Return(a) => {
-                        let runtime_args: Vec<_> =
-                            a.args.iter().map(test_arg_to_value).collect();
+                        let runtime_args: Vec<_> = a.args.iter().map(test_arg_to_value).collect();
 
                         let result = catch_unwind(AssertUnwindSafe(|| {
                             runtime.invoke(mh, &a.func_name, &runtime_args)
@@ -510,10 +514,8 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                                 continue;
                             }
                             Err(_) => {
-                                failures.push(format!(
-                                    "line {}: '{}' panicked",
-                                    a.line, a.func_name
-                                ));
+                                failures
+                                    .push(format!("line {}: '{}' panicked", a.line, a.func_name));
                                 continue;
                             }
                         };
@@ -522,7 +524,10 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                         if actual.len() != a.expected.len() {
                             failures.push(format!(
                                 "line {}: '{}' returned {} values, expected {}",
-                                a.line, a.func_name, actual.len(), a.expected.len()
+                                a.line,
+                                a.func_name,
+                                actual.len(),
+                                a.expected.len()
                             ));
                             continue;
                         }
@@ -538,8 +543,7 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                         }
                     }
                     Assertion::Trap(a) => {
-                        let runtime_args: Vec<_> =
-                            a.args.iter().map(test_arg_to_value).collect();
+                        let runtime_args: Vec<_> = a.args.iter().map(test_arg_to_value).collect();
 
                         let result = catch_unwind(AssertUnwindSafe(|| {
                             runtime.invoke(mh, &a.func_name, &runtime_args)

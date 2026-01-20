@@ -54,14 +54,13 @@ impl<'a> FromReader<'a> for ElementSegmentMode {
         let flag: u32 = reader.read().map_err(Self::Error::Flag)?;
 
         if (flag & !0b111) != 0 {
-            return Err(ReadError {
+            return Err(Self::Error::Flag(ReadError {
                 offset,
                 kind: ReadErrorKind::UnexpectedValue {
                     value: flag.to_string(),
                     expected: "0 <= flag <= 7 for element segment".to_string(),
                 },
-            })
-            .map_err(Self::Error::Flag);
+            }));
         }
 
         let mode = if flag & 0b001 != 0 {
@@ -149,14 +148,13 @@ impl SectionEntry for ElementSegment {
         let flag: u32 = reader.read().map_err(ElementSectionReadError::ModeFlag)?;
 
         if (flag & !0b111) != 0 {
-            return Err(ReadError {
+            return Err(ElementSectionReadError::ModeFlag(ReadError {
                 offset,
                 kind: ReadErrorKind::UnexpectedValue {
                     value: flag.to_string(),
                     expected: "0 <= flag <= 7 for element segment".to_string(),
                 },
-            })
-            .map_err(ElementSectionReadError::ModeFlag)?;
+            }))?;
         }
 
         let mode = if flag & 0b001 != 0 {

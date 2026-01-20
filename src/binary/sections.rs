@@ -256,7 +256,7 @@ pub fn decode_section<T: SectionEntry>(
     reader: &mut Reader,
     info: SectionInfo,
 ) -> std::result::Result<Vec<T>, SectionError> {
-    let mut reader = reader.scoped(info.size as u32).map_err(|e| SectionError {
+    let mut reader = reader.scoped(info.size).map_err(|e| SectionError {
         kind: Box::new(SectionErrorKind::SectionSize(e)),
         info,
         idx: None,

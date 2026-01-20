@@ -62,14 +62,13 @@ impl<'a> FromReader<'a> for DataSegmentMode {
                 mem_index: reader.read().map_err(Self::Error::MemIndex)?,
                 offset: reader.read().map_err(Self::Error::Expression)?,
             }),
-            _ => Err(ReadError {
+            _ => Err(Self::Error::Flag(ReadError {
                 offset,
                 kind: ReadErrorKind::UnexpectedValue {
                     value: flag.to_string(),
                     expected: "0, 1 or 2".to_string(),
                 },
-            })
-            .map_err(Self::Error::Flag),
+            })),
         }
     }
 }

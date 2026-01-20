@@ -1,11 +1,9 @@
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::io::{Seek, SeekFrom};
-use std::iter::repeat_n;
-use std::ops::{BitAnd, BitOr, BitXor};
 use std::result;
 
 mod binary;
+pub mod runtime;
 
 use crate::binary::sections::custom::decode_custom_section;
 use crate::binary::sections::{
@@ -14,8 +12,6 @@ use crate::binary::sections::{
     SectionId, StartSection, TableSection, TypeSection, decode_data_count_section, decode_section,
     decode_start_section,
 };
-use crate::binary::types::{FuncType, TypeIdx, ValType};
-use crate::instructions::Instruction;
 use binary::reader::ReadErrorKind;
 use binary::reader::{ReadError, Reader};
 
@@ -148,446 +144,6 @@ impl<'a> ModuleReader<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct FuncAddr(usize);
-
-impl From<usize> for FuncAddr {
-    fn from(value: usize) -> Self {
-        FuncAddr(value)
-    }
-}
-
-impl TryFrom<&ExternVal> for FuncAddr {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &ExternVal) -> std::result::Result<Self, Self::Error> {
-        match *value {
-            ExternVal::Func(funcaddr) => Ok(funcaddr),
-            _ => panic!("oops"),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum ExternVal {
-    Func(FuncAddr),
-    Table(usize),
-    Mem(usize),
-    Global(usize),
-}
-
-#[derive(Debug, Default)]
-pub struct ModuleInstance {
-    types: Vec<FuncType>,
-    funcaddrs: Vec<FuncAddr>,
-    exports: HashMap<String, ExternVal>,
-}
-
-#[derive(Debug)]
-pub struct Func {
-    #[allow(dead_code)]
-    typeidx: TypeIdx,
-    locals: Vec<ValType>,
-    body: Vec<Instruction>,
-}
-
-#[derive(Debug)]
-pub struct FuncInstance {
-    ftype: FuncType,
-    module: ModuleHandle,
-    func: Func,
-}
-
-#[derive(Debug, Default)]
-pub struct Store {
-    funcs: Vec<FuncInstance>,
-}
-
-impl Store {
-    pub fn get_func(&self, addr: FuncAddr) -> &FuncInstance {
-        &self.funcs[addr.0]
-    }
-}
-
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
-pub struct ModuleHandle(usize);
-
-#[derive(Debug, Default)]
-struct ModuleRegistry {
-    map: HashMap<ModuleHandle, ModuleInstance>,
-    next_handle: usize,
-}
-
-impl ModuleRegistry {
-    fn reserve(&mut self) -> ModuleHandle {
-        let h = ModuleHandle(self.next_handle);
-        self.next_handle += 1;
-        h
-    }
-
-    fn register(&mut self, handle: ModuleHandle, inst: ModuleInstance) {
-        match self.map.entry(handle) {
-            Entry::Vacant(e) => {
-                e.insert(inst);
-            }
-            Entry::Occupied(_) => panic!("Handle taken"),
-        }
-    }
-
-    fn get_instance(&self, handle: ModuleHandle) -> &ModuleInstance {
-        self.map.get(&handle).unwrap()
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Runtime {
-    call_stack: Vec<Frame>,
-    value_stack: Vec<Value>,
-
-    store: Store,
-    module_registry: ModuleRegistry,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Value {
-    I32(i32),
-    I64(i64),
-    F32(f32),
-    F64(f64),
-    NullRef,
-    FuncRef(usize),
-    ExternRef(usize),
-}
-
-impl From<ValType> for Value {
-    fn from(value: ValType) -> Self {
-        match value {
-            ValType::I32 => Value::I32(0),
-            ValType::I64 => Value::I64(0),
-            ValType::F32 => Value::F32(0.0),
-            ValType::F64 => Value::F64(0.0),
-            ValType::V128 => unimplemented!(),
-            ValType::Ref(_) => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum StackEntry {
-    Value(Value),
-    Label,
-    Activation(Frame),
-}
-
-#[derive(Debug)]
-pub struct Frame {
-    arity: u32,
-    funcaddr: FuncAddr,
-    locals: Vec<Value>,
-    pc: isize,
-    sp: usize,
-}
-
-impl Runtime {
-    fn instantiate_module(&mut self, module: &Module) -> ModuleHandle {
-        let h = self.module_registry.reserve();
-        let mut mi = ModuleInstance::default();
-
-        // Handle optional sections - minimal modules may have none
-        if let Some(typesec) = &module.types {
-            mi.types = typesec.clone();
-        }
-
-        // Only process functions if we have both function and code sections
-        if let (Some(funcsec), Some(codesec), Some(typesec)) =
-            (&module.functions, &module.codes, &module.types)
-        {
-            for (idx, typeidx) in funcsec.iter().enumerate() {
-                let typeidx = *typeidx;
-
-                let locals = {
-                    let mut v = vec![];
-                    for l in codesec[idx].locals.as_slice() {
-                        v.extend(repeat_n(l.valtype, l.count as usize));
-                    }
-                    v
-                };
-                let func = Func {
-                    typeidx,
-                    locals,
-                    body: codesec[idx].body.clone(),
-                };
-
-                let funcinst = FuncInstance {
-                    ftype: typesec[typeidx as usize].clone(),
-                    module: h,
-                    func,
-                };
-
-                mi.funcaddrs.push(self.store.funcs.len().into());
-                self.store.funcs.push(funcinst);
-            }
-        }
-
-        // Only process exports if we have them
-        if let Some(exports) = &module.exports {
-            for export in exports {
-                let funcaddr = mi.funcaddrs[export.index as usize];
-                mi.exports
-                    .insert(export.name.clone(), ExternVal::Func(funcaddr));
-            }
-        }
-
-        self.module_registry.register(h, mi);
-        h
-    }
-
-    pub fn invoke(
-        &mut self,
-        module: ModuleHandle,
-        fn_name: &str,
-        fn_args: &[Value],
-    ) -> result::Result<Vec<Value>, Error> {
-        let mi = self.module_registry.get_instance(module);
-        let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
-        let arity = self.store.get_func(funcaddr).ftype.results.len();
-
-        self.value_stack.extend_from_slice(fn_args);
-
-        self.call(funcaddr);
-        self.execute()?;
-
-        let idx = self.value_stack.len() - arity;
-        Ok(self.value_stack.split_off(idx))
-    }
-
-    fn call(&mut self, funcaddr: FuncAddr) {
-        let func_instance = self.store.get_func(funcaddr);
-        let n_args = func_instance.ftype.params.len();
-        let arity = func_instance.ftype.results.len() as u32;
-        let sp = self.value_stack.len() - n_args;
-
-        let mut locals: Vec<Value> = self.value_stack.split_off(sp);
-        locals.extend(
-            func_instance
-                .func
-                .locals
-                .clone()
-                .into_iter()
-                .map(Into::<Value>::into),
-        );
-
-        self.call_stack.push(Frame {
-            arity,
-            funcaddr,
-            locals,
-            pc: -1,
-            sp,
-        });
-    }
-
-    fn unary_op_i32<F, R>(&mut self, unop: F)
-    where
-        F: FnOnce(i32) -> R,
-        R: Into<i32>,
-    {
-        let lhs = self.value_stack.pop().unwrap();
-        let res = match lhs {
-            Value::I32(a) => unop(a).into(),
-            _ => unreachable!(),
-        };
-        self.value_stack.push(Value::I32(res));
-    }
-
-    fn binary_op_i32<F, R>(&mut self, binop: F)
-    where
-        F: FnOnce(i32, i32) -> R,
-        R: Into<i32>,
-    {
-        let rhs = self.value_stack.pop().unwrap();
-        let lhs = self.value_stack.pop().unwrap();
-        let res = match (lhs, rhs) {
-            (Value::I32(a), Value::I32(b)) => binop(a, b).into(),
-            _ => unreachable!(),
-        };
-        self.value_stack.push(Value::I32(res));
-    }
-
-    fn try_binary_op_i32<F, R>(&mut self, binop: F) -> result::Result<(), Error>
-    where
-        F: FnOnce(i32, i32) -> Option<R>,
-        R: Into<i32>,
-    {
-        let rhs = self.value_stack.pop().unwrap();
-        let lhs = self.value_stack.pop().unwrap();
-        let res = match (lhs, rhs) {
-            (Value::I32(a), Value::I32(b)) => binop(a, b).ok_or(Error::Trap)?.into(),
-            _ => unreachable!(),
-        };
-        self.value_stack.push(Value::I32(res));
-        Ok(())
-    }
-
-    fn binary_op_u32<F, R>(&mut self, binop: F)
-    where
-        F: FnOnce(u32, u32) -> R,
-        R: Into<u32>,
-    {
-        let rhs = self.value_stack.pop().unwrap();
-        let lhs = self.value_stack.pop().unwrap();
-        let res = match (lhs, rhs) {
-            (Value::I32(a), Value::I32(b)) => binop(a as u32, b as u32).into(),
-            _ => unreachable!(),
-        };
-        self.value_stack.push(Value::I32(res as i32));
-    }
-
-    fn try_binary_op_u32<F, R>(&mut self, binop: F) -> Result<(), Error>
-    where
-        F: FnOnce(u32, u32) -> Option<R>,
-        R: Into<u32>,
-    {
-        let rhs = self.value_stack.pop().unwrap();
-        let lhs = self.value_stack.pop().unwrap();
-        let res = match (lhs, rhs) {
-            (Value::I32(a), Value::I32(b)) => binop(a as u32, b as u32).ok_or(Error::Trap)?.into(),
-            _ => unreachable!(),
-        };
-        self.value_stack.push(Value::I32(res as i32));
-        Ok(())
-    }
-
-    fn execute(&mut self) -> result::Result<(), Error> {
-        while let Some(frame) = self.call_stack.last_mut() {
-            let func_inst = self.store.get_func(frame.funcaddr);
-            let instrs = &func_inst.func.body;
-
-            frame.pc += 1;
-            if let Some(inst) = instrs.get(frame.pc as usize) {
-                match inst {
-                    Instruction::Nop => continue,
-                    Instruction::If(_) => {
-                        let cond = self.value_stack.pop().unwrap();
-                        match cond {
-                            Value::I32(0) => {
-                                frame.pc += instrs[frame.pc as usize..]
-                                    .iter()
-                                    .position(|&x| x == Instruction::Else || x == Instruction::End)
-                                    .unwrap() as isize;
-                            }
-
-                            Value::I32(_) => continue,
-                            _ => unreachable!(),
-                        };
-                    }
-                    Instruction::Else => {
-                        frame.pc += instrs[frame.pc as usize..]
-                            .iter()
-                            .position(|&x| x == Instruction::End)
-                            .unwrap() as isize;
-                    }
-                    Instruction::End => {
-                        if frame.pc as usize == instrs.len() - 1 {
-                            let results = {
-                                let idx = self.value_stack.len() - frame.arity as usize;
-                                self.value_stack.split_off(idx)
-                            };
-                            self.value_stack.truncate(frame.sp);
-                            self.value_stack.extend(results);
-                            self.call_stack.pop();
-                        }
-                    }
-                    Instruction::Call(idx) => {
-                        let mi = self.module_registry.get_instance(func_inst.module);
-                        let funcaddr = mi.funcaddrs[*idx as usize];
-                        self.call(funcaddr);
-                    }
-                    Instruction::LocalGet(idx) => {
-                        let v = frame.locals[*idx as usize];
-                        self.value_stack.push(v)
-                    }
-                    Instruction::LocalSet(_) => todo!(),
-                    Instruction::LocalTee(_) => todo!(),
-
-                    Instruction::I32Const(v) => self.value_stack.push(Value::I32(*v)),
-                    Instruction::I64Const(v) => self.value_stack.push(Value::I64(*v)),
-
-                    // Comparison ops
-                    Instruction::I32Eqz => self.unary_op_i32(|a| a == 0),
-                    Instruction::I32Eq => self.binary_op_i32(|a, b| a == b),
-                    Instruction::I32Ne => self.binary_op_i32(|a, b| a != b),
-                    Instruction::I32LtS => self.binary_op_i32(|a, b| a < b),
-                    Instruction::I32LtU => self.binary_op_u32(|a, b| a < b),
-                    Instruction::I32GtS => self.binary_op_i32(|a, b| a > b),
-                    Instruction::I32GtU => self.binary_op_u32(|a, b| a > b),
-                    Instruction::I32LeS => self.binary_op_i32(|a, b| a <= b),
-                    Instruction::I32LeU => self.binary_op_u32(|a, b| a <= b),
-                    Instruction::I32GeS => self.binary_op_i32(|a, b| a >= b),
-                    Instruction::I32GeU => self.binary_op_u32(|a, b| a >= b),
-
-                    // Unary ops
-                    Instruction::I32Clz => self.unary_op_i32(|a| a.leading_zeros() as i32),
-                    Instruction::I32Ctz => self.unary_op_i32(|a| a.trailing_zeros() as i32),
-                    Instruction::I32Popcnt => self.unary_op_i32(|a| a.count_ones() as i32),
-
-                    // Arithmetic ops
-                    Instruction::I32Add => self.binary_op_i32(|a, b| a.wrapping_add(b)),
-                    Instruction::I32Sub => self.binary_op_i32(|a, b| a.wrapping_sub(b)),
-                    Instruction::I32Mul => self.binary_op_i32(|a, b| a.wrapping_mul(b)),
-                    Instruction::I32DivS => self.try_binary_op_i32(|a, b| a.checked_div(b))?,
-                    Instruction::I32DivU => self.try_binary_op_u32(|a, b| a.checked_div(b))?,
-                    Instruction::I32RemS => self.try_binary_op_i32(|a, b| {
-                        if b == 0 {
-                            None
-                        } else {
-                            Some(a.wrapping_rem(b))
-                        }
-                    })?,
-
-                    Instruction::I32RemU => self.try_binary_op_u32(|a, b| {
-                        if b == 0 {
-                            None
-                        } else {
-                            Some(a.wrapping_rem(b))
-                        }
-                    })?,
-                    Instruction::I32And => self.binary_op_i32(|a, b| BitAnd::bitand(a, b)),
-                    Instruction::I32Or => self.binary_op_i32(|a, b| BitOr::bitor(a, b)),
-                    Instruction::I32Xor => self.binary_op_i32(|a, b| BitXor::bitxor(a, b)),
-                    Instruction::I32Shl => self.binary_op_i32(|a, b| a.wrapping_shl(b as u32)),
-                    Instruction::I32ShrS => self.binary_op_i32(|a, b| a.wrapping_shr(b as u32)),
-                    Instruction::I32ShrU => self.binary_op_u32(|a, b| a.wrapping_shr(b)),
-                    Instruction::I32Rotl => self.binary_op_i32(|a, b| a.rotate_left(b as u32)),
-                    Instruction::I32Rotr => self.binary_op_i32(|a, b| a.rotate_right(b as u32)),
-
-                    // Sign extension ops
-                    Instruction::I32Extend8S => self.unary_op_i32(|a| a as i8),
-                    Instruction::I32Extend16S => self.unary_op_i32(|a| a as i16),
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Decode and instantiate a module from bytes
-    pub fn load_module(&mut self, bytes: &[u8]) -> std::result::Result<ModuleHandle, Error> {
-        let module = decode_module(bytes.to_vec())?;
-        let handle = self.instantiate_module(&module);
-        Ok(handle)
-    }
-
-    // Parse module
-    pub fn parse_module(&self, bytes: &[u8]) -> result::Result<Module, Error> {
-        decode_module(bytes.to_vec())
-    }
-
-    // Validate module
-    pub fn validate_module(&self, _: &Module) -> result::Result<(), Error> {
-        Ok(())
-    }
-}
-
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -701,6 +257,16 @@ impl From<ReadError> for MalformedError {
     }
 }
 
+// Parse module
+pub fn parse_module(bytes: &[u8]) -> result::Result<Module, Error> {
+    decode_module(bytes.to_vec())
+}
+
+// Validate module
+pub fn validate_module(_: &Module) -> result::Result<(), Error> {
+    Ok(())
+}
+
 /// Decode a module from bytes (parsing only, no instantiation)
 fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
     let mut m = Module::from_bytes(bytes);
@@ -772,15 +338,14 @@ fn decode_module(bytes: Vec<u8>) -> std::result::Result<Module, Error> {
             SectionId::Data => {
                 let data = decode_section(&mut reader, *item).map_err(MalformedError::Section)?;
                 // The number of data entry should match the data count section if present
-                if let Some(ref dc) = m.data_count {
-                    if data.len() != dc.0 as usize {
+                if let Some(ref dc) = m.data_count
+                    && data.len() != dc.0 as usize {
                         return Err(MalformedError::InconsistentLength {
                             section: item.id,
                             other: SectionId::DataCount,
                         }
                         .into());
                     }
-                }
                 m.data = Some(data);
             }
             SectionId::DataCount => {

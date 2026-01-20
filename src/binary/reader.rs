@@ -28,7 +28,7 @@ impl<'a> Reader<'a> {
         // Check that the range is valid for the slice
         if bytes.get(start..end).is_none() {
             return Err(ReadError {
-                offset: start as usize,
+                offset: start,
                 kind: ReadErrorKind::OutOfRange {
                     size: (end - start) as u32,
                     remaining: (bytes.len() - start) as u64,

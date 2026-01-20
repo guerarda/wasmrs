@@ -1,5 +1,5 @@
 use std::fs;
-use wasmrs::Runtime;
+use wasmrs::runtime::Runtime;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -20,7 +20,7 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wasmrs::Value;
+    use wasmrs::runtime::value::Value;
 
     #[test]
     fn test_add_wasm() -> anyhow::Result<()> {
