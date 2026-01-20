@@ -1,12 +1,92 @@
-use crate::binary::reader::{ReadError, ReadErrorKind, Reader};
-use crate::binary::sections::custom::decode_custom_section;
-use crate::binary::sections::{
+use super::reader::{ReadError, ReadErrorKind, Reader};
+use super::sections::custom::decode_custom_section;
+use super::sections::{
     CodeSection, CustomSection, DataCountSection, DataSection, ElementSection, ExportSection,
     FunctionSection, GlobalSection, ImportSection, MemorySection, SectionError, SectionErrorKind,
     SectionId, SectionInfo, StartSection, TableSection, TypeSection, decode_data_count_section,
     decode_section, decode_start_section,
 };
-use crate::{Error, MalformedError};
+use crate::Error;
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum MalformedError {
+    Read(ReadError),
+    Preamble(ReadError),
+
+    DuplicateSection {
+        offset: usize,
+        id: SectionId,
+        other: SectionInfo,
+    },
+    SectionOrder {
+        offset: usize,
+        id: SectionId,
+        other: SectionInfo,
+    },
+    Section(SectionError),
+    InconsistentLength {
+        section: SectionId,
+        other: SectionId,
+    },
+}
+
+impl std::fmt::Display for MalformedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read(_) => write!(f, "Malformed module"),
+            Self::Preamble(_) => write!(f, "invalid module preamble"),
+            Self::DuplicateSection { offset, id, other } => {
+                write!(
+                    f,
+                    "duplicate section: {id} section at offset {offset:#0x} ({offset}), previously seen at offset {other_offset:#0x} ({other_offset})",
+                    id = id,
+                    offset = offset,
+                    other_offset = other.offset
+                )
+            }
+            Self::SectionOrder { offset, id, other } => {
+                write!(
+                    f,
+                    "section out of order: {id} section at offset {offset:#0x} ({offset}), appears after {other_id} at offset {other_offset:#0x} ({other_offset})",
+                    id = id,
+                    offset = offset,
+                    other_id = other.id,
+                    other_offset = other.offset
+                )
+            }
+            Self::Section(_) => write!(f, "malformed section"),
+            Self::InconsistentLength { section, other } => {
+                write!(f, "inconsistent section lenght, {section} and {other}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for MalformedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Read(e) => Some(e),
+            Self::Preamble(e) => Some(e),
+            Self::DuplicateSection { .. } => None,
+            Self::SectionOrder { .. } => None,
+            Self::Section(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<SectionError> for MalformedError {
+    fn from(value: SectionError) -> Self {
+        MalformedError::Section(value)
+    }
+}
+
+impl From<ReadError> for MalformedError {
+    fn from(value: ReadError) -> Self {
+        MalformedError::Read(value)
+    }
+}
 
 use std::collections::HashMap;
 use std::io::{Seek, SeekFrom};
