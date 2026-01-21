@@ -31,6 +31,12 @@ impl ValTypeOrUnknown {
     }
 }
 
+impl From<&ValType> for ValTypeOrUnknown {
+    fn from(value: &ValType) -> Self {
+        ValTypeOrUnknown::Val(*value)
+    }
+}
+
 #[derive(Debug)]
 pub struct CtrlFrame {
     opcode: Instruction,
@@ -91,7 +97,7 @@ impl Validator {
         Ok(res)
     }
     fn pop_val(&mut self) -> result::Result<ValTypeOrUnknown, ValidationError> {
-        let last = self.ctrls.last().unwrap();
+        let last = self.ctrls.last().expect("unexpected empty control stack");
         if self.vals.len() == last.height && last.unreachable {
             return Ok(ValTypeOrUnknown::Unknown);
         }
@@ -135,14 +141,16 @@ impl Validator {
     fn pop_ctrl(&mut self) -> result::Result<CtrlFrame, ValidationError> {
         let frame = self
             .ctrls
-            .pop()
+            .last()
             .ok_or(ValidationError::ControlStackUnderflow)?;
+        let height = frame.height;
+        let end_types = frame.end_types.clone();
 
-        let _ = self.pop_vals_expect(&frame.end_types)?;
-        if self.vals.len() != frame.height {
-            return Err(ValidationError::ControlStackUnderflow);
+        let _ = self.pop_vals_expect(&end_types)?;
+        if self.vals.len() != height {
+            return Err(ValidationError::TypeMismatch);
         }
-        Ok(frame)
+        Ok(self.ctrls.pop().expect("unexpected empty control stack"))
     }
 
     fn label_types(frame: CtrlFrame) -> Vec<ValTypeOrUnknown> {
@@ -161,10 +169,89 @@ impl Validator {
 
     fn validate_function(
         &mut self,
-        _functype: &FuncType,
-        _body: &[Instruction],
+        functype: &FuncType,
+        body: &[Instruction],
+        _module: &Module,
     ) -> result::Result<(), ValidationError> {
-        Err(ValidationError::ControlStackUnderflow)
+        let start_types: Vec<ValTypeOrUnknown> =
+            functype.params.iter().map(ValTypeOrUnknown::from).collect();
+        let end_types: Vec<ValTypeOrUnknown> = functype
+            .results
+            .iter()
+            .map(ValTypeOrUnknown::from)
+            .collect();
+        self.push_ctrl(Instruction::Call(0), &start_types, &end_types);
+
+        for inst in body {
+            match inst {
+                Instruction::Nop => todo!(),
+                Instruction::If(_) => todo!(),
+                Instruction::Else => todo!(),
+                Instruction::End => {
+                    let frame = self.pop_ctrl()?;
+                    self.push_vals(&frame.end_types);
+                }
+                Instruction::Call(_) => todo!(),
+                Instruction::Drop => {
+                    self.pop_val()?;
+                }
+                Instruction::LocalGet(_) => todo!(),
+                Instruction::LocalSet(_) => todo!(),
+                Instruction::LocalTee(_) => todo!(),
+                Instruction::I32Const(_) => todo!(),
+                Instruction::I64Const(_) => todo!(),
+                Instruction::I32Eqz => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                }
+                Instruction::I32Eq => todo!(),
+                Instruction::I32Ne => todo!(),
+                Instruction::I32LtS => todo!(),
+                Instruction::I32LtU => todo!(),
+                Instruction::I32LeS => todo!(),
+                Instruction::I32LeU => todo!(),
+                Instruction::I32GtS => todo!(),
+                Instruction::I32GtU => todo!(),
+                Instruction::I32GeS => todo!(),
+                Instruction::I32GeU => todo!(),
+                Instruction::I32Clz => todo!(),
+                Instruction::I32Ctz => todo!(),
+                Instruction::I32Popcnt => todo!(),
+                Instruction::I32Add => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                }
+                Instruction::I32Sub => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                }
+                Instruction::I32Mul => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                }
+                Instruction::I32DivS => todo!(),
+                Instruction::I32DivU => todo!(),
+                Instruction::I32RemS => todo!(),
+                Instruction::I32RemU => todo!(),
+                Instruction::I32And => todo!(),
+                Instruction::I32Or => todo!(),
+                Instruction::I32Xor => todo!(),
+                Instruction::I32Shl => todo!(),
+                Instruction::I32ShrS => todo!(),
+                Instruction::I32ShrU => todo!(),
+                Instruction::I32Rotl => todo!(),
+                Instruction::I32Rotr => todo!(),
+                Instruction::I32Extend8S => todo!(),
+                Instruction::I32Extend16S => todo!(),
+                Instruction::RefNull(_ref_type) => todo!(),
+                Instruction::RefFunc(_) => todo!(),
+            }
+        }
+        self.pop_ctrl()?;
+        Ok(())
     }
 
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
@@ -188,7 +275,11 @@ impl Validator {
             .iter()
             .zip(code_section.iter())
             .try_for_each(|(idx, entry)| {
-                Validator::default().validate_function(&type_section[*idx as usize], &entry.body)
+                Validator::default().validate_function(
+                    &type_section[*idx as usize],
+                    &entry.body,
+                    module,
+                )
             })
     }
 }
