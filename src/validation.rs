@@ -287,3 +287,218 @@ impl Validator {
 pub fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
     Validator::validate_module(module)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::binary::module::decode_bytes;
+
+    #[test]
+    fn test_type_unary_operand_empty() -> anyhow::Result<()> {
+        // (func (i32.eqz) (drop))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x06\x01\x04\x00\x45\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_block() -> anyhow::Result<()> {
+        // (func (i32.const 0) (block (i32.eqz) (drop)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x0b\x01\x09\x00\x41\x00\x02\x40\x45\x1a\x0b\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_loop() -> anyhow::Result<()> {
+        // (func (i32.const 0) (loop (i32.eqz) (drop)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x0b\x01\x09\x00\x41\x00\x03\x40\x45\x1a\x0b\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_if() -> anyhow::Result<()> {
+        // (func (i32.const 0) (i32.const 0) (if (then (i32.eqz) (drop))))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x0d\x01\x0b\x00\x41\x00\x41\x00\x04\x40\x45\x1a\x0b\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_else() -> anyhow::Result<()> {
+        // (func (i32.const 0) (i32.const 0) (if (result i32) (then (i32.const 0)) (else (i32.eqz))) (drop))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x10\x01\x0e\x00\x41\x00\x41\x00\x04\x7f\x41\x00\x05\x45\x0b\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_br() -> anyhow::Result<()> {
+        // (func (i32.const 0) (block (br 0 (i32.eqz)) (drop)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x0d\x01\x0b\x00\x41\x00\x02\x40\x45\x0c\x00\x1a\x0b\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_br_if() -> anyhow::Result<()> {
+        // (func (i32.const 0) (block (br_if 0 (i32.eqz) (i32.const 1)) (drop)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x0f\x01\x0d\x00\x41\x00\x02\x40\x45\x41\x01\x0d\x00\x1a\x0b\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_br_table() -> anyhow::Result<()> {
+        // (func (i32.const 0) (block (br_table 0 (i32.eqz)) (drop)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x0e\x01\x0c\x00\x41\x00\x02\x40\x45\x0e\x00\x00\x1a\x0b\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_return() -> anyhow::Result<()> {
+        // (func (return (i32.eqz)) (drop))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x07\x01\x05\x00\x45\x0f\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_type_unary_operand_empty_in_select() -> anyhow::Result<()> {
+        // (func (select (i32.eqz) (i32.const 1) (i32.const 2)) (drop))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x04\x01\x60\x00\x00",
+            b"\x03\x02\x01\x00",
+            b"\x0a\x0b\x01\x09\x00\x45\x41\x01\x41\x02\x1b\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+}
