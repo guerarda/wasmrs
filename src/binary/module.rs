@@ -166,7 +166,7 @@ impl<'a> ModuleReader<'a> {
         let mut v: Vec<SectionInfo> = Vec::new();
         let mut seen: HashMap<SectionId, SectionInfo> = HashMap::new();
 
-        while self.reader.has_data_left()? {
+        while !self.reader.is_exhausted() {
             let offset = self.reader.position() as usize;
             let id: SectionId = self.reader.read_u8()?.try_into().map_err(|e| ReadError {
                 kind: ReadErrorKind::InvalidEnumValue(e),

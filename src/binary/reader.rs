@@ -85,17 +85,6 @@ impl<'a> Reader<'a> {
         self.position() >= self.range.end
     }
 
-    pub fn has_data_left(&mut self) -> Result<bool> {
-        let offset = self.cursor.position() as usize;
-        self.cursor
-            .fill_buf()
-            .map(|b| !b.is_empty())
-            .map_err(|e| ReadError {
-                offset,
-                kind: ReadErrorKind::Read(e),
-            })
-    }
-
     pub fn peek(&mut self) -> Result<u8> {
         let offset = self.cursor.position() as usize;
         Ok(self.cursor.fill_buf().map_err(|e| ReadError {
