@@ -96,6 +96,7 @@ impl Validator {
 
         Ok(res)
     }
+
     fn pop_val(&mut self) -> result::Result<ValTypeOrUnknown, ValidationError> {
         let last = self.ctrls.last().expect("unexpected empty control stack");
         if self.vals.len() == last.height && last.unreachable {
@@ -144,6 +145,9 @@ impl Validator {
             .last()
             .ok_or(ValidationError::ControlStackUnderflow)?;
         let height = frame.height;
+
+        // need to clone here because pop_vals_expect below
+        // needs a mutable ref
         let end_types = frame.end_types.clone();
 
         let _ = self.pop_vals_expect(&end_types)?;

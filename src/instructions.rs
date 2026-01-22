@@ -1,6 +1,6 @@
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
-    types::{FuncIdx, RefType, ValType},
+    types::{BlockType, FuncIdx, RefType},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -9,7 +9,7 @@ pub enum Instruction {
 
     //Block,
     //Loop,
-    If(ValType),
+    If(BlockType),
     Else,
 
     End,
@@ -68,7 +68,7 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
     match opcode {
         0x01 => Ok(Instruction::Nop),
         0x04 => {
-            let bt: ValType = decode_arg(reader, "if")?;
+            let bt: BlockType = decode_arg(reader, "if")?;
             Ok(Instruction::If(bt))
         }
         0x05 => Ok(Instruction::Else),
@@ -260,6 +260,7 @@ impl From<ReadError> for InstructionError {
 mod tests {
     use super::*;
     use crate::binary::reader::Reader;
+    use crate::binary::types::ValType;
 
     #[test]
     fn test_decode_control_flow() {
@@ -279,7 +280,7 @@ mod tests {
         let mut reader = Reader::from_bytes(&[0x04, 0x7f], 0);
         assert_eq!(
             decode_instruction(&mut reader).unwrap(),
-            Instruction::If(ValType::I32)
+            Instruction::If(BlockType::Value(ValType::I32))
         );
     }
 

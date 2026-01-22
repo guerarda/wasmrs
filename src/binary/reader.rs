@@ -66,10 +66,6 @@ impl<'a> Reader<'a> {
         Ok(sub)
     }
 
-    pub fn is_exhausted(&self) -> bool {
-        self.position() >= self.range.end
-    }
-
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         let offset = self.cursor.position() as usize;
         std::io::Read::read_exact(self, buf).map_err(|e| ReadError {
@@ -85,6 +81,10 @@ impl<'a> Reader<'a> {
         self.cursor.position()
     }
 
+    pub fn is_exhausted(&self) -> bool {
+        self.position() >= self.range.end
+    }
+
     pub fn has_data_left(&mut self) -> Result<bool> {
         let offset = self.cursor.position() as usize;
         self.cursor
@@ -94,6 +94,14 @@ impl<'a> Reader<'a> {
                 offset,
                 kind: ReadErrorKind::Read(e),
             })
+    }
+
+    pub fn peek(&mut self) -> Result<u8> {
+        let offset = self.cursor.position() as usize;
+        Ok(self.cursor.fill_buf().map_err(|e| ReadError {
+            offset,
+            kind: ReadErrorKind::Read(e),
+        })?[0])
     }
 
     pub fn read_u8(&mut self) -> Result<u8> {

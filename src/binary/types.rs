@@ -1,5 +1,5 @@
 use crate::{
-    binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
+    binary::reader::{FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader},
     instructions::{Instruction, InstructionError, decode_instruction},
 };
 
@@ -97,6 +97,48 @@ impl<'a> FromReader<'a> for ValType {
             .read_u8()?
             .try_into()
             .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
+
+/// Block Type
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum BlockType {
+    Empty,
+    Value(ValType),
+    Index(TypeIdx),
+}
+
+impl<'a> FromReader<'a> for BlockType {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, ReadError> {
+        let pos = reader.position() as usize;
+
+        let byte = reader.peek()?;
+        if byte == 0x40 {
+            let _ = reader.read_u8()?;
+            return Ok(BlockType::Empty);
+        }
+
+        if let Ok(valtype) = ValType::try_from(byte) {
+            // consume
+            let _ = reader.read_u8()?;
+            return Ok(BlockType::Value(valtype));
+        }
+
+        // If neither empty or ValType, then it's a type index encoded
+        // as a signed 33 bit integer. but that must be positive.
+        let idx = reader.read_i64()?;
+        if idx < 0 || idx > u32::MAX as i64 {
+            return Err(ReadError::at_offset(
+                ReadErrorKind::UnexpectedValue {
+                    value: idx.to_string(),
+                    expected: "valid u32 value".to_string(),
+                },
+                pos,
+            ));
+        }
+        return Ok(BlockType::Index(idx as u32));
     }
 }
 
