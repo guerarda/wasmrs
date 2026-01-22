@@ -55,12 +55,14 @@ impl SectionEntry for CodeEntry {
                 decode_instruction(&mut reader).map_err(CodeSectionReadError::FunctionBody)?;
             body.push(instr);
         }
-
-        Ok(CodeEntry {
-            size: size as usize,
-            locals,
-            body,
-        })
+        match body.last() {
+            Some(Instruction::End) => Ok(CodeEntry {
+                size: size as usize,
+                locals,
+                body,
+            }),
+            _ => Err(CodeSectionReadError::MissingEnd.into()),
+        }
     }
 }
 
@@ -83,6 +85,7 @@ pub enum CodeSectionReadError {
     FunctionLocals(VecReadError<ReadError>),
     TooManyLocals,
     FunctionBody(InstructionError),
+    MissingEnd,
 }
 
 impl error::Error for CodeSectionReadError {
@@ -92,6 +95,7 @@ impl error::Error for CodeSectionReadError {
             Self::FunctionBody(e) => Some(e),
             Self::TooManyLocals => None,
             Self::FunctionLocals(e) => Some(e),
+            Self::MissingEnd => None,
         }
     }
 }
@@ -103,6 +107,7 @@ impl fmt::Display for CodeSectionReadError {
             Self::FunctionLocals(_) => write!(f, "reading function local"),
             Self::TooManyLocals => write!(f, "checking function locals count"),
             Self::FunctionBody(_) => write!(f, "reading function body"),
+            Self::MissingEnd => write!(f, "missing end instruction (0x0b)"),
         }
     }
 }
