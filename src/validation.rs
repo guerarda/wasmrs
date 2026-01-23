@@ -198,6 +198,9 @@ impl Validator {
                     let frame = self.pop_ctrl()?;
                     self.push_vals(&frame.end_types);
                 }
+                Instruction::Br(_) => todo!(),
+                Instruction::BrIf(_) => todo!(),
+                Instruction::BrTable(_) => todo!(),
                 Instruction::Call(_) => todo!(),
                 Instruction::Drop => {
                     self.pop_val()?;

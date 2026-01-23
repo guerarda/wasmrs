@@ -1,17 +1,19 @@
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
-    types::{BlockType, FuncIdx, RefType},
+    types::{BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, LabelIdx, RefType},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Unreachable,
     Nop,
-
     Block(BlockType),
     Loop(BlockType),
     If(BlockType),
     Else,
+    Br(LabelIdx),
+    BrIf(LabelIdx),
+    BrTable(BranchTableIdx),
 
     End,
 
@@ -82,7 +84,20 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
             Ok(Instruction::If(bt))
         }
         0x05 => Ok(Instruction::Else),
+
         0x0b => Ok(Instruction::End),
+        0x0c => {
+            let lbl: LabelIdx = decode_arg(reader, "br")?;
+            Ok(Instruction::Br(lbl))
+        }
+        0x0d => {
+            let lbl: LabelIdx = decode_arg(reader, "br_if")?;
+            Ok(Instruction::BrIf(lbl))
+        }
+        0x0e => {
+            let idx: BranchTableIdx = decode_arg(reader, "br_table")?;
+            Ok(Instruction::BrTable(idx))
+        }
 
         0x10 => {
             let idx: u32 = decode_arg(reader, "call")?;
@@ -270,6 +285,13 @@ impl From<ReadError> for ArgumentReadError {
         Self::Read(value)
     }
 }
+
+impl From<BranchTableIdxReadError> for ArgumentReadError {
+    fn from(value: BranchTableIdxReadError) -> Self {
+        Self::BranchTableIdx(value)
+    }
+}
+
 impl From<ReadError> for InstructionError {
     fn from(value: ReadError) -> Self {
         let offset = value.offset;

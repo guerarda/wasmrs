@@ -1,5 +1,9 @@
+use core::{error, fmt};
+
 use crate::{
-    binary::reader::{FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader},
+    binary::reader::{
+        FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, VecReadError,
+    },
     instructions::{Instruction, InstructionError, decode_instruction},
 };
 
@@ -12,7 +16,7 @@ pub type FuncIdx = u32;
 // pub type ElemIdx = u32;
 // pub type DataIdx = u32;
 // pub type LocalIdx = u32;
-// pub type LabelIdx = u32;
+pub type LabelIdx = u32;
 
 /// RefType
 #[repr(u8)]
@@ -187,11 +191,14 @@ impl<'a> FromReader<'a> for ConstExpression {
 
         while !reader.is_exhausted() {
             let instr = decode_instruction(reader).map_err(Self::Error::Instruction)?;
-            if instr != Instruction::End {
-                expr.push(instr);
-            } else {
-                expr.push(instr);
-                return Ok(Self(expr));
+            match instr {
+                Instruction::End => {
+                    expr.push(instr);
+                    return Ok(Self(expr));
+                }
+                _ => {
+                    expr.push(instr);
+                }
             }
         }
         Err(Self::Error::MissingEnd)
@@ -282,5 +289,48 @@ impl<'a> FromReader<'a> for Limit {
                 max: Some(reader.read().map_err(Self::Error::Max)?),
             }),
         }
+    }
+}
+
+// Branch table indices
+#[derive(Debug, Clone, PartialEq)]
+pub struct BranchTableIdx {
+    pub labels: Vec<LabelIdx>,
+    pub default: LabelIdx,
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum BranchTableIdxReadError {
+    Labels(VecReadError<ReadError>),
+    Default(ReadError),
+}
+
+impl error::Error for BranchTableIdxReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Labels(e) => Some(e),
+            Self::Default(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for BranchTableIdxReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Labels(_) => write!(f, "reading labels"),
+            Self::Default(_) => write!(f, "reading default lael"),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for BranchTableIdx {
+    type Error = BranchTableIdxReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let labels = reader.read().map_err(Self::Error::Labels)?;
+        let default = reader.read().map_err(Self::Error::Default)?;
+
+        Ok(Self { labels, default })
     }
 }

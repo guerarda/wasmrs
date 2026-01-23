@@ -103,7 +103,7 @@ impl Runtime {
                             Value::I32(0) => {
                                 frame.pc += instrs[frame.pc as usize..]
                                     .iter()
-                                    .position(|&x| x == Instruction::Else || x == Instruction::End)
+                                    .position(|x| *x == Instruction::Else || *x == Instruction::End)
                                     .unwrap() as isize;
                             }
 
@@ -114,7 +114,7 @@ impl Runtime {
                     Instruction::Else => {
                         frame.pc += instrs[frame.pc as usize..]
                             .iter()
-                            .position(|&x| x == Instruction::End)
+                            .position(|x| *x == Instruction::End)
                             .unwrap() as isize;
                     }
                     Instruction::End => {
@@ -128,6 +128,9 @@ impl Runtime {
                             self.call_stack.pop();
                         }
                     }
+                    Instruction::Br(_) => todo!(),
+                    Instruction::BrIf(_) => todo!(),
+                    Instruction::BrTable(_) => todo!(),
                     Instruction::Call(idx) => {
                         let mi = self.module_registry.get_instance(func_inst.module);
                         let funcaddr = mi.funcaddrs[*idx as usize];
