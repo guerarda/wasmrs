@@ -22,7 +22,10 @@ mod tests {
     use std::result;
 
     use super::*;
-    use wasmrs::{Error, runtime::value::Value};
+    use wasmrs::{
+        Error,
+        runtime::{TrapError, value::Value},
+    };
 
     #[test]
     fn test_add_wasm() -> anyhow::Result<()> {
@@ -155,7 +158,7 @@ mod tests {
         for (a, b) in cases {
             let r = runtime.invoke(mh, "div", &[Value::I32(a), Value::I32(b)]);
 
-            assert!(matches!(r, Err(Error::Trap)));
+            assert!(matches!(r, Err(Error::Trap(TrapError::Unexpected))));
         }
 
         Ok(())

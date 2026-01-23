@@ -12,12 +12,14 @@ pub use binary::MalformedError;
 
 use validation::ValidationError;
 
+use crate::runtime::TrapError;
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
     Malformed(MalformedError),
     Invalid(ValidationError),
-    Trap,
+    Trap(TrapError),
 }
 
 impl std::fmt::Display for Error {
@@ -25,7 +27,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::Malformed(e) => write!(f, "malformed module: {}", e),
             Error::Invalid(e) => write!(f, "invalid module: {}", e),
-            Error::Trap => write!(f, "trap"),
+            Error::Trap(e) => write!(f, "trap: {}", e),
         }
     }
 }
@@ -35,7 +37,7 @@ impl std::error::Error for Error {
         match self {
             Self::Malformed(e) => Some(e),
             Self::Invalid(e) => Some(e),
-            _ => None,
+            Self::Trap(e) => Some(e),
         }
     }
 }
@@ -49,6 +51,12 @@ impl From<MalformedError> for Error {
 impl From<ValidationError> for Error {
     fn from(value: ValidationError) -> Self {
         Error::Invalid(value)
+    }
+}
+
+impl From<TrapError> for Error {
+    fn from(value: TrapError) -> Self {
+        Error::Trap(value)
     }
 }
 

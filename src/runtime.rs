@@ -1,3 +1,4 @@
+use core::{error, fmt};
 use std::{iter::repeat_n, result};
 
 use crate::{
@@ -9,7 +10,6 @@ use crate::{
         store::{Func, FuncAddr, FuncInstance, Store},
         value::{ExternVal, Value},
     },
-    validation,
 };
 
 pub mod executor;
@@ -131,5 +131,30 @@ impl Runtime {
         //validation::validate_module(&module)?;
         let handle = self.instantiate_module(&module);
         Ok(handle)
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum TrapError {
+    Unreachable,
+    Unexpected,
+}
+
+impl error::Error for TrapError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unreachable => None,
+            Self::Unexpected => None,
+        }
+    }
+}
+
+impl fmt::Display for TrapError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unreachable => write!(f, "unreachable"),
+            Self::Unexpected => write!(f, "unexpected"),
+        }
     }
 }

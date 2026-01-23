@@ -6,7 +6,7 @@ use std::{
 use crate::{
     Error,
     instructions::Instruction,
-    runtime::{Runtime, value::Value},
+    runtime::{Runtime, TrapError, value::Value},
 };
 
 impl Runtime {
@@ -45,7 +45,7 @@ impl Runtime {
         let rhs = self.value_stack.pop().unwrap();
         let lhs = self.value_stack.pop().unwrap();
         let res = match (lhs, rhs) {
-            (Value::I32(a), Value::I32(b)) => binop(a, b).ok_or(Error::Trap)?.into(),
+            (Value::I32(a), Value::I32(b)) => binop(a, b).ok_or(TrapError::Unexpected)?.into(),
             _ => unreachable!(),
         };
         self.value_stack.push(Value::I32(res));
@@ -74,7 +74,9 @@ impl Runtime {
         let rhs = self.value_stack.pop().unwrap();
         let lhs = self.value_stack.pop().unwrap();
         let res = match (lhs, rhs) {
-            (Value::I32(a), Value::I32(b)) => binop(a as u32, b as u32).ok_or(Error::Trap)?.into(),
+            (Value::I32(a), Value::I32(b)) => binop(a as u32, b as u32)
+                .ok_or(TrapError::Unexpected)?
+                .into(),
             _ => unreachable!(),
         };
         self.value_stack.push(Value::I32(res as i32));
