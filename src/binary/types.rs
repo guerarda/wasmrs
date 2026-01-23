@@ -142,7 +142,7 @@ impl<'a> FromReader<'a> for BlockType {
                 pos,
             ));
         }
-        return Ok(BlockType::Index(idx as u32));
+        Ok(BlockType::Index(idx as u32))
     }
 }
 

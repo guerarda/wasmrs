@@ -15,6 +15,7 @@ pub enum ValTypeOrUnknown {
 }
 
 impl ValTypeOrUnknown {
+    #[allow(dead_code)]
     fn is_num(&self) -> bool {
         matches!(
             self,
@@ -22,10 +23,12 @@ impl ValTypeOrUnknown {
         )
     }
 
+    #[allow(dead_code)]
     fn is_vec(&self) -> bool {
         matches!(self, Self::Val(ValType::V128) | Self::Unknown)
     }
 
+    #[allow(dead_code)]
     fn is_ref(&self) -> bool {
         matches!(self, Self::Val(ValType::Ref(_)) | Self::Unknown)
     }
@@ -39,7 +42,9 @@ impl From<&ValType> for ValTypeOrUnknown {
 
 #[derive(Debug)]
 pub struct CtrlFrame {
+    #[allow(dead_code)]
     opcode: Instruction,
+    #[allow(dead_code)]
     start_types: Vec<ValTypeOrUnknown>,
     end_types: Vec<ValTypeOrUnknown>,
     height: usize,
@@ -157,11 +162,13 @@ impl Validator {
         Ok(self.ctrls.pop().expect("unexpected empty control stack"))
     }
 
+    #[allow(dead_code)]
     fn label_types(frame: CtrlFrame) -> Vec<ValTypeOrUnknown> {
         // TODO Loop
         frame.end_types
     }
 
+    #[allow(dead_code)]
     fn unreachable(&mut self) {
         let last = self
             .ctrls

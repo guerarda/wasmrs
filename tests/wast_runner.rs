@@ -238,7 +238,7 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
             }
         };
 
-        for (idx, directive) in wast.directives.into_iter().enumerate() {
+        for (_idx, directive) in wast.directives.into_iter().enumerate() {
             let span = directive.span();
             let (line, _col) = span.linecol_in(&contents);
             let line = line + 1; // 1-indexed

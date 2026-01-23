@@ -19,8 +19,6 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::result;
-
     use super::*;
     use wasmrs::{
         Error,
