@@ -167,13 +167,15 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
     }
 }
 
-fn decode_arg<'a, T: FromReader<'a, Error = ReadError>>(
-    reader: &mut Reader<'a>,
-    instr: &'static str,
-) -> Result<T, InstructionError> {
-    reader.read().map_err(|e: ReadError| InstructionError {
-        offset: e.offset,
-        kind: InstructionErrorKind::ExpectedArgument(e),
+fn decode_arg<'a, T>(reader: &mut Reader<'a>, instr: &'static str) -> Result<T, InstructionError>
+where
+    T: FromReader<'a>,
+    T::Error: Into<ArgumentReadError>,
+{
+    let offset = reader.position() as usize;
+    reader.read().map_err(|e: T::Error| InstructionError {
+        offset,
+        kind: InstructionErrorKind::Argument(e.into()),
         instr: Some(instr),
     })
 }
@@ -216,14 +218,7 @@ impl std::error::Error for InstructionError {
 pub enum InstructionErrorKind {
     Read(ReadError),
     InvalidOpCode(InvalidEnumValueError),
-    ExpectedArgument(ReadError),
-
-    #[allow(dead_code)]
-    ExpectedAdditionalArgument {
-        idx: u32,
-        of: u32,
-        source: ReadError,
-    },
+    Argument(ArgumentReadError),
 }
 
 impl std::fmt::Display for InstructionErrorKind {
@@ -231,10 +226,7 @@ impl std::fmt::Display for InstructionErrorKind {
         match self {
             InstructionErrorKind::Read(_) => f.write_str("reading instruction opcode"),
             InstructionErrorKind::InvalidOpCode(_) => f.write_str("unknown opcode"),
-            InstructionErrorKind::ExpectedArgument(_) => f.write_str("reading argument"),
-            InstructionErrorKind::ExpectedAdditionalArgument { idx, of, .. } => {
-                write!(f, "reading argument {} of {}", idx + 1, of)
-            }
+            InstructionErrorKind::Argument(_) => f.write_str("reading argument"),
         }
     }
 }
@@ -244,16 +236,40 @@ impl std::error::Error for InstructionErrorKind {
         match self {
             InstructionErrorKind::Read(e) => Some(e),
             InstructionErrorKind::InvalidOpCode(e) => Some(e),
-            InstructionErrorKind::ExpectedArgument(e) => Some(e),
-            InstructionErrorKind::ExpectedAdditionalArgument {
-                idx: _,
-                of: _,
-                source,
-            } => Some(source),
+            InstructionErrorKind::Argument(e) => Some(e),
         }
     }
 }
 
+#[derive(Debug)]
+pub enum ArgumentReadError {
+    Read(ReadError),
+    BranchTableIdx(BranchTableIdxReadError),
+}
+
+impl std::fmt::Display for ArgumentReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read(e) => e.fmt(f),
+            Self::BranchTableIdx(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ArgumentReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Read(e) => Some(e),
+            Self::BranchTableIdx(e) => Some(e),
+        }
+    }
+}
+
+impl From<ReadError> for ArgumentReadError {
+    fn from(value: ReadError) -> Self {
+        Self::Read(value)
+    }
+}
 impl From<ReadError> for InstructionError {
     fn from(value: ReadError) -> Self {
         let offset = value.offset;
