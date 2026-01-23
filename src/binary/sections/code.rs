@@ -50,18 +50,31 @@ impl SectionEntry for CodeEntry {
             .ok_or(CodeSectionReadError::TooManyLocals)?;
 
         let mut body = Vec::new();
+        let mut depth: u32 = 1; // The function itself is a block, closed by the final END.
+
         while !reader.is_exhausted() {
             let instr =
                 decode_instruction(&mut reader).map_err(CodeSectionReadError::FunctionBody)?;
+
+            match instr {
+                Instruction::Block(_) | Instruction::Loop(_) | Instruction::If(_) => {
+                    depth += 1;
+                }
+                Instruction::End => {
+                    depth -= 1;
+                }
+                _ => (),
+            }
             body.push(instr);
         }
-        match body.last() {
-            Some(Instruction::End) => Ok(CodeEntry {
+        if depth == 0 {
+            Ok(CodeEntry {
                 size: size as usize,
                 locals,
                 body,
-            }),
-            _ => Err(CodeSectionReadError::MissingEnd.into()),
+            })
+        } else {
+            Err(CodeSectionReadError::MissingEnd.into())
         }
     }
 }
