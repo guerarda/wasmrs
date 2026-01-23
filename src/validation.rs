@@ -188,7 +188,10 @@ impl Validator {
 
         for inst in body {
             match inst {
+                Instruction::Unreachable => todo!(),
                 Instruction::Nop => todo!(),
+                Instruction::Block(_) => todo!(),
+                Instruction::Loop(_) => todo!(),
                 Instruction::If(_) => todo!(),
                 Instruction::Else => todo!(),
                 Instruction::End => {

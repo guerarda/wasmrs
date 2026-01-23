@@ -5,10 +5,11 @@ use crate::binary::{
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Instruction {
+    Unreachable,
     Nop,
 
-    //Block,
-    //Loop,
+    Block(BlockType),
+    Loop(BlockType),
     If(BlockType),
     Else,
 
@@ -66,7 +67,16 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
     let offset = reader.position() as usize;
     let opcode = reader.read_u8()?;
     match opcode {
+        0x00 => Ok(Instruction::Unreachable),
         0x01 => Ok(Instruction::Nop),
+        0x02 => {
+            let bt: BlockType = decode_arg(reader, "block")?;
+            Ok(Instruction::Block(bt))
+        }
+        0x03 => {
+            let bt: BlockType = decode_arg(reader, "loop")?;
+            Ok(Instruction::Loop(bt))
+        }
         0x04 => {
             let bt: BlockType = decode_arg(reader, "if")?;
             Ok(Instruction::If(bt))

@@ -91,7 +91,12 @@ impl Runtime {
             frame.pc += 1;
             if let Some(inst) = instrs.get(frame.pc as usize) {
                 match inst {
+                    Instruction::Unreachable => {
+                        return Err(TrapError::Unreachable.into());
+                    }
                     Instruction::Nop => continue,
+                    Instruction::Block(_bt) => todo!(),
+                    Instruction::Loop(_bt) => todo!(),
                     Instruction::If(_) => {
                         let cond = self.value_stack.pop().unwrap();
                         match cond {
