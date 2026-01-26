@@ -242,6 +242,28 @@ impl Runtime {
                     Instruction::Drop => {
                         self.value_stack.pop();
                     }
+                    Instruction::Select => {
+                        let cond = self.value_stack.pop().unwrap();
+                        let val1 = self.value_stack.pop().unwrap();
+                        let val2 = self.value_stack.pop().unwrap();
+
+                        match cond {
+                            Value::I32(0) => self.value_stack.push(val2),
+                            Value::I32(_) => self.value_stack.push(val1),
+                            _ => unreachable!(),
+                        }
+                    }
+                    Instruction::SelectT(_vt) => {
+                        let cond = self.value_stack.pop().unwrap();
+                        let val1 = self.value_stack.pop().unwrap();
+                        let val2 = self.value_stack.pop().unwrap();
+
+                        match cond {
+                            Value::I32(0) => self.value_stack.push(val2),
+                            Value::I32(_) => self.value_stack.push(val1),
+                            _ => unreachable!(),
+                        }
+                    }
                     Instruction::LocalGet(idx) => {
                         let v = frame.locals[*idx as usize];
                         self.value_stack.push(v)

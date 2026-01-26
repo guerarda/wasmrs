@@ -212,6 +212,34 @@ impl Validator {
                 Instruction::Drop => {
                     self.pop_val()?;
                 }
+                Instruction::Select => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    let t1 = self.pop_val()?;
+                    let t2 = self.pop_val()?;
+
+                    if !((t1.is_num() && t2.is_num()) || (t1.is_vec() && t2.is_vec())) {
+                        return Err(ValidationError::TypeMismatch);
+                    }
+
+                    if t1 != t2
+                        && !matches!(t1, ValTypeOrUnknown::Unknown)
+                        && !matches!(t2, ValTypeOrUnknown::Unknown)
+                    {
+                        return Err(ValidationError::TypeMismatch);
+                    }
+
+                    if matches!(t1, ValTypeOrUnknown::Unknown) {
+                        self.push_val(t2);
+                    } else {
+                        self.push_val(t1);
+                    }
+                }
+                Instruction::SelectT(vt) => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValTypeOrUnknown::Val(*vt))?;
+                    self.pop_val_expect(ValTypeOrUnknown::Val(*vt))?;
+                    self.push_val(ValTypeOrUnknown::Val(*vt));
+                }
                 Instruction::LocalGet(_) => todo!(),
                 Instruction::LocalSet(_) => todo!(),
                 Instruction::LocalTee(_) => todo!(),

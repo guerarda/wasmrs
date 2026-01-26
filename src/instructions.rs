@@ -1,6 +1,8 @@
 use crate::binary::{
-    reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
-    types::{BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, LabelIdx, RefType},
+    reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
+    types::{
+        BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, LabelIdx, RefType, ValType,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,6 +21,8 @@ pub enum Instruction {
 
     Call(u32),
     Drop,
+    Select,
+    SelectT(ValType),
 
     LocalGet(u32),
     LocalSet(u32),
@@ -104,7 +108,20 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
             Ok(Instruction::Call(idx))
         }
         0x1a => Ok(Instruction::Drop),
+        0x1b => Ok(Instruction::Select),
+        0x1c => {
+            let offset = reader.position() as usize;
 
+            let vt: Vec<ValType> = decode_arg(reader, "select t")?;
+            if vt.len() != 1 {
+                return Err(InstructionError {
+                    offset,
+                    kind: InstructionErrorKind::Argument(ArgumentReadError::SelectValTypeCount),
+                    instr: Some("select t"),
+                });
+            }
+            Ok(Instruction::SelectT(*vt.first().unwrap()))
+        }
         0x20 => {
             let idx: u32 = decode_arg(reader, "local.get")?;
             Ok(Instruction::LocalGet(idx))
@@ -259,7 +276,9 @@ impl std::error::Error for InstructionErrorKind {
 #[derive(Debug)]
 pub enum ArgumentReadError {
     Read(ReadError),
+    VecRead(VecReadError<ReadError>),
     BranchTableIdx(BranchTableIdxReadError),
+    SelectValTypeCount,
 }
 
 impl std::fmt::Display for ArgumentReadError {
@@ -267,6 +286,8 @@ impl std::fmt::Display for ArgumentReadError {
         match self {
             Self::Read(e) => e.fmt(f),
             Self::BranchTableIdx(e) => e.fmt(f),
+            Self::VecRead(e) => e.fmt(f),
+            Self::SelectValTypeCount => write!(f, "select t expects a list of exactly one entry"),
         }
     }
 }
@@ -276,6 +297,8 @@ impl std::error::Error for ArgumentReadError {
         match self {
             Self::Read(e) => Some(e),
             Self::BranchTableIdx(e) => Some(e),
+            Self::VecRead(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -283,6 +306,12 @@ impl std::error::Error for ArgumentReadError {
 impl From<ReadError> for ArgumentReadError {
     fn from(value: ReadError) -> Self {
         Self::Read(value)
+    }
+}
+
+impl From<VecReadError<ReadError>> for ArgumentReadError {
+    fn from(value: VecReadError<ReadError>) -> Self {
+        Self::VecRead(value)
     }
 }
 
