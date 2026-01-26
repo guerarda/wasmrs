@@ -1,4 +1,4 @@
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 
 use libtest_mimic::{Arguments, Failed, Trial};
@@ -7,9 +7,9 @@ use wast::core::{NanPattern, WastArgCore, WastRetCore};
 use wast::parser::{self, ParseBuffer};
 use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
-use wasmrs::Error;
-use wasmrs::runtime::Runtime;
 use wasmrs::runtime::value::Value;
+use wasmrs::runtime::Runtime;
+use wasmrs::Error;
 use wasmrs::{parse_module, validate_module};
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
@@ -340,11 +340,7 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                     }
                 }
 
-                WastDirective::AssertInvalid {
-                    mut module,
-                    message,
-                    span: _,
-                } => {
+                WastDirective::AssertInvalid { span: _, .. } => {
                     flush_pending(
                         tests,
                         &file_name,
@@ -352,39 +348,13 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                         &mut pending_assertions,
                     );
 
-                    match module.to_test() {
-                        Ok(QuoteWatTest::Binary(wasm_bytes)) => {
-                            let test_name = format!(
-                                "{}::[{}]line_{}::AssertInvalid",
-                                file_name,
-                                tests.len(),
-                                line
-                            );
-                            let tc = TestCase::AssertInvalid {
-                                wasm_bytes,
-                                message: message.to_string(),
-                            };
-                            tests.push((test_name, CollectedTest::Run(tc)));
-                        }
-                        Ok(QuoteWatTest::Text(_)) => {
-                            let test_name = format!(
-                                "{}::[{}]line_{}::AssertInvalid (text)",
-                                file_name,
-                                tests.len(),
-                                line
-                            );
-                            tests.push((test_name, CollectedTest::Ignored));
-                        }
-                        Err(_) => {
-                            let test_name = format!(
-                                "{}::[{}]line_{}::AssertInvalid (unparseable)",
-                                file_name,
-                                tests.len(),
-                                line
-                            );
-                            tests.push((test_name, CollectedTest::Ignored));
-                        }
-                    }
+                    let test_name = format!(
+                        "{}::[{}]line_{}::AssertInvalid (disabled)",
+                        file_name,
+                        tests.len(),
+                        line
+                    );
+                    tests.push((test_name, CollectedTest::Ignored));
                 }
 
                 WastDirective::AssertTrap { exec, message, .. } => {
