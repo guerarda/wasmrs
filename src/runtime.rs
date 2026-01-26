@@ -116,13 +116,8 @@ impl Runtime {
                 .map(Into::<Value>::into),
         );
 
-        self.call_stack.push(Frame {
-            arity,
-            funcaddr,
-            locals,
-            pc: -1,
-            sp,
-        });
+        self.call_stack
+            .push(Frame::new(arity, funcaddr, locals, sp));
     }
 
     /// Decode and instantiate a module from bytes
