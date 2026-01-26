@@ -208,7 +208,19 @@ impl Validator {
                 Instruction::Br(_) => todo!(),
                 Instruction::BrIf(_) => todo!(),
                 Instruction::BrTable(_) => todo!(),
+                Instruction::Return => {
+                    let results = self
+                        .ctrls
+                        .first()
+                        .expect("unexpected empty control stack")
+                        .end_types
+                        .clone();
+
+                    self.pop_vals_expect(&results)?;
+                    self.unreachable();
+                }
                 Instruction::Call(_) => todo!(),
+
                 Instruction::Drop => {
                     self.pop_val()?;
                 }
@@ -359,7 +371,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_block() -> anyhow::Result<()> {
         // (func (i32.const 0) (block (i32.eqz) (drop)))
         let bytes = [
@@ -380,7 +391,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_loop() -> anyhow::Result<()> {
         // (func (i32.const 0) (loop (i32.eqz) (drop)))
         let bytes = [
@@ -401,7 +411,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_if() -> anyhow::Result<()> {
         // (func (i32.const 0) (i32.const 0) (if (then (i32.eqz) (drop))))
         let bytes = [
@@ -422,7 +431,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_else() -> anyhow::Result<()> {
         // (func (i32.const 0) (i32.const 0) (if (result i32) (then (i32.const 0)) (else (i32.eqz))) (drop))
         let bytes = [
@@ -443,7 +451,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_br() -> anyhow::Result<()> {
         // (func (i32.const 0) (block (br 0 (i32.eqz)) (drop)))
         let bytes = [
@@ -464,7 +471,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_br_if() -> anyhow::Result<()> {
         // (func (i32.const 0) (block (br_if 0 (i32.eqz) (i32.const 1)) (drop)))
         let bytes = [
@@ -485,7 +491,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_br_table() -> anyhow::Result<()> {
         // (func (i32.const 0) (block (br_table 0 (i32.eqz)) (drop)))
         let bytes = [
@@ -506,7 +511,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_return() -> anyhow::Result<()> {
         // (func (return (i32.eqz)) (drop))
         let bytes = [
@@ -527,7 +531,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_type_unary_operand_empty_in_select() -> anyhow::Result<()> {
         // (func (select (i32.eqz) (i32.const 1) (i32.const 2)) (drop))
         let bytes = [

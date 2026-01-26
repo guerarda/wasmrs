@@ -234,6 +234,10 @@ impl Runtime {
                         };
                     }
                     Instruction::BrTable(_) => todo!(),
+                    Instruction::Return => {
+                        Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity);
+                        self.call_stack.pop();
+                    }
                     Instruction::Call(idx) => {
                         let mi = self.module_registry.get_instance(func_inst.module);
                         let funcaddr = mi.funcaddrs[*idx as usize];

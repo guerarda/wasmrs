@@ -13,13 +13,14 @@ pub enum Instruction {
     Loop(BlockType),
     If(BlockType),
     Else,
+
+    End,
     Br(LabelIdx),
     BrIf(LabelIdx),
     BrTable(BranchTableIdx),
-
-    End,
-
+    Return,
     Call(u32),
+
     Drop,
     Select,
     SelectT(ValType),
@@ -103,6 +104,7 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
             Ok(Instruction::BrTable(idx))
         }
 
+        0x0f => Ok(Instruction::Return),
         0x10 => {
             let idx: u32 = decode_arg(reader, "call")?;
             Ok(Instruction::Call(idx))
