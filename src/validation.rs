@@ -1,6 +1,7 @@
 use crate::{
     binary::{
         module::Module,
+        sections::code::{CodeEntry, FuncLocal},
         types::{BlockType, FuncType, ValType},
     },
     instructions::Instruction,
@@ -60,6 +61,7 @@ pub enum ValidationError {
     ValueStackUnderflow,
     TypeMismatch,
     ElseWithoutMatchingIf,
+    InvalidLocalIndex,
 }
 
 impl error::Error for ValidationError {
@@ -75,6 +77,7 @@ impl fmt::Display for ValidationError {
             Self::ValueStackUnderflow => write!(f, "value stack underflow"),
             Self::TypeMismatch => write!(f, "type mismatch"),
             Self::ElseWithoutMatchingIf => write!(f, "else without matching if"),
+            Self::InvalidLocalIndex => write!(f, "invalid local index"),
         }
     }
 }
@@ -196,6 +199,27 @@ impl Validator {
         }
     }
 
+    /// Return the type of the function local at the given index
+    fn local_type(
+        functype: &FuncType,
+        locals: &[FuncLocal],
+        idx: u32,
+    ) -> result::Result<ValTypeOrUnknown, ValidationError> {
+        if let Some(&param) = functype.params.get(idx as usize) {
+            return Ok(ValTypeOrUnknown::Val(param));
+        }
+        let local_idx = idx - functype.params.len() as u32;
+        let mut count: u32 = 0;
+
+        for local in locals {
+            if local_idx < count + local.count {
+                return Ok(ValTypeOrUnknown::Val(local.valtype));
+            }
+            count += local.count;
+        }
+        Err(ValidationError::InvalidLocalIndex)
+    }
+
     /// Returns the label_types for the nth frame from the top
     fn label_types(n: usize, frames: &[CtrlFrame]) -> &[ValTypeOrUnknown] {
         let frame = &frames[frames.len() - n - 1];
@@ -232,7 +256,7 @@ impl Validator {
     fn validate_function(
         &mut self,
         functype: &FuncType,
-        body: &[Instruction],
+        entry: &CodeEntry,
         module: &Module,
     ) -> result::Result<(), ValidationError> {
         let start_types: Vec<ValTypeOrUnknown> =
@@ -244,7 +268,7 @@ impl Validator {
             .collect();
         self.push_ctrl(Instruction::Call(0), start_types, end_types);
 
-        for inst in body {
+        for inst in &entry.body {
             match inst {
                 Instruction::Unreachable => self.unreachable(),
                 Instruction::Nop => continue,
@@ -368,9 +392,19 @@ impl Validator {
                     self.pop_val_expect(ValTypeOrUnknown::Val(*vt))?;
                     self.push_val(ValTypeOrUnknown::Val(*vt));
                 }
-                Instruction::LocalGet(_) => todo!(),
-                Instruction::LocalSet(_) => todo!(),
-                Instruction::LocalTee(_) => todo!(),
+                Instruction::LocalGet(idx) => {
+                    let vt = Self::local_type(&functype, &entry.locals, *idx)?;
+                    self.push_val(vt);
+                }
+                Instruction::LocalSet(idx) => {
+                    let vt = Self::local_type(&functype, &entry.locals, *idx)?;
+                    self.pop_val_expect(vt)?;
+                }
+                Instruction::LocalTee(idx) => {
+                    let vt = Self::local_type(&functype, &entry.locals, *idx)?;
+                    self.pop_val_expect(vt)?;
+                    self.push_val(vt);
+                }
                 Instruction::I32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I32)),
 
                 Instruction::I64Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I64)),
@@ -441,11 +475,7 @@ impl Validator {
             .iter()
             .zip(code_section.iter())
             .try_for_each(|(idx, entry)| {
-                Validator::default().validate_function(
-                    &type_section[*idx as usize],
-                    &entry.body,
-                    module,
-                )
+                Validator::default().validate_function(&type_section[*idx as usize], &entry, module)
             })
     }
 }
