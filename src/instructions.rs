@@ -24,7 +24,7 @@ pub enum Instruction {
 
     Drop,
     Select,
-    SelectT(ValType),
+    SelectT(Vec<ValType>),
 
     LocalGet(u32),
     LocalSet(u32),
@@ -115,17 +115,8 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
         0x1a => Ok(Instruction::Drop),
         0x1b => Ok(Instruction::Select),
         0x1c => {
-            let offset = reader.position() as usize;
-
             let vt: Vec<ValType> = decode_arg(reader, "select t")?;
-            if vt.len() != 1 {
-                return Err(InstructionError {
-                    offset,
-                    kind: InstructionErrorKind::Argument(ArgumentReadError::SelectValTypeCount),
-                    instr: Some("select t"),
-                });
-            }
-            Ok(Instruction::SelectT(*vt.first().unwrap()))
+            Ok(Instruction::SelectT(vt))
         }
         0x20 => {
             let idx: u32 = decode_arg(reader, "local.get")?;
@@ -291,7 +282,6 @@ pub enum ArgumentReadError {
     Read(ReadError),
     VecRead(VecReadError<ReadError>),
     BranchTableIdx(BranchTableIdxReadError),
-    SelectValTypeCount,
 }
 
 impl std::fmt::Display for ArgumentReadError {
@@ -300,7 +290,6 @@ impl std::fmt::Display for ArgumentReadError {
             Self::Read(e) => e.fmt(f),
             Self::BranchTableIdx(e) => e.fmt(f),
             Self::VecRead(e) => e.fmt(f),
-            Self::SelectValTypeCount => write!(f, "select t expects a list of exactly one entry"),
         }
     }
 }
@@ -311,7 +300,6 @@ impl std::error::Error for ArgumentReadError {
             Self::Read(e) => Some(e),
             Self::BranchTableIdx(e) => Some(e),
             Self::VecRead(e) => Some(e),
-            _ => None,
         }
     }
 }

@@ -75,6 +75,7 @@ pub enum ValidationError {
     ImmutableGlobal,
     MissingTypeSection,
     MissingGlobalSection,
+    InvalidSelectTypes,
 }
 
 impl error::Error for ValidationError {
@@ -95,6 +96,7 @@ impl fmt::Display for ValidationError {
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::MissingTypeSection => write!(f, "missing type section"),
             Self::MissingGlobalSection => write!(f, "missing global section"),
+            Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
         }
     }
 }
@@ -425,10 +427,14 @@ impl Validator {
                     }
                 }
                 Instruction::SelectT(vt) => {
+                    let [t] = vt.as_slice() else {
+                        return Err(ValidationError::InvalidSelectTypes);
+                    };
+
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.pop_val_expect(ValTypeOrUnknown::Val(*vt))?;
-                    self.pop_val_expect(ValTypeOrUnknown::Val(*vt))?;
-                    self.push_val(ValTypeOrUnknown::Val(*vt));
+                    self.pop_val_expect(ValTypeOrUnknown::Val(*t))?;
+                    self.pop_val_expect(ValTypeOrUnknown::Val(*t))?;
+                    self.push_val(ValTypeOrUnknown::Val(*t));
                 }
                 Instruction::LocalGet(idx) => {
                     let vt = Self::local_type(&functype, &entry.locals, *idx)?;
