@@ -1,8 +1,11 @@
 use crate::{
     binary::{
         module::Module,
-        sections::code::{CodeEntry, FuncLocal},
-        types::{BlockType, FuncType, ValType},
+        sections::{
+            code::{CodeEntry, FuncLocal},
+            global::{GlobalType, MutabilityFlag},
+        },
+        types::{BlockType, FuncType, GlobalIdx, ValType},
     },
     instructions::Instruction,
 };
@@ -39,6 +42,12 @@ impl From<&ValType> for ValTypeOrUnknown {
     }
 }
 
+impl From<&GlobalType> for ValTypeOrUnknown {
+    fn from(value: &GlobalType) -> Self {
+        ValTypeOrUnknown::Val(value.type_)
+    }
+}
+
 #[derive(Debug)]
 pub struct CtrlFrame {
     opcode: Instruction,
@@ -61,7 +70,11 @@ pub enum ValidationError {
     ValueStackUnderflow,
     TypeMismatch,
     ElseWithoutMatchingIf,
-    InvalidLocalIndex,
+    UnknownLocal,
+    UnknownGlobal,
+    ImmutableGlobal,
+    MissingTypeSection,
+    MissingGlobalSection,
 }
 
 impl error::Error for ValidationError {
@@ -77,7 +90,11 @@ impl fmt::Display for ValidationError {
             Self::ValueStackUnderflow => write!(f, "value stack underflow"),
             Self::TypeMismatch => write!(f, "type mismatch"),
             Self::ElseWithoutMatchingIf => write!(f, "else without matching if"),
-            Self::InvalidLocalIndex => write!(f, "invalid local index"),
+            Self::UnknownLocal => write!(f, "unknown local"),
+            Self::UnknownGlobal => write!(f, "unknown global"),
+            Self::ImmutableGlobal => write!(f, "immutable global"),
+            Self::MissingTypeSection => write!(f, "missing type section"),
+            Self::MissingGlobalSection => write!(f, "missing global section"),
         }
     }
 }
@@ -177,12 +194,17 @@ impl Validator {
     fn block_type(
         bt: &BlockType,
         module: &Module,
-    ) -> (Vec<ValTypeOrUnknown>, Vec<ValTypeOrUnknown>) {
-        match bt {
+    ) -> result::Result<(Vec<ValTypeOrUnknown>, Vec<ValTypeOrUnknown>), ValidationError> {
+        Ok(match bt {
             BlockType::Empty => (vec![], vec![]),
             BlockType::Value(vt) => (vec![], vec![ValTypeOrUnknown::Val(*vt)]),
             BlockType::Index(idx) => {
-                let t = &module.types.as_ref().unwrap()[*idx as usize];
+                let types = &module
+                    .types
+                    .as_ref()
+                    .ok_or(ValidationError::MissingTypeSection)?;
+
+                let t = &types[*idx as usize];
                 (
                     t.params
                         .iter()
@@ -196,7 +218,7 @@ impl Validator {
                         .collect(),
                 )
             }
-        }
+        })
     }
 
     /// Return the type of the function local at the given index
@@ -217,7 +239,23 @@ impl Validator {
             }
             count += local.count;
         }
-        Err(ValidationError::InvalidLocalIndex)
+        Err(ValidationError::UnknownLocal)
+    }
+
+    fn global_type(
+        module: &Module,
+        idx: GlobalIdx,
+    ) -> result::Result<&GlobalType, ValidationError> {
+        let globals = module
+            .globals
+            .as_ref()
+            .ok_or(ValidationError::MissingGlobalSection)?;
+
+        let entry = globals
+            .get(idx as usize)
+            .ok_or(ValidationError::UnknownGlobal)?;
+
+        Ok(&entry.gt)
     }
 
     /// Returns the label_types for the nth frame from the top
@@ -273,17 +311,17 @@ impl Validator {
                 Instruction::Unreachable => self.unreachable(),
                 Instruction::Nop => continue,
                 Instruction::Block(bt) => {
-                    let (t1, t2) = Self::block_type(bt, module);
+                    let (t1, t2) = Self::block_type(bt, module)?;
                     self.pop_vals_expect(&t1)?;
                     self.push_ctrl(Instruction::Block(*bt), t1, t2);
                 }
                 Instruction::Loop(bt) => {
-                    let (t1, t2) = Self::block_type(bt, module);
+                    let (t1, t2) = Self::block_type(bt, module)?;
                     self.pop_vals_expect(&t1)?;
                     self.push_ctrl(Instruction::Loop(*bt), t1, t2);
                 }
                 Instruction::If(bt) => {
-                    let (t1, t2) = Self::block_type(bt, module);
+                    let (t1, t2) = Self::block_type(bt, module)?;
 
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     self.pop_vals_expect(&t1)?;
@@ -404,6 +442,17 @@ impl Validator {
                     let vt = Self::local_type(&functype, &entry.locals, *idx)?;
                     self.pop_val_expect(vt)?;
                     self.push_val(vt);
+                }
+                Instruction::GlobalGet(idx) => {
+                    let gt = Self::global_type(&module, *idx)?;
+                    self.push_val(gt.into());
+                }
+                Instruction::GlobalSet(idx) => {
+                    let gt = Self::global_type(&module, *idx)?;
+                    if matches!(gt.mutflag, MutabilityFlag::Const) {
+                        return Err(ValidationError::ImmutableGlobal);
+                    }
+                    self.pop_val_expect(gt.into())?;
                 }
                 Instruction::I32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I32)),
 

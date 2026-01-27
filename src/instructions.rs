@@ -1,7 +1,8 @@
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
     types::{
-        BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, LabelIdx, RefType, ValType,
+        BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, GlobalIdx, LabelIdx, RefType,
+        ValType,
     },
 };
 
@@ -28,6 +29,8 @@ pub enum Instruction {
     LocalGet(u32),
     LocalSet(u32),
     LocalTee(u32),
+    GlobalGet(GlobalIdx),
+    GlobalSet(GlobalIdx),
 
     I32Const(i32),
     I64Const(i64),
@@ -135,6 +138,14 @@ pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, Instructio
         0x22 => {
             let idx: u32 = decode_arg(reader, "local.tee")?;
             Ok(Instruction::LocalTee(idx))
+        }
+        0x23 => {
+            let idx: GlobalIdx = decode_arg(reader, "global.get")?;
+            Ok(Instruction::GlobalGet(idx))
+        }
+        0x24 => {
+            let idx: GlobalIdx = decode_arg(reader, "global.set")?;
+            Ok(Instruction::GlobalSet(idx))
         }
 
         0x41 => {

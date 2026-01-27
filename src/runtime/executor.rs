@@ -274,6 +274,8 @@ impl Runtime {
                     }
                     Instruction::LocalSet(_) => todo!(),
                     Instruction::LocalTee(_) => todo!(),
+                    Instruction::GlobalGet(_) => todo!(),
+                    Instruction::GlobalSet(_) => todo!(),
 
                     Instruction::I32Const(v) => self.value_stack.push(Value::I32(*v)),
                     Instruction::I64Const(v) => self.value_stack.push(Value::I64(*v)),

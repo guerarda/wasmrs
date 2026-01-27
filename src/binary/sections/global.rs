@@ -44,10 +44,8 @@ impl<'a> FromReader<'a> for MutabilityFlag {
 
 #[derive(Debug)]
 pub struct GlobalType {
-    #[allow(dead_code)]
-    type_: ValType,
-    #[allow(dead_code)]
-    mutflag: MutabilityFlag,
+    pub type_: ValType,
+    pub mutflag: MutabilityFlag,
 }
 
 #[derive(Debug)]
@@ -88,8 +86,7 @@ impl<'a> FromReader<'a> for GlobalType {
 
 #[derive(Debug)]
 pub struct GlobalEntry {
-    #[allow(dead_code)]
-    gt: GlobalType,
+    pub gt: GlobalType,
     #[allow(dead_code)]
     body: ConstExpression,
 }
