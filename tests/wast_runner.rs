@@ -143,6 +143,7 @@ enum TestCase {
         message: String,
     },
     /// Module that should fail validation (type errors, etc.)
+    #[allow(dead_code)]
     AssertInvalid {
         wasm_bytes: Vec<u8>,
         message: String,

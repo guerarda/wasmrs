@@ -15,7 +15,6 @@ pub enum ValTypeOrUnknown {
 }
 
 impl ValTypeOrUnknown {
-    #[allow(dead_code)]
     fn is_num(&self) -> bool {
         matches!(
             self,
@@ -23,7 +22,6 @@ impl ValTypeOrUnknown {
         )
     }
 
-    #[allow(dead_code)]
     fn is_vec(&self) -> bool {
         matches!(self, Self::Val(ValType::V128) | Self::Unknown)
     }
