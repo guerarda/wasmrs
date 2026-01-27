@@ -1,7 +1,7 @@
 use crate::{
     binary::{
         module::Module,
-        types::{FuncType, ValType},
+        types::{BlockType, FuncType, ValType},
     },
     instructions::Instruction,
 };
@@ -40,9 +40,7 @@ impl From<&ValType> for ValTypeOrUnknown {
 
 #[derive(Debug)]
 pub struct CtrlFrame {
-    #[allow(dead_code)]
     opcode: Instruction,
-    #[allow(dead_code)]
     start_types: Vec<ValTypeOrUnknown>,
     end_types: Vec<ValTypeOrUnknown>,
     height: usize,
@@ -61,6 +59,7 @@ pub enum ValidationError {
     ControlStackUnderflow,
     ValueStackUnderflow,
     TypeMismatch,
+    ElseWithoutMatchingIf,
 }
 
 impl error::Error for ValidationError {
@@ -75,6 +74,7 @@ impl fmt::Display for ValidationError {
             Self::ControlStackUnderflow => write!(f, "control stack underflow"),
             Self::ValueStackUnderflow => write!(f, "value stack underflow"),
             Self::TypeMismatch => write!(f, "type mismatch"),
+            Self::ElseWithoutMatchingIf => write!(f, "else without matching if"),
         }
     }
 }
@@ -130,13 +130,13 @@ impl Validator {
     fn push_ctrl(
         &mut self,
         opcode: Instruction,
-        start: &[ValTypeOrUnknown],
-        end: &[ValTypeOrUnknown],
+        start: Vec<ValTypeOrUnknown>,
+        end: Vec<ValTypeOrUnknown>,
     ) {
         self.ctrls.push(CtrlFrame {
             opcode,
-            start_types: start.to_vec(),
-            end_types: end.to_vec(),
+            start_types: start,
+            end_types: end,
             height: self.vals.len(),
             unreachable: false,
         })
@@ -176,11 +176,37 @@ impl Validator {
         last.unreachable = true;
     }
 
+    /// Converts a Block Type into a ([t1*], [t2*])
+    fn block_type(
+        bt: &BlockType,
+        module: &Module,
+    ) -> (Vec<ValTypeOrUnknown>, Vec<ValTypeOrUnknown>) {
+        match bt {
+            BlockType::Empty => (vec![], vec![]),
+            BlockType::Value(vt) => (vec![], vec![ValTypeOrUnknown::Val(*vt)]),
+            BlockType::Index(idx) => {
+                let t = &module.types.as_ref().unwrap()[*idx as usize];
+                (
+                    t.params
+                        .iter()
+                        .copied()
+                        .map(ValTypeOrUnknown::Val)
+                        .collect(),
+                    t.results
+                        .iter()
+                        .copied()
+                        .map(ValTypeOrUnknown::Val)
+                        .collect(),
+                )
+            }
+        }
+    }
+
     fn validate_function(
         &mut self,
         functype: &FuncType,
         body: &[Instruction],
-        _module: &Module,
+        module: &Module,
     ) -> result::Result<(), ValidationError> {
         let start_types: Vec<ValTypeOrUnknown> =
             functype.params.iter().map(ValTypeOrUnknown::from).collect();
@@ -189,16 +215,29 @@ impl Validator {
             .iter()
             .map(ValTypeOrUnknown::from)
             .collect();
-        self.push_ctrl(Instruction::Call(0), &start_types, &end_types);
+        self.push_ctrl(Instruction::Call(0), start_types, end_types);
 
         for inst in body {
             match inst {
-                Instruction::Unreachable => todo!(),
-                Instruction::Nop => todo!(),
+                Instruction::Unreachable => self.unreachable(),
+                Instruction::Nop => continue,
                 Instruction::Block(_) => todo!(),
                 Instruction::Loop(_) => todo!(),
-                Instruction::If(_) => todo!(),
-                Instruction::Else => todo!(),
+                Instruction::If(bt) => {
+                    let (start, end) = Self::block_type(bt, module);
+
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_vals_expect(&start)?;
+
+                    self.push_ctrl(Instruction::If(*bt), start, end);
+                }
+                Instruction::Else => {
+                    let frame = self.pop_ctrl()?;
+                    if !matches!(frame.opcode, Instruction::If(_)) {
+                        return Err(ValidationError::ElseWithoutMatchingIf);
+                    }
+                    self.push_ctrl(Instruction::Else, frame.start_types, frame.end_types)
+                }
                 Instruction::End => {
                     let frame = self.pop_ctrl()?;
                     self.push_vals(&frame.end_types);
@@ -253,7 +292,9 @@ impl Validator {
                 Instruction::LocalGet(_) => todo!(),
                 Instruction::LocalSet(_) => todo!(),
                 Instruction::LocalTee(_) => todo!(),
-                Instruction::I32Const(_) => todo!(),
+                Instruction::I32Const(_) => {
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                }
                 Instruction::I64Const(_) => todo!(),
                 Instruction::I32Eqz => {
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
