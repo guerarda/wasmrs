@@ -143,7 +143,6 @@ enum TestCase {
         message: String,
     },
     /// Module that should fail validation (type errors, etc.)
-    #[allow(dead_code)]
     AssertInvalid {
         wasm_bytes: Vec<u8>,
         message: String,
@@ -158,10 +157,14 @@ enum TestCase {
 
 fn main() {
     let mut detailed = false;
+    let mut run_assert_invalid = false;
     let args: Vec<String> = std::env::args()
         .filter(|arg| {
             if arg == "--detailed" {
                 detailed = true;
+                false
+            } else if arg == "--assert-invalid" {
+                run_assert_invalid = true;
                 false
             } else {
                 true
@@ -169,7 +172,7 @@ fn main() {
         })
         .collect();
     let args = Arguments::from_iter(args);
-    let tests = collect_tests(detailed);
+    let tests = collect_tests(detailed, run_assert_invalid);
     libtest_mimic::run(&args, tests).exit();
 }
 
@@ -180,7 +183,7 @@ enum CollectedTest {
 }
 
 /// Collect test cases from all wast files, grouped by file
-fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
+fn collect_file_test_cases(run_assert_invalid: bool) -> HashMap<String, Vec<(String, CollectedTest)>> {
     let mut file_tests: HashMap<String, Vec<(String, CollectedTest)>> = HashMap::new();
 
     let spec_dir = Path::new("tests/spec");
@@ -341,7 +344,11 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                     }
                 }
 
-                WastDirective::AssertInvalid { span: _, .. } => {
+                WastDirective::AssertInvalid {
+                    span: _,
+                    mut module,
+                    message,
+                } => {
                     flush_pending(
                         tests,
                         &file_name,
@@ -349,13 +356,28 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
                         &mut pending_assertions,
                     );
 
-                    let test_name = format!(
-                        "{}::[{}]line_{}::AssertInvalid (disabled)",
-                        file_name,
-                        tests.len(),
-                        line
-                    );
-                    tests.push((test_name, CollectedTest::Ignored));
+                    if run_assert_invalid {
+                        let wasm_bytes = module.encode().expect("failed to encode module");
+                        let test_name = format!(
+                            "{}::[{}]line_{}::AssertInvalid",
+                            file_name,
+                            tests.len(),
+                            line
+                        );
+                        let tc = TestCase::AssertInvalid {
+                            wasm_bytes,
+                            message: message.to_string(),
+                        };
+                        tests.push((test_name, CollectedTest::Run(tc)));
+                    } else {
+                        let test_name = format!(
+                            "{}::[{}]line_{}::AssertInvalid (disabled)",
+                            file_name,
+                            tests.len(),
+                            line
+                        );
+                        tests.push((test_name, CollectedTest::Ignored));
+                    }
                 }
 
                 WastDirective::AssertTrap { exec, message, .. } => {
@@ -422,8 +444,8 @@ fn collect_file_test_cases() -> HashMap<String, Vec<(String, CollectedTest)>> {
     file_tests
 }
 
-fn collect_tests(detailed: bool) -> Vec<Trial> {
-    let file_tests = collect_file_test_cases();
+fn collect_tests(detailed: bool, run_assert_invalid: bool) -> Vec<Trial> {
+    let file_tests = collect_file_test_cases(run_assert_invalid);
 
     if detailed {
         // Detailed mode: one Trial per test case
