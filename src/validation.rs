@@ -160,13 +160,7 @@ impl Validator {
         Ok(self.ctrls.pop().expect("unexpected empty control stack"))
     }
 
-    #[allow(dead_code)]
-    fn label_types(frame: CtrlFrame) -> Vec<ValTypeOrUnknown> {
-        // TODO Loop
-        frame.end_types
-    }
-
-    #[allow(dead_code)]
+    /// Marks the current frame as unreachable
     fn unreachable(&mut self) {
         let last = self
             .ctrls
@@ -202,6 +196,16 @@ impl Validator {
         }
     }
 
+    /// Returns the label_types for the nth frame from the top
+    fn label_types<'a>(n: usize, frames: &'a Vec<CtrlFrame>) -> &'a [ValTypeOrUnknown] {
+        let frame = &frames[frames.len() - n - 1];
+        if matches!(frame.opcode, Instruction::Loop(_)) {
+            &frame.start_types
+        } else {
+            &frame.end_types
+        }
+    }
+
     fn validate_function(
         &mut self,
         functype: &FuncType,
@@ -221,15 +225,23 @@ impl Validator {
             match inst {
                 Instruction::Unreachable => self.unreachable(),
                 Instruction::Nop => continue,
-                Instruction::Block(_) => todo!(),
-                Instruction::Loop(_) => todo!(),
+                Instruction::Block(bt) => {
+                    let (t1, t2) = Self::block_type(bt, module);
+                    self.pop_vals_expect(&t1)?;
+                    self.push_ctrl(Instruction::Block(*bt), t1, t2);
+                }
+                Instruction::Loop(bt) => {
+                    let (t1, t2) = Self::block_type(bt, module);
+                    self.pop_vals_expect(&t1)?;
+                    self.push_ctrl(Instruction::Loop(*bt), t1, t2);
+                }
                 Instruction::If(bt) => {
-                    let (start, end) = Self::block_type(bt, module);
+                    let (t1, t2) = Self::block_type(bt, module);
 
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.pop_vals_expect(&start)?;
+                    self.pop_vals_expect(&t1)?;
 
-                    self.push_ctrl(Instruction::If(*bt), start, end);
+                    self.push_ctrl(Instruction::If(*bt), t1, t2);
                 }
                 Instruction::Else => {
                     let frame = self.pop_ctrl()?;
@@ -242,8 +254,28 @@ impl Validator {
                     let frame = self.pop_ctrl()?;
                     self.push_vals(&frame.end_types);
                 }
-                Instruction::Br(_) => todo!(),
-                Instruction::BrIf(_) => todo!(),
+                Instruction::Br(n) => {
+                    let n = *n as usize;
+                    if self.ctrls.len() <= n {
+                        return Err(ValidationError::ControlStackUnderflow);
+                    }
+                    // FIXME Avoid Copy. pop_vals must be in ValueStack impl
+                    let lt = Self::label_types(n, &self.ctrls).to_vec();
+                    self.pop_vals_expect(&lt)?;
+                    self.unreachable();
+                }
+                Instruction::BrIf(n) => {
+                    let n = *n as usize;
+                    if self.ctrls.len() < n {
+                        return Err(ValidationError::ControlStackUnderflow);
+                    }
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+
+                    // FIXME Avoid Copy. pop_vals must be in ValueStack impl
+                    let lt = Self::label_types(n, &self.ctrls).to_vec();
+                    self.pop_vals_expect(&lt)?;
+                    self.push_vals(&lt);
+                }
                 Instruction::BrTable(_) => todo!(),
                 Instruction::Return => {
                     let results = self
@@ -271,8 +303,8 @@ impl Validator {
                     }
 
                     if t1 != t2
-                        && !matches!(t1, ValTypeOrUnknown::Unknown)
-                        && !matches!(t2, ValTypeOrUnknown::Unknown)
+                        && t1 != ValTypeOrUnknown::Unknown
+                        && t2 != ValTypeOrUnknown::Unknown
                     {
                         return Err(ValidationError::TypeMismatch);
                     }
