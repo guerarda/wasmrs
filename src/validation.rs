@@ -197,13 +197,36 @@ impl Validator {
     }
 
     /// Returns the label_types for the nth frame from the top
-    fn label_types<'a>(n: usize, frames: &'a [CtrlFrame]) -> &'a [ValTypeOrUnknown] {
+    fn label_types(n: usize, frames: &[CtrlFrame]) -> &[ValTypeOrUnknown] {
         let frame = &frames[frames.len() - n - 1];
         if matches!(frame.opcode, Instruction::Loop(_)) {
             &frame.start_types
         } else {
             &frame.end_types
         }
+    }
+
+    fn validate_bin_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+        let valtype = ValTypeOrUnknown::Val(valtype);
+        self.pop_val_expect(valtype)?;
+        self.pop_val_expect(valtype)?;
+        self.push_val(valtype);
+        Ok(())
+    }
+
+    fn validate_unary_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+        let valtype = ValTypeOrUnknown::Val(valtype);
+        self.pop_val_expect(valtype)?;
+        self.push_val(valtype);
+        Ok(())
+    }
+
+    fn validate_comp_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+        let valtype = ValTypeOrUnknown::Val(valtype);
+        self.pop_val_expect(valtype)?;
+        self.pop_val_expect(valtype)?;
+        self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+        Ok(())
     }
 
     fn validate_function(
@@ -348,54 +371,45 @@ impl Validator {
                 Instruction::LocalGet(_) => todo!(),
                 Instruction::LocalSet(_) => todo!(),
                 Instruction::LocalTee(_) => todo!(),
-                Instruction::I32Const(_) => {
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
-                }
-                Instruction::I64Const(_) => todo!(),
+                Instruction::I32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I32)),
+
+                Instruction::I64Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I64)),
                 Instruction::I32Eqz => {
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     self.push_val(ValTypeOrUnknown::Val(ValType::I32));
                 }
-                Instruction::I32Eq => todo!(),
-                Instruction::I32Ne => todo!(),
-                Instruction::I32LtS => todo!(),
-                Instruction::I32LtU => todo!(),
-                Instruction::I32LeS => todo!(),
-                Instruction::I32LeU => todo!(),
-                Instruction::I32GtS => todo!(),
-                Instruction::I32GtU => todo!(),
-                Instruction::I32GeS => todo!(),
-                Instruction::I32GeU => todo!(),
-                Instruction::I32Clz => todo!(),
-                Instruction::I32Ctz => todo!(),
-                Instruction::I32Popcnt => todo!(),
-                Instruction::I32Add => {
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+
+                Instruction::I32Eq
+                | Instruction::I32Ne
+                | Instruction::I32LtS
+                | Instruction::I32LtU
+                | Instruction::I32LeS
+                | Instruction::I32LeU
+                | Instruction::I32GtS
+                | Instruction::I32GtU
+                | Instruction::I32GeS
+                | Instruction::I32GeU => self.validate_comp_op(ValType::I32)?,
+
+                Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => {
+                    self.validate_unary_op(ValType::I32)?
                 }
-                Instruction::I32Sub => {
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
-                }
-                Instruction::I32Mul => {
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
-                }
-                Instruction::I32DivS => todo!(),
-                Instruction::I32DivU => todo!(),
-                Instruction::I32RemS => todo!(),
-                Instruction::I32RemU => todo!(),
-                Instruction::I32And => todo!(),
-                Instruction::I32Or => todo!(),
-                Instruction::I32Xor => todo!(),
-                Instruction::I32Shl => todo!(),
-                Instruction::I32ShrS => todo!(),
-                Instruction::I32ShrU => todo!(),
-                Instruction::I32Rotl => todo!(),
-                Instruction::I32Rotr => todo!(),
+
+                Instruction::I32Add
+                | Instruction::I32Sub
+                | Instruction::I32Mul
+                | Instruction::I32DivS
+                | Instruction::I32DivU
+                | Instruction::I32RemS
+                | Instruction::I32RemU
+                | Instruction::I32And
+                | Instruction::I32Or
+                | Instruction::I32Xor
+                | Instruction::I32Shl
+                | Instruction::I32ShrS
+                | Instruction::I32ShrU
+                | Instruction::I32Rotl
+                | Instruction::I32Rotr => self.validate_bin_op(ValType::I32)?,
+
                 Instruction::I32Extend8S => todo!(),
                 Instruction::I32Extend16S => todo!(),
                 Instruction::RefNull(_ref_type) => todo!(),
