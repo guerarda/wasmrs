@@ -6,201 +6,125 @@ use crate::binary::{
     },
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Instruction {
-    Unreachable,
-    Nop,
-    Block(BlockType),
-    Loop(BlockType),
-    If(BlockType),
-    Else,
+/// Generates the enum for instruction of the form:
+/// ```
+/// #[derive(Debug, Clone, PartialEq)]
+/// pub enum Instruction {
+///    OpCode,
+///    OpCodeWithArg(u32),
+/// }
+/// ```
+/// And the match arms for the decode_instruction function.
+macro_rules! instructions {
+    (
+        $($name:ident $(($arg:ty))? : $opcode:literal : $instr_name:literal,)*
+    ) => {
+        /// WebAssembly Instructions
+        #[derive(Debug, Clone, PartialEq)]
+        pub enum Instruction {
+            $(
+                $name $(($arg))?,
+            )*
+        }
 
-    End,
-    Br(LabelIdx),
-    BrIf(LabelIdx),
-    BrTable(BranchTableIdx),
-    Return,
-    Call(u32),
+        pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
+            let offset = reader.position() as usize;
+            let opcode = reader.read_u8()?;
+            match opcode {
+                $(
+                    $opcode => instructions!(@decode reader $name $(($arg))? $instr_name),
+                )*
+                _ => Err(InstructionError {
+                    kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {
+                        value: opcode,
+                        enum_name: std::any::type_name::<Instruction>(),
+                    }),
+                    instr: None,
+                    offset,
+                }),
 
-    Drop,
-    Select,
-    SelectT(Vec<ValType>),
+            }
+        }
+    };
 
-    LocalGet(u32),
-    LocalSet(u32),
-    LocalTee(u32),
-    GlobalGet(GlobalIdx),
-    GlobalSet(GlobalIdx),
+    // No arg instruction
+    (@decode $reader:ident $name:ident $instr_name:literal) => {
+        Ok(Instruction::$name)
+    };
 
-    I32Const(i32),
-    I64Const(i64),
-
-    I32Eqz,
-    I32Eq,
-    I32Ne,
-    I32LtS,
-    I32LtU,
-    I32LeS,
-    I32LeU,
-    I32GtS,
-    I32GtU,
-    I32GeS,
-    I32GeU,
-
-    I32Clz,
-    I32Ctz,
-    I32Popcnt,
-    I32Add,
-    I32Sub,
-    I32Mul,
-    I32DivS,
-    I32DivU,
-    I32RemS,
-    I32RemU,
-    I32And,
-    I32Or,
-    I32Xor,
-    I32Shl,
-    I32ShrS,
-    I32ShrU,
-    I32Rotl,
-    I32Rotr,
-
-    I32Extend8S,
-    I32Extend16S,
-
-    RefNull(RefType),
-    RefFunc(FuncIdx),
+    // Single arg instruction
+    (@decode $reader:ident $name:ident ($arg:ty) $instr_name:literal) => {
+        {
+            let arg: $arg = decode_arg($reader, $instr_name)?;
+            Ok(Instruction::$name(arg))
+        }
+    };
 }
 
-pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
-    let offset = reader.position() as usize;
-    let opcode = reader.read_u8()?;
-    match opcode {
-        0x00 => Ok(Instruction::Unreachable),
-        0x01 => Ok(Instruction::Nop),
-        0x02 => {
-            let bt: BlockType = decode_arg(reader, "block")?;
-            Ok(Instruction::Block(bt))
-        }
-        0x03 => {
-            let bt: BlockType = decode_arg(reader, "loop")?;
-            Ok(Instruction::Loop(bt))
-        }
-        0x04 => {
-            let bt: BlockType = decode_arg(reader, "if")?;
-            Ok(Instruction::If(bt))
-        }
-        0x05 => Ok(Instruction::Else),
+instructions! {
+    Unreachable : 0x00 : "unreachable",
+    Nop : 0x01 : "nop",
+    Block(BlockType) : 0x02 : "block",
+    Loop(BlockType) : 0x03 : "loop",
+    If(BlockType) : 0x04 : "if",
+    Else : 0x05 : "else",
 
-        0x0b => Ok(Instruction::End),
-        0x0c => {
-            let lbl: LabelIdx = decode_arg(reader, "br")?;
-            Ok(Instruction::Br(lbl))
-        }
-        0x0d => {
-            let lbl: LabelIdx = decode_arg(reader, "br_if")?;
-            Ok(Instruction::BrIf(lbl))
-        }
-        0x0e => {
-            let idx: BranchTableIdx = decode_arg(reader, "br_table")?;
-            Ok(Instruction::BrTable(idx))
-        }
+    End : 0x0b : "end",
+    Br(LabelIdx) : 0x0c : "br",
+    BrIf(LabelIdx) : 0x0d : "br_if",
+    BrTable(BranchTableIdx) : 0x0e : "br_table",
+    Return : 0x0f : "return",
+    Call(u32) : 0x10 : "call",
 
-        0x0f => Ok(Instruction::Return),
-        0x10 => {
-            let idx: u32 = decode_arg(reader, "call")?;
-            Ok(Instruction::Call(idx))
-        }
-        0x1a => Ok(Instruction::Drop),
-        0x1b => Ok(Instruction::Select),
-        0x1c => {
-            let vt: Vec<ValType> = decode_arg(reader, "select t")?;
-            Ok(Instruction::SelectT(vt))
-        }
-        0x20 => {
-            let idx: u32 = decode_arg(reader, "local.get")?;
-            Ok(Instruction::LocalGet(idx))
-        }
-        0x21 => {
-            let idx: u32 = decode_arg(reader, "local.set")?;
-            Ok(Instruction::LocalSet(idx))
-        }
-        0x22 => {
-            let idx: u32 = decode_arg(reader, "local.tee")?;
-            Ok(Instruction::LocalTee(idx))
-        }
-        0x23 => {
-            let idx: GlobalIdx = decode_arg(reader, "global.get")?;
-            Ok(Instruction::GlobalGet(idx))
-        }
-        0x24 => {
-            let idx: GlobalIdx = decode_arg(reader, "global.set")?;
-            Ok(Instruction::GlobalSet(idx))
-        }
+    Drop : 0x1a : "drop",
+    Select : 0x1b : "select",
+    SelectT(Vec<ValType>) : 0x1c : "select (typed)",
 
-        0x41 => {
-            let v: i32 = decode_arg(reader, "i32.const")?;
-            Ok(Instruction::I32Const(v))
-        }
+    LocalGet(u32) : 0x20 : "local.get",
+    LocalSet(u32) : 0x21 : "local.set",
+    LocalTee(u32) : 0x22 : "local.tee",
+    GlobalGet(GlobalIdx) : 0x23 : "global.get",
+    GlobalSet(GlobalIdx) : 0x24 : "global.set",
 
-        0x42 => {
-            let v: i64 = decode_arg(reader, "i64.const")?;
-            Ok(Instruction::I64Const(v))
-        }
+    I32Const(i32) : 0x41 : "i32.const",
+    I64Const(i64) : 0x42 : "i64.const",
 
-        0x45 => Ok(Instruction::I32Eqz),
-        0x46 => Ok(Instruction::I32Eq),
-        0x47 => Ok(Instruction::I32Ne),
-        0x48 => Ok(Instruction::I32LtS),
-        0x49 => Ok(Instruction::I32LtU),
-        0x4a => Ok(Instruction::I32GtS),
-        0x4b => Ok(Instruction::I32GtU),
-        0x4c => Ok(Instruction::I32LeS),
-        0x4d => Ok(Instruction::I32LeU),
-        0x4e => Ok(Instruction::I32GeS),
-        0x4f => Ok(Instruction::I32GeU),
+    I32Eqz : 0x45 : "i32.eqz",
+    I32Eq : 0x46 : "i32.eq",
+    I32Ne : 0x47 : "i32.ne",
+    I32LtS : 0x48 : "i32.lt_s",
+    I32LtU : 0x49 : "i32.lt_u",
+    I32GtS : 0x4a : "i32.gt_s",
+    I32GtU : 0x4b : "i32.gt_u",
+    I32LeS : 0x4c : "i32.le_s",
+    I32LeU : 0x4d : "i32.le_u",
+    I32GeS : 0x4e : "i32.ge_s",
+    I32GeU : 0x4f : "i32.ge_u",
 
-        0x67 => Ok(Instruction::I32Clz),
-        0x68 => Ok(Instruction::I32Ctz),
-        0x69 => Ok(Instruction::I32Popcnt),
-        0x6a => Ok(Instruction::I32Add),
-        0x6b => Ok(Instruction::I32Sub),
-        0x6c => Ok(Instruction::I32Mul),
-        0x6d => Ok(Instruction::I32DivS),
-        0x6e => Ok(Instruction::I32DivU),
-        0x6f => Ok(Instruction::I32RemS),
-        0x70 => Ok(Instruction::I32RemU),
-        0x71 => Ok(Instruction::I32And),
-        0x72 => Ok(Instruction::I32Or),
-        0x73 => Ok(Instruction::I32Xor),
-        0x74 => Ok(Instruction::I32Shl),
-        0x75 => Ok(Instruction::I32ShrS),
-        0x76 => Ok(Instruction::I32ShrU),
-        0x77 => Ok(Instruction::I32Rotl),
-        0x78 => Ok(Instruction::I32Rotr),
+    I32Clz : 0x67 : "i32.clz",
+    I32Ctz : 0x68 : "i32.ctz",
+    I32Popcnt : 0x69 : "i32.popcnt",
+    I32Add : 0x6a : "i32.add",
+    I32Sub : 0x6b : "i32.sub",
+    I32Mul : 0x6c : "i32.mul",
+    I32DivS : 0x6d : "i32.div_s",
+    I32DivU : 0x6e : "i32.div_u",
+    I32RemS : 0x6f : "i32.rem_s",
+    I32RemU : 0x70 : "i32.rem_u",
+    I32And : 0x71 : "i32.and",
+    I32Or : 0x72 : "i32.or",
+    I32Xor : 0x73 : "i32.xor",
+    I32Shl : 0x74 : "i32.shl",
+    I32ShrS : 0x75 : "i32.shr_s",
+    I32ShrU : 0x76 : "i32.shr_u",
+    I32Rotl : 0x77 : "i32.rotl",
+    I32Rotr : 0x78 : "i32.rotr",
 
-        0xc0 => Ok(Instruction::I32Extend8S),
-        0xc1 => Ok(Instruction::I32Extend16S),
+    I32Extend8S : 0xc0 : "i32.extend8_s",
+    I32Extend16S : 0xc1 : "i32.extend16_s",
 
-        0xd0 => {
-            let rt: RefType = decode_arg(reader, "ref.null")?;
-            Ok(Instruction::RefNull(rt))
-        }
-        0xd2 => {
-            let fi: FuncIdx = decode_arg(reader, "ref.func")?;
-            Ok(Instruction::RefFunc(fi))
-        }
-
-        _ => Err(InstructionError {
-            kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {
-                value: opcode,
-                enum_name: std::any::type_name::<Instruction>(),
-            }),
-            instr: None,
-            offset,
-        }),
-    }
+    RefNull(RefType) : 0xd0 : "ref.null",
+    RefFunc(FuncIdx) : 0xd2 : "ref.func",
 }
 
 fn decode_arg<'a, T>(reader: &mut Reader<'a>, instr: &'static str) -> Result<T, InstructionError>
