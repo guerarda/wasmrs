@@ -197,7 +197,7 @@ impl Validator {
     }
 
     /// Returns the label_types for the nth frame from the top
-    fn label_types<'a>(n: usize, frames: &'a Vec<CtrlFrame>) -> &'a [ValTypeOrUnknown] {
+    fn label_types<'a>(n: usize, frames: &'a [CtrlFrame]) -> &'a [ValTypeOrUnknown] {
         let frame = &frames[frames.len() - n - 1];
         if matches!(frame.opcode, Instruction::Loop(_)) {
             &frame.start_types
@@ -276,7 +276,31 @@ impl Validator {
                     self.pop_vals_expect(&lt)?;
                     self.push_vals(&lt);
                 }
-                Instruction::BrTable(_) => todo!(),
+                Instruction::BrTable(idx) => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+
+                    let m = idx.default as usize;
+                    if self.ctrls.len() <= m {
+                        return Err(ValidationError::ControlStackUnderflow);
+                    }
+                    let m_types = Self::label_types(m, &self.ctrls).to_vec();
+                    let arity = m_types.len();
+
+                    for n in &idx.labels {
+                        let n = *n as usize;
+                        if self.ctrls.len() <= n {
+                            return Err(ValidationError::ControlStackUnderflow);
+                        }
+                        let n_types = Self::label_types(n, &self.ctrls).to_vec();
+                        if n_types.len() != arity {
+                            return Err(ValidationError::TypeMismatch);
+                        }
+                        self.push_vals(&n_types);
+                    }
+
+                    self.pop_vals_expect(&m_types)?;
+                    self.unreachable();
+                }
                 Instruction::Return => {
                     let results = self
                         .ctrls
