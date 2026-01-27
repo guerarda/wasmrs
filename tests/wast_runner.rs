@@ -1,4 +1,4 @@
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 
 use libtest_mimic::{Arguments, Failed, Trial};
@@ -7,9 +7,9 @@ use wast::core::{NanPattern, WastArgCore, WastRetCore};
 use wast::parser::{self, ParseBuffer};
 use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
-use wasmrs::runtime::value::Value;
-use wasmrs::runtime::Runtime;
 use wasmrs::Error;
+use wasmrs::runtime::Runtime;
+use wasmrs::runtime::value::Value;
 use wasmrs::{parse_module, validate_module};
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
@@ -183,7 +183,9 @@ enum CollectedTest {
 }
 
 /// Collect test cases from all wast files, grouped by file
-fn collect_file_test_cases(run_assert_invalid: bool) -> HashMap<String, Vec<(String, CollectedTest)>> {
+fn collect_file_test_cases(
+    run_assert_invalid: bool,
+) -> HashMap<String, Vec<(String, CollectedTest)>> {
     let mut file_tests: HashMap<String, Vec<(String, CollectedTest)>> = HashMap::new();
 
     let spec_dir = Path::new("tests/spec");

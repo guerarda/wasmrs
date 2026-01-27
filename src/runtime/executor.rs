@@ -4,10 +4,10 @@ use std::{
 };
 
 use crate::{
+    Error,
     binary::types::BlockType,
     instructions::Instruction,
-    runtime::{instance::ModuleInstance, stack::Label, value::Value, Runtime, TrapError},
-    Error,
+    runtime::{Runtime, TrapError, instance::ModuleInstance, stack::Label, value::Value},
 };
 
 impl Runtime {
