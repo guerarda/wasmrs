@@ -586,6 +586,21 @@ impl Validator {
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                 }
+                Instruction::MemorySize(_) => {
+                    // mems[0] is defined in the context
+                    let _ = Self::mem_type_at(module, 0)?;
+
+                    // [] -> [i32]
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                }
+                Instruction::MemoryGrow(_) => {
+                    // mems[0] is defined in the context
+                    let _ = Self::mem_type_at(module, 0)?;
+
+                    // [i32] -> [i32]
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                }
                 Instruction::I32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I32)),
 
                 Instruction::I64Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I64)),
