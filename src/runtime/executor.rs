@@ -285,6 +285,8 @@ impl Runtime {
 
                     Instruction::I32Const(v) => self.value_stack.push(Value::I32(*v)),
                     Instruction::I64Const(v) => self.value_stack.push(Value::I64(*v)),
+                    Instruction::F32Const(v) => self.value_stack.push(Value::F32(*v)),
+                    Instruction::F64Const(v) => self.value_stack.push(Value::F64(*v)),
 
                     // Comparison ops
                     Instruction::I32Eqz => self.unary_op_i32(|a| a == 0),

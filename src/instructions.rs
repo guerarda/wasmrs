@@ -102,6 +102,8 @@ instructions! {
     // Const
     I32Const(i32) : 0x41 : "i32.const",
     I64Const(i64) : 0x42 : "i64.const",
+    F32Const(f32) : 0x43 : "f32.const",
+    F64Const(f64) : 0x44 : "f64.const",
 
     // Compare
     I32Eqz : 0x45 : "i32.eqz",

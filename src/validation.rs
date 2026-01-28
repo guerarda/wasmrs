@@ -602,8 +602,9 @@ impl Validator {
                     self.push_val(ValTypeOrUnknown::Val(ValType::I32));
                 }
                 Instruction::I32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I32)),
-
                 Instruction::I64Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I64)),
+                Instruction::F32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::F32)),
+                Instruction::F64Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::F64)),
                 Instruction::I32Eqz => {
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     self.push_val(ValTypeOrUnknown::Val(ValType::I32));
