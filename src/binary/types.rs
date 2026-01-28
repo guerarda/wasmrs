@@ -116,6 +116,7 @@ impl<'a> FromReader<'a> for ValType {
 }
 
 /// Block Type
+#[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone, Copy)]
 pub enum BlockType {
     Empty,
@@ -304,6 +305,7 @@ impl<'a> FromReader<'a> for Limit {
 }
 
 // Branch table indices
+#[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone)]
 pub struct BranchTableIdx {
     pub labels: Vec<LabelIdx>,
@@ -348,6 +350,7 @@ impl<'a> FromReader<'a> for BranchTableIdx {
 
 /// Memory
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct MemArg {
     pub align: u32,
     pub offset: u64,

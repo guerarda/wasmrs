@@ -8,7 +8,7 @@ use crate::binary::{
 
 /// Generates the enum for instruction of the form:
 /// ```
-/// #[derive(Debug, Clone, PartialEq)]
+/// #[derive(Debug, Clone)]
 /// pub enum Instruction {
 ///    OpCode,
 ///    OpCodeWithArg(u32),
@@ -20,6 +20,7 @@ macro_rules! instructions {
         $($name:ident $(($arg:ty))? : $opcode:literal : $instr_name:literal,)*
     ) => {
         /// WebAssembly Instructions
+        #[cfg_attr(test, derive(PartialEq))]
         #[derive(Debug, Clone)]
         pub enum Instruction {
             $(
