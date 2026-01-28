@@ -437,24 +437,24 @@ impl Validator {
                     self.push_val(ValTypeOrUnknown::Val(*t));
                 }
                 Instruction::LocalGet(idx) => {
-                    let vt = Self::local_type(&functype, &entry.locals, *idx)?;
+                    let vt = Self::local_type(functype, &entry.locals, *idx)?;
                     self.push_val(vt);
                 }
                 Instruction::LocalSet(idx) => {
-                    let vt = Self::local_type(&functype, &entry.locals, *idx)?;
+                    let vt = Self::local_type(functype, &entry.locals, *idx)?;
                     self.pop_val_expect(vt)?;
                 }
                 Instruction::LocalTee(idx) => {
-                    let vt = Self::local_type(&functype, &entry.locals, *idx)?;
+                    let vt = Self::local_type(functype, &entry.locals, *idx)?;
                     self.pop_val_expect(vt)?;
                     self.push_val(vt);
                 }
                 Instruction::GlobalGet(idx) => {
-                    let gt = Self::global_type(&module, *idx)?;
+                    let gt = Self::global_type(module, *idx)?;
                     self.push_val(gt.into());
                 }
                 Instruction::GlobalSet(idx) => {
-                    let gt = Self::global_type(&module, *idx)?;
+                    let gt = Self::global_type(module, *idx)?;
                     if matches!(gt.mutflag, MutabilityFlag::Const) {
                         return Err(ValidationError::ImmutableGlobal);
                     }
@@ -530,7 +530,7 @@ impl Validator {
             .iter()
             .zip(code_section.iter())
             .try_for_each(|(idx, entry)| {
-                Validator::default().validate_function(&type_section[*idx as usize], &entry, module)
+                Validator::default().validate_function(&type_section[*idx as usize], entry, module)
             })
     }
 }
