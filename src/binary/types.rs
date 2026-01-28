@@ -11,7 +11,7 @@ use crate::{
 pub type TypeIdx = u32;
 pub type FuncIdx = u32;
 pub type TableIdx = u32;
-// pub type MemIdx = u32;
+pub type MemIdx = u32;
 pub type GlobalIdx = u32;
 // pub type ElemIdx = u32;
 // pub type DataIdx = u32;
@@ -73,6 +73,17 @@ pub enum ValType {
     I32 = 0x7f,
 }
 
+impl ValType {
+    pub fn size_bytes(&self) -> u32 {
+        match self {
+            Self::Ref(_) => unreachable!(),
+            Self::V128 => 16,
+            Self::F64 | Self::I64 => 8,
+            Self::F32 | Self::I32 => 4,
+        }
+    }
+}
+
 impl TryFrom<u8> for ValType {
     type Error = InvalidEnumValueError;
 
@@ -105,7 +116,7 @@ impl<'a> FromReader<'a> for ValType {
 }
 
 /// Block Type
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum BlockType {
     Empty,
     Value(ValType),
@@ -207,7 +218,7 @@ impl<'a> FromReader<'a> for ConstExpression {
 
 // Limit
 #[repr(u8)]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum LimitFlag {
     Min = 0x00,
     MinMax = 0x01,
@@ -293,7 +304,7 @@ impl<'a> FromReader<'a> for Limit {
 }
 
 // Branch table indices
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BranchTableIdx {
     pub labels: Vec<LabelIdx>,
     pub default: LabelIdx,
@@ -332,5 +343,60 @@ impl<'a> FromReader<'a> for BranchTableIdx {
         let default = reader.read().map_err(Self::Error::Default)?;
 
         Ok(Self { labels, default })
+    }
+}
+
+/// Memory
+#[derive(Debug, Clone)]
+pub struct MemArg {
+    pub align: u32,
+    pub offset: u64,
+    pub mem_idx: Option<MemIdx>,
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum MemArgReadError {
+    Align(ReadError),
+    Offset(ReadError),
+    MemIndex(ReadError),
+}
+
+impl error::Error for MemArgReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Align(e) => Some(e),
+            Self::Offset(e) => Some(e),
+            Self::MemIndex(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for MemArgReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Align(_) => write!(f, ""),
+            Self::Offset(_) => write!(f, ""),
+            Self::MemIndex(_) => write!(f, ""),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for MemArg {
+    type Error = MemArgReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let align: u32 = reader.read().map_err(Self::Error::Align)?;
+        let mem_idx = (align & (1 << 6) != 0)
+            .then(|| reader.read())
+            .transpose()
+            .map_err(Self::Error::MemIndex)?;
+        let offset: u64 = reader.read().map_err(Self::Error::Offset)?;
+
+        Ok(MemArg {
+            align,
+            offset,
+            mem_idx,
+        })
     }
 }

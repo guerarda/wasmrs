@@ -1,8 +1,8 @@
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
     types::{
-        BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, GlobalIdx, LabelIdx, RefType,
-        TableIdx, TypeIdx, ValType,
+        BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, GlobalIdx, LabelIdx, MemArg,
+        MemArgReadError, RefType, TableIdx, TypeIdx, ValType,
     },
 };
 
@@ -20,7 +20,7 @@ macro_rules! instructions {
         $($name:ident $(($arg:ty))? : $opcode:literal : $instr_name:literal,)*
     ) => {
         /// WebAssembly Instructions
-        #[derive(Debug, Clone, PartialEq)]
+        #[derive(Debug, Clone)]
         pub enum Instruction {
             $(
                 $name $(($arg))?,
@@ -62,8 +62,14 @@ macro_rules! instructions {
 }
 
 instructions! {
+    // Parametric
     Unreachable : 0x00 : "unreachable",
     Nop : 0x01 : "nop",
+    Drop : 0x1a : "drop",
+    Select : 0x1b : "select",
+    SelectT(Vec<ValType>) : 0x1c : "select (typed)",
+
+    // Control
     Block(BlockType) : 0x02 : "block",
     Loop(BlockType) : 0x03 : "loop",
     If(BlockType) : 0x04 : "if",
@@ -77,19 +83,22 @@ instructions! {
     Call(u32) : 0x10 : "call",
     CallIndirect((TypeIdx, TableIdx)) : 0x11 : "call_indirect",
 
-    Drop : 0x1a : "drop",
-    Select : 0x1b : "select",
-    SelectT(Vec<ValType>) : 0x1c : "select (typed)",
-
+    // Variable
     LocalGet(u32) : 0x20 : "local.get",
     LocalSet(u32) : 0x21 : "local.set",
     LocalTee(u32) : 0x22 : "local.tee",
     GlobalGet(GlobalIdx) : 0x23 : "global.get",
     GlobalSet(GlobalIdx) : 0x24 : "global.set",
 
+    // Memory
+    I32Load(MemArg) : 0x28 : "i32.load",
+    I32Store(MemArg) : 0x36 : "i32.store",
+
+    // Const
     I32Const(i32) : 0x41 : "i32.const",
     I64Const(i64) : 0x42 : "i64.const",
 
+    // Compare
     I32Eqz : 0x45 : "i32.eqz",
     I32Eq : 0x46 : "i32.eq",
     I32Ne : 0x47 : "i32.ne",
@@ -102,9 +111,12 @@ instructions! {
     I32GeS : 0x4e : "i32.ge_s",
     I32GeU : 0x4f : "i32.ge_u",
 
+    // Unary ops
     I32Clz : 0x67 : "i32.clz",
     I32Ctz : 0x68 : "i32.ctz",
     I32Popcnt : 0x69 : "i32.popcnt",
+
+    // Binary ops
     I32Add : 0x6a : "i32.add",
     I32Sub : 0x6b : "i32.sub",
     I32Mul : 0x6c : "i32.mul",
@@ -124,6 +136,7 @@ instructions! {
     I32Extend8S : 0xc0 : "i32.extend8_s",
     I32Extend16S : 0xc1 : "i32.extend16_s",
 
+    // Reference
     RefNull(RefType) : 0xd0 : "ref.null",
     RefFunc(FuncIdx) : 0xd2 : "ref.func",
 }
@@ -207,14 +220,16 @@ pub enum ArgumentReadError {
     Read(ReadError),
     VecRead(VecReadError<ReadError>),
     BranchTableIdx(BranchTableIdxReadError),
+    MemArg(MemArgReadError),
 }
 
 impl std::fmt::Display for ArgumentReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Read(e) => e.fmt(f),
-            Self::BranchTableIdx(e) => e.fmt(f),
             Self::VecRead(e) => e.fmt(f),
+            Self::BranchTableIdx(e) => e.fmt(f),
+            Self::MemArg(e) => e.fmt(f),
         }
     }
 }
@@ -223,8 +238,9 @@ impl std::error::Error for ArgumentReadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Read(e) => Some(e),
-            Self::BranchTableIdx(e) => Some(e),
             Self::VecRead(e) => Some(e),
+            Self::BranchTableIdx(e) => Some(e),
+            Self::MemArg(e) => Some(e),
         }
     }
 }
@@ -244,6 +260,12 @@ impl From<VecReadError<ReadError>> for ArgumentReadError {
 impl From<BranchTableIdxReadError> for ArgumentReadError {
     fn from(value: BranchTableIdxReadError) -> Self {
         Self::BranchTableIdx(value)
+    }
+}
+
+impl From<MemArgReadError> for ArgumentReadError {
+    fn from(value: MemArgReadError) -> Self {
+        Self::MemArg(value)
     }
 }
 

@@ -4,9 +4,10 @@ use crate::{
         sections::{
             code::{CodeEntry, FuncLocal},
             global::{GlobalType, MutabilityFlag},
+            memory::MemType,
             table::TableType,
         },
-        types::{BlockType, FuncType, GlobalIdx, RefType, ValType},
+        types::{BlockType, FuncType, GlobalIdx, MemIdx, RefType, ValType},
     },
     instructions::Instruction,
 };
@@ -77,9 +78,11 @@ pub enum ValidationError {
     UnknownType,
     UnknownTable,
     UnknownFunction,
+    UnknownMemory,
     ImmutableGlobal,
     MissingGlobalSection,
     InvalidSelectTypes,
+    InvalidMemAlignment,
 }
 
 impl error::Error for ValidationError {
@@ -101,9 +104,11 @@ impl fmt::Display for ValidationError {
             Self::UnknownType => write!(f, "unknown type"),
             Self::UnknownTable => write!(f, "unknown table"),
             Self::UnknownFunction => write!(f, "unknown function"),
+            Self::UnknownMemory => write!(f, "unknown memory"),
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::MissingGlobalSection => write!(f, "missing global section"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
+            Self::InvalidMemAlignment => write!(f, "invalid mem alignment"),
         }
     }
 }
@@ -302,6 +307,23 @@ impl Validator {
             &frame.start_types
         } else {
             &frame.end_types
+        }
+    }
+
+    fn mem_type_at(module: &Module, mem_idx: MemIdx) -> result::Result<&MemType, ValidationError> {
+        module
+            .memories
+            .as_ref()
+            .and_then(|mems| mems.get(mem_idx as usize))
+            .ok_or(ValidationError::UnknownMemory)
+    }
+
+    /// Validate that the memory alignment is valid for the given type
+    fn validate_mem_alignment(align: u32, t: ValType) -> result::Result<(), ValidationError> {
+        if (1 << align) > t.size_bytes() {
+            Err(ValidationError::InvalidMemAlignment)
+        } else {
+            Ok(())
         }
     }
 
@@ -541,6 +563,28 @@ impl Validator {
                         return Err(ValidationError::ImmutableGlobal);
                     }
                     self.pop_val_expect(gt.into())?;
+                }
+                Instruction::I32Load(memarg) => {
+                    // mems[0] is defined in the context
+                    let _ = Self::mem_type_at(module, 0)?;
+
+                    // alignment not larger than bit width
+                    Self::validate_mem_alignment(memarg.align, ValType::I32)?;
+
+                    // [i32] -> [t]
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                }
+                Instruction::I32Store(memarg) => {
+                    // mems[0] is defined in the context
+                    let _ = Self::mem_type_at(module, 0)?;
+
+                    // alignment not larger than bit width
+                    Self::validate_mem_alignment(memarg.align, ValType::I32)?;
+
+                    // [i32 t] -> []
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                 }
                 Instruction::I32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I32)),
 
