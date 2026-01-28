@@ -133,6 +133,18 @@ impl<'a> Reader<'a> {
         })
     }
 
+    pub fn read_f32(&mut self) -> Result<f32> {
+        let mut buf = [0u8; 4];
+        self.read_exact(&mut buf)?;
+        Ok(f32::from_le_bytes(buf))
+    }
+
+    pub fn read_f64(&mut self) -> Result<f64> {
+        let mut buf = [0u8; 8];
+        self.read_exact(&mut buf)?;
+        Ok(f64::from_le_bytes(buf))
+    }
+
     pub fn read<T: FromReader<'a>>(&mut self) -> std::result::Result<T, T::Error> {
         T::from_reader(self)
     }
@@ -226,6 +238,22 @@ impl<'a> FromReader<'a> for i64 {
 
     fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
         reader.read_i64()
+    }
+}
+
+impl<'a> FromReader<'a> for f32 {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        reader.read_f32()
+    }
+}
+
+impl<'a> FromReader<'a> for f64 {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> Result<Self> {
+        reader.read_f64()
     }
 }
 
