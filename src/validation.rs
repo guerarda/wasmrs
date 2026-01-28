@@ -4,8 +4,9 @@ use crate::{
         sections::{
             code::{CodeEntry, FuncLocal},
             global::{GlobalType, MutabilityFlag},
+            table::TableType,
         },
-        types::{BlockType, FuncType, GlobalIdx, ValType},
+        types::{BlockType, FuncType, GlobalIdx, RefType, ValType},
     },
     instructions::Instruction,
 };
@@ -69,11 +70,14 @@ pub enum ValidationError {
     ControlStackUnderflow,
     ValueStackUnderflow,
     TypeMismatch,
+    TableTypeMismatch,
     ElseWithoutMatchingIf,
     UnknownLocal,
     UnknownGlobal,
+    UnknownType,
+    UnknownTable,
+    UnknownFunction,
     ImmutableGlobal,
-    MissingTypeSection,
     MissingGlobalSection,
     InvalidSelectTypes,
 }
@@ -90,11 +94,14 @@ impl fmt::Display for ValidationError {
             Self::ControlStackUnderflow => write!(f, "control stack underflow"),
             Self::ValueStackUnderflow => write!(f, "value stack underflow"),
             Self::TypeMismatch => write!(f, "type mismatch"),
+            Self::TableTypeMismatch => write!(f, "table type mismatch"),
             Self::ElseWithoutMatchingIf => write!(f, "else without matching if"),
             Self::UnknownLocal => write!(f, "unknown local"),
             Self::UnknownGlobal => write!(f, "unknown global"),
+            Self::UnknownType => write!(f, "unknown type"),
+            Self::UnknownTable => write!(f, "unknown table"),
+            Self::UnknownFunction => write!(f, "unknown function"),
             Self::ImmutableGlobal => write!(f, "immutable global"),
-            Self::MissingTypeSection => write!(f, "missing type section"),
             Self::MissingGlobalSection => write!(f, "missing global section"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
         }
@@ -201,10 +208,7 @@ impl Validator {
             BlockType::Empty => (vec![], vec![]),
             BlockType::Value(vt) => (vec![], vec![ValTypeOrUnknown::Val(*vt)]),
             BlockType::Index(idx) => {
-                let types = &module
-                    .types
-                    .as_ref()
-                    .ok_or(ValidationError::MissingTypeSection)?;
+                let types = &module.types.as_ref().ok_or(ValidationError::UnknownType)?;
 
                 let t = &types[*idx as usize];
                 (
@@ -221,6 +225,36 @@ impl Validator {
                 )
             }
         })
+    }
+
+    /// Returns the function type at the given type index (not function index)
+    fn type_at(module: &Module, type_idx: u32) -> result::Result<&FuncType, ValidationError> {
+        module
+            .types
+            .as_ref()
+            .and_then(|types| types.get(type_idx as usize))
+            .ok_or(ValidationError::UnknownType)
+    }
+
+    /// Returns the type for an idx in the Function Section.
+    // TODO doesn't handle imports, index is in 0..imports..functions,
+    fn func_type_at(module: &Module, func_idx: u32) -> result::Result<&FuncType, ValidationError> {
+        let &type_idx = module
+            .functions
+            .as_ref()
+            .and_then(|funcs| funcs.get(func_idx as usize))
+            .ok_or(ValidationError::UnknownFunction)?;
+
+        Self::type_at(module, type_idx)
+    }
+
+    /// Returns the table type at the given index
+    fn table_type(module: &Module, table_idx: u32) -> result::Result<&TableType, ValidationError> {
+        module
+            .tables
+            .as_ref()
+            .and_then(|tables| tables.get(table_idx as usize))
+            .ok_or(ValidationError::UnknownTable)
     }
 
     /// Return the type of the function local at the given index
@@ -244,6 +278,7 @@ impl Validator {
         Err(ValidationError::UnknownLocal)
     }
 
+    /// Returns the global type at the given index
     fn global_type(
         module: &Module,
         idx: GlobalIdx,
@@ -399,7 +434,54 @@ impl Validator {
                     self.pop_vals_expect(&results)?;
                     self.unreachable();
                 }
-                Instruction::Call(_) => todo!(),
+                Instruction::Call(idx) => {
+                    // [t1*] -> [t2*]
+                    let func_type = Self::func_type_at(module, *idx)?;
+                    let params: Vec<ValTypeOrUnknown> = func_type
+                        .params
+                        .iter()
+                        .copied()
+                        .map(ValTypeOrUnknown::Val)
+                        .collect();
+                    self.pop_vals_expect(&params)?;
+
+                    let results: Vec<ValTypeOrUnknown> = func_type
+                        .results
+                        .iter()
+                        .copied()
+                        .map(ValTypeOrUnknown::Val)
+                        .collect();
+
+                    self.push_vals(&results);
+                }
+                Instruction::CallIndirect((type_idx, table_idx)) => {
+                    // [t1* i32] -> [t2*]
+                    let table_type = Self::table_type(module, *table_idx)?;
+
+                    if !matches!(table_type.etype, RefType::Func) {
+                        return Err(ValidationError::TableTypeMismatch);
+                    }
+
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+
+                    let func_type = Self::type_at(module, *type_idx)?;
+                    let params: Vec<ValTypeOrUnknown> = func_type
+                        .params
+                        .iter()
+                        .copied()
+                        .map(ValTypeOrUnknown::Val)
+                        .collect();
+                    self.pop_vals_expect(&params)?;
+
+                    let results: Vec<ValTypeOrUnknown> = func_type
+                        .results
+                        .iter()
+                        .copied()
+                        .map(ValTypeOrUnknown::Val)
+                        .collect();
+
+                    self.push_vals(&results);
+                }
 
                 Instruction::Drop => {
                     self.pop_val()?;

@@ -10,7 +10,7 @@ use crate::{
 /// Indices​
 pub type TypeIdx = u32;
 pub type FuncIdx = u32;
-// pub type TableIdx = u32;
+pub type TableIdx = u32;
 // pub type MemIdx = u32;
 pub type GlobalIdx = u32;
 // pub type ElemIdx = u32;

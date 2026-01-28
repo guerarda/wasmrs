@@ -2,7 +2,7 @@ use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
     types::{
         BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, GlobalIdx, LabelIdx, RefType,
-        ValType,
+        TableIdx, TypeIdx, ValType,
     },
 };
 
@@ -75,6 +75,7 @@ instructions! {
     BrTable(BranchTableIdx) : 0x0e : "br_table",
     Return : 0x0f : "return",
     Call(u32) : 0x10 : "call",
+    CallIndirect((TypeIdx, TableIdx)) : 0x11 : "call_indirect",
 
     Drop : 0x1a : "drop",
     Select : 0x1b : "select",

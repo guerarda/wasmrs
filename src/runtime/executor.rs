@@ -243,6 +243,7 @@ impl Runtime {
                         let funcaddr = mi.funcaddrs[*idx as usize];
                         self.call(funcaddr);
                     }
+                    Instruction::CallIndirect(_) => todo!(),
                     Instruction::Drop => {
                         self.value_stack.pop();
                     }
