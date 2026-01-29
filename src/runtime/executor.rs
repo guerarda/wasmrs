@@ -287,7 +287,10 @@ impl Runtime {
                         let v = frame.locals[*idx as usize];
                         self.value_stack.push(v)
                     }
-                    Instruction::LocalSet(_) => todo!(),
+                    Instruction::LocalSet(idx) => {
+                        let v = self.value_stack.pop().unwrap();
+                        frame.locals[*idx as usize] = v;
+                    }
                     Instruction::LocalTee(_) => todo!(),
                     Instruction::GlobalGet(_) => todo!(),
                     Instruction::GlobalSet(_) => todo!(),
