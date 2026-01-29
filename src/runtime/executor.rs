@@ -84,6 +84,20 @@ impl Runtime {
         Ok(())
     }
 
+    fn comp_op_f32<F, R>(&mut self, comp_op: F)
+    where
+        F: FnOnce(f32, f32) -> R,
+        R: Into<i32>,
+    {
+        let rhs = self.value_stack.pop().unwrap();
+        let lhs = self.value_stack.pop().unwrap();
+        let res = match (lhs, rhs) {
+            (Value::F32(a), Value::F32(b)) => comp_op(a, b).into(),
+            _ => unreachable!(),
+        };
+        self.value_stack.push(Value::I32(res as i32));
+    }
+
     /// Find the index of the 'end' instruction for the block at idx
     fn find_block_end(instrs: &[Instruction], mut idx: isize) -> isize {
         debug_assert!(
@@ -300,6 +314,13 @@ impl Runtime {
                     Instruction::I32LeU => self.binary_op_u32(|a, b| a <= b),
                     Instruction::I32GeS => self.binary_op_i32(|a, b| a >= b),
                     Instruction::I32GeU => self.binary_op_u32(|a, b| a >= b),
+
+                    Instruction::F32Eq => self.comp_op_f32(|a, b| a == b),
+                    Instruction::F32Ne => self.comp_op_f32(|a, b| a != b),
+                    Instruction::F32Lt => self.comp_op_f32(|a, b| a < b),
+                    Instruction::F32Gt => self.comp_op_f32(|a, b| a > b),
+                    Instruction::F32Le => self.comp_op_f32(|a, b| a <= b),
+                    Instruction::F32Ge => self.comp_op_f32(|a, b| a >= b),
 
                     // Unary ops
                     Instruction::I32Clz => self.unary_op_i32(|a| a.leading_zeros() as i32),

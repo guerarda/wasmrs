@@ -621,6 +621,13 @@ impl Validator {
                 | Instruction::I32GeS
                 | Instruction::I32GeU => self.validate_comp_op(ValType::I32)?,
 
+                Instruction::F32Eq
+                | Instruction::F32Ne
+                | Instruction::F32Lt
+                | Instruction::F32Gt
+                | Instruction::F32Le
+                | Instruction::F32Ge => self.validate_comp_op(ValType::F32)?,
+
                 Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => {
                     self.validate_unary_op(ValType::I32)?
                 }

@@ -118,6 +118,13 @@ instructions! {
     I32GeS : 0x4e : "i32.ge_s",
     I32GeU : 0x4f : "i32.ge_u",
 
+    F32Eq : 0x5b : "f32.eq",
+    F32Ne : 0x5c : "f32.ne",
+    F32Lt : 0x5d : "f32.lt",
+    F32Gt : 0x5e : "f32.gt",
+    F32Le : 0x5f : "f32.le",
+    F32Ge : 0x60 : "f32.ge",
+
     // Unary ops
     I32Clz : 0x67 : "i32.clz",
     I32Ctz : 0x68 : "i32.ctz",
