@@ -1,7 +1,4 @@
-use std::{
-    ops::{BitAnd, BitOr, BitXor},
-    result,
-};
+use std::ops::{BitAnd, BitOr, BitXor};
 
 use crate::{
     Error,
@@ -42,6 +39,28 @@ macro_rules! binary_op {
     }};
 }
 
+macro_rules! comp_op {
+    ($self:expr, $variant:ident, $op:expr) => {{
+        let rhs = $self.value_stack.pop().unwrap();
+        let lhs = $self.value_stack.pop().unwrap();
+        let res = match (lhs, rhs) {
+            (Value::$variant(a), Value::$variant(b)) => $op(a, b),
+            _ => unreachable!(),
+        };
+        $self.value_stack.push(Value::I32(res as _));
+    }};
+
+    ($self:expr, $ty:ty, $variant:ident, $op:expr) => {{
+        let rhs = $self.value_stack.pop().unwrap();
+        let lhs = $self.value_stack.pop().unwrap();
+        let res = match (lhs, rhs) {
+            (Value::$variant(a), Value::$variant(b)) => $op(a as $ty, b as $ty),
+            _ => unreachable!(),
+        };
+        $self.value_stack.push(Value::I32(res as _));
+    }};
+}
+
 macro_rules! try_binary_op {
     ($self:expr, $variant:ident, $op:expr) => {{
         let rhs = $self.value_stack.pop().unwrap();
@@ -69,20 +88,6 @@ macro_rules! try_binary_op {
 }
 
 impl Runtime {
-    fn comp_op_f32<F, R>(&mut self, comp_op: F)
-    where
-        F: FnOnce(f32, f32) -> R,
-        R: Into<i32>,
-    {
-        let rhs = self.value_stack.pop().unwrap();
-        let lhs = self.value_stack.pop().unwrap();
-        let res = match (lhs, rhs) {
-            (Value::F32(a), Value::F32(b)) => comp_op(a, b).into(),
-            _ => unreachable!(),
-        };
-        self.value_stack.push(Value::I32(res as i32));
-    }
-
     /// Find the index of the 'end' instruction for the block at idx
     fn find_block_end(instrs: &[Instruction], mut idx: isize) -> isize {
         debug_assert!(
@@ -292,23 +297,17 @@ impl Runtime {
 
                     // Comparison ops
                     Instruction::I32Eqz => unary_op!(self, I32, |a| a == 0),
-                    Instruction::I32Eq => binary_op!(self, I32, |a, b| a == b),
-                    Instruction::I32Ne => binary_op!(self, I32, |a, b| a != b),
-                    Instruction::I32LtS => binary_op!(self, I32, |a, b| a < b),
-                    Instruction::I32LtU => binary_op!(self, u32, I32, |a, b| a < b),
-                    Instruction::I32GtS => binary_op!(self, I32, |a, b| a > b),
-                    Instruction::I32GtU => binary_op!(self, u32, I32, |a, b| a > b),
-                    Instruction::I32LeS => binary_op!(self, I32, |a, b| a <= b),
-                    Instruction::I32LeU => binary_op!(self, u32, I32, |a, b| a <= b),
-                    Instruction::I32GeS => binary_op!(self, I32, |a, b| a >= b),
-                    Instruction::I32GeU => binary_op!(self, u32, I32, |a, b| a >= b),
+                    Instruction::I32Eq => comp_op!(self, I32, |a, b| a == b),
+                    Instruction::I32Ne => comp_op!(self, I32, |a, b| a != b),
+                    Instruction::I32LtS => comp_op!(self, I32, |a, b| a < b),
+                    Instruction::I32LtU => comp_op!(self, u32, I32, |a, b| a < b),
+                    Instruction::I32GtS => comp_op!(self, I32, |a, b| a > b),
+                    Instruction::I32GtU => comp_op!(self, u32, I32, |a, b| a > b),
+                    Instruction::I32LeS => comp_op!(self, I32, |a, b| a <= b),
+                    Instruction::I32LeU => comp_op!(self, u32, I32, |a, b| a <= b),
+                    Instruction::I32GeS => comp_op!(self, I32, |a, b| a >= b),
+                    Instruction::I32GeU => comp_op!(self, u32, I32, |a, b| a >= b),
 
-                    Instruction::F32Eq => self.comp_op_f32(|a, b| a == b),
-                    Instruction::F32Ne => self.comp_op_f32(|a, b| a != b),
-                    Instruction::F32Lt => self.comp_op_f32(|a, b| a < b),
-                    Instruction::F32Gt => self.comp_op_f32(|a, b| a > b),
-                    Instruction::F32Le => self.comp_op_f32(|a, b| a <= b),
-                    Instruction::F32Ge => self.comp_op_f32(|a, b| a >= b),
 
                     // Unary ops
                     Instruction::I32Clz => unary_op!(self, I32, |a: i32| a.leading_zeros() as i32),
