@@ -695,6 +695,15 @@ impl Validator {
                 Instruction::I32TruncSatF32U => todo!(),
                 Instruction::I64TruncSatF64S => todo!(),
                 Instruction::I64TruncSatF64U => todo!(),
+
+                Instruction::I64ExtendI32S => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I64));
+                }
+                Instruction::I64ExtendI32U => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I64));
+                }
             }
         }
         self.pop_ctrl()?;

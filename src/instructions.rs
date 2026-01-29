@@ -206,6 +206,9 @@ instructions! {
     I64Rotl : 0x89 : "i64.rotl",
     I64Rotr : 0x8a : "i64.rotr",
 
+    I64ExtendI32S : 0xac : "i64.extend_i32_s",
+    I64ExtendI32U : 0xad : "i64.extend_i32_u",
+
     I32Extend8S : 0xc0 : "i32.extend8_s",
     I32Extend16S : 0xc1 : "i32.extend16_s",
     I64Extend8S: 0xc2 : "i64.extend8_s",

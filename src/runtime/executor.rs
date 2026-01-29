@@ -435,6 +435,25 @@ impl Runtime {
                         binary_op!(self, I64, |a: i64, b| a.rotate_right(b as u32))
                     }
 
+                    // Conversion ops
+                    Instruction::I64ExtendI32S => {
+                        let val = self.value_stack.pop().unwrap();
+                        let result = match val {
+                            Value::I32(a) => Value::I64(i64::from(a)),
+                            _ => unreachable!(),
+                        };
+                        self.value_stack.push(result);
+                    }
+                    Instruction::I64ExtendI32U => {
+                        let val = self.value_stack.pop().unwrap();
+                        let result = match val {
+                            // Musn't do sign extension, so cast as u32 first
+                            Value::I32(a) => Value::I64(a as u32 as i64),
+                            _ => unreachable!(),
+                        };
+                        self.value_stack.push(result);
+                    }
+
                     // Sign extension ops
                     Instruction::I32Extend8S => unary_op!(self, I32, |a| a as i8),
                     Instruction::I32Extend16S => unary_op!(self, I32, |a| a as i16),
