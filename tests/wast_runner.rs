@@ -515,6 +515,16 @@ fn run_file_tests(file_name: &str, tests: Vec<(String, CollectedTest)>) -> Resul
     }
 }
 
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "(non-string panic)".to_string()
+    }
+}
+
 fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
     let mut runtime = Runtime::default();
 
@@ -528,7 +538,7 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             match result {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(e)) => Err(Failed::from(format!("expected Ok, got {}", e))),
-                Err(_) => Err(Failed::from("expected Ok, got PANIC in runtime")),
+                Err(p) => Err(Failed::from(format!("expected Ok, got PANIC: {}", panic_message(p)))),
             }
         }
         TestCase::AssertMalformed {
@@ -546,9 +556,9 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                     "expected malformed error '{}', got different error: {}",
                     message, e
                 ))),
-                Err(_) => Err(Failed::from(format!(
-                    "expected malformed error '{}', got PANIC",
-                    message
+                Err(p) => Err(Failed::from(format!(
+                    "expected malformed error '{}', got PANIC: {}",
+                    message, panic_message(p)
                 ))),
             }
         }
@@ -571,9 +581,9 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                     "expected validation error '{}', got different error: {}",
                     message, e
                 ))),
-                Err(_) => Err(Failed::from(format!(
-                    "expected validation error '{}', got PANIC",
-                    message
+                Err(p) => Err(Failed::from(format!(
+                    "expected validation error '{}', got PANIC: {}",
+                    message, panic_message(p)
                 ))),
             }
         }
@@ -588,7 +598,7 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             let mh = match result {
                 Ok(Ok(mh)) => mh,
                 Ok(Err(e)) => return Err(Failed::from(format!("module load failed: {}", e))),
-                Err(_) => return Err(Failed::from("module load panicked")),
+                Err(p) => return Err(Failed::from(format!("module load panicked: {}", panic_message(p)))),
             };
 
             // Run each assertion, collecting all failures
@@ -613,12 +623,12 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                                 ));
                                 continue;
                             }
-                            Err(_) => {
+                            Err(p) => {
                                 failures.push(format!(
-                                    "[{}]line {}: '{}' panicked",
-                                    idx, a.line, a.func_name
+                                    "[{}]line {}: '{}' panicked: {}",
+                                    idx, a.line, a.func_name, panic_message(p)
                                 ));
-                                continue;
+                                break; // runtime state is corrupted after panic
                             }
                         };
 
@@ -660,11 +670,12 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                                 ));
                             }
                             Ok(Err(_)) => {} // Expected trap - success
-                            Err(_) => {
+                            Err(p) => {
                                 failures.push(format!(
-                                    "[{}]line {}: '{}' expected trap '{}', got panic",
-                                    idx, a.line, a.func_name, a.message
+                                    "[{}]line {}: '{}' expected trap '{}', got panic: {}",
+                                    idx, a.line, a.func_name, a.message, panic_message(p)
                                 ));
+                                break; // runtime state is corrupted after panic
                             }
                         }
                     }
