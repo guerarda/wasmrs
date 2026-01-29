@@ -308,6 +308,31 @@ impl Runtime {
                     Instruction::I32GeS => comp_op!(self, I32, |a, b| a >= b),
                     Instruction::I32GeU => comp_op!(self, u32, I32, |a, b| a >= b),
 
+                    Instruction::I64Eqz => {
+                        let val = self.value_stack.pop().unwrap();
+                        let result = match val {
+                            Value::I64(a) => Value::I32((a == 0) as i32),
+                            _ => unreachable!(),
+                        };
+                        self.value_stack.push(result);
+                    }
+                    Instruction::I64Eq => comp_op!(self, I64, |a, b| a == b),
+                    Instruction::I64Ne => comp_op!(self, I64, |a, b| a != b),
+                    Instruction::I64LtS => comp_op!(self, I64, |a, b| a < b),
+                    Instruction::I64LtU => comp_op!(self, u64, I64, |a, b| a < b),
+                    Instruction::I64GtS => comp_op!(self, I64, |a, b| a > b),
+                    Instruction::I64GtU => comp_op!(self, u64, I64, |a, b| a > b),
+                    Instruction::I64LeS => comp_op!(self, I64, |a, b| a <= b),
+                    Instruction::I64LeU => comp_op!(self, u64, I64, |a, b| a <= b),
+                    Instruction::I64GeS => comp_op!(self, I64, |a, b| a >= b),
+                    Instruction::I64GeU => comp_op!(self, u64, I64, |a, b| a >= b),
+
+                    Instruction::F32Eq => comp_op!(self, F32, |a, b| a == b),
+                    Instruction::F32Ne => comp_op!(self, F32, |a, b| a != b),
+                    Instruction::F32Lt => comp_op!(self, F32, |a, b| a < b),
+                    Instruction::F32Gt => comp_op!(self, F32, |a, b| a > b),
+                    Instruction::F32Le => comp_op!(self, F32, |a, b| a <= b),
+                    Instruction::F32Ge => comp_op!(self, F32, |a, b| a >= b),
 
                     // Unary ops
                     Instruction::I32Clz => unary_op!(self, I32, |a: i32| a.leading_zeros() as i32),
@@ -358,9 +383,64 @@ impl Runtime {
                         binary_op!(self, I32, |a: i32, b| a.rotate_right(b as u32))
                     }
 
+                    Instruction::I64Clz => unary_op!(self, I64, |a: i64| a.leading_zeros() as i64),
+                    Instruction::I64Ctz => unary_op!(self, I64, |a: i64| a.trailing_zeros() as i64),
+                    Instruction::I64Popcnt => {
+                        unary_op!(self, I64, |a: i64| a.count_ones() as i64)
+                    }
+
+                    Instruction::I64Add => {
+                        binary_op!(self, I64, |a: i64, b: i64| a.wrapping_add(b))
+                    }
+                    Instruction::I64Sub => binary_op!(self, I64, |a: i64, b| a.wrapping_sub(b)),
+                    Instruction::I64Mul => binary_op!(self, I64, |a: i64, b| a.wrapping_mul(b)),
+                    Instruction::I64DivS => {
+                        try_binary_op!(self, I64, |a: i64, b| a.checked_div(b))?
+                    }
+                    Instruction::I64DivU => {
+                        try_binary_op!(self, u64, I64, |a: u64, b| a.checked_div(b))?
+                    }
+
+                    Instruction::I64RemS => try_binary_op!(self, I64, |a: i64, b| {
+                        if b == 0 {
+                            None
+                        } else {
+                            Some(a.wrapping_rem(b))
+                        }
+                    })?,
+                    Instruction::I64RemU => try_binary_op!(self, u64, I64, |a: u64, b| {
+                        if b == 0 {
+                            None
+                        } else {
+                            Some(a.wrapping_rem(b))
+                        }
+                    })?,
+                    Instruction::I64And => binary_op!(self, I64, BitAnd::bitand),
+                    Instruction::I64Or => binary_op!(self, I64, BitOr::bitor),
+                    Instruction::I64Xor => binary_op!(self, I64, BitXor::bitxor),
+                    Instruction::I64Shl => {
+                        binary_op!(self, I64, |a: i64, b| a.wrapping_shl(b as u32))
+                    }
+                    Instruction::I64ShrS => {
+                        binary_op!(self, I64, |a: i64, b| a.wrapping_shr(b as u32))
+                    }
+                    Instruction::I64ShrU => {
+                        binary_op!(self, I64, |a: i64, b| (a as u64).wrapping_shr(b as u32)
+                            as i64)
+                    }
+                    Instruction::I64Rotl => {
+                        binary_op!(self, I64, |a: i64, b| a.rotate_left(b as u32))
+                    }
+                    Instruction::I64Rotr => {
+                        binary_op!(self, I64, |a: i64, b| a.rotate_right(b as u32))
+                    }
+
                     // Sign extension ops
                     Instruction::I32Extend8S => unary_op!(self, I32, |a| a as i8),
                     Instruction::I32Extend16S => unary_op!(self, I32, |a| a as i16),
+                    Instruction::I64Extend8S => unary_op!(self, I64, |a| a as i8),
+                    Instruction::I64Extend16S => unary_op!(self, I64, |a| a as i16),
+                    Instruction::I64Extend32S => unary_op!(self, I64, |a| a as i32),
 
                     // Ref
                     Instruction::RefNull(rt) => self.value_stack.push(Value::NullRef(*rt)),

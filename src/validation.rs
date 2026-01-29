@@ -621,6 +621,22 @@ impl Validator {
                 | Instruction::I32GeS
                 | Instruction::I32GeU => self.validate_comp_op(ValType::I32)?,
 
+                Instruction::I64Eqz => {
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I64))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I64));
+                }
+
+                Instruction::I64Eq
+                | Instruction::I64Ne
+                | Instruction::I64LtS
+                | Instruction::I64LtU
+                | Instruction::I64GtS
+                | Instruction::I64GtU
+                | Instruction::I64LeS
+                | Instruction::I64LeU
+                | Instruction::I64GeS
+                | Instruction::I64GeU => self.validate_comp_op(ValType::I64)?,
+
                 Instruction::F32Eq
                 | Instruction::F32Ne
                 | Instruction::F32Lt
@@ -631,7 +647,6 @@ impl Validator {
                 Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => {
                     self.validate_unary_op(ValType::I32)?
                 }
-
                 Instruction::I32Add
                 | Instruction::I32Sub
                 | Instruction::I32Mul
@@ -648,8 +663,31 @@ impl Validator {
                 | Instruction::I32Rotl
                 | Instruction::I32Rotr => self.validate_bin_op(ValType::I32)?,
 
+                Instruction::I64Clz | Instruction::I64Ctz | Instruction::I64Popcnt => {
+                    self.validate_unary_op(ValType::I64)?
+                }
+
+                Instruction::I64Add
+                | Instruction::I64Sub
+                | Instruction::I64Mul
+                | Instruction::I64DivS
+                | Instruction::I64DivU
+                | Instruction::I64RemS
+                | Instruction::I64RemU
+                | Instruction::I64And
+                | Instruction::I64Or
+                | Instruction::I64Xor
+                | Instruction::I64Shl
+                | Instruction::I64ShrS
+                | Instruction::I64ShrU
+                | Instruction::I64Rotl
+                | Instruction::I64Rotr => self.validate_bin_op(ValType::I64)?,
+
                 Instruction::I32Extend8S => todo!(),
                 Instruction::I32Extend16S => todo!(),
+                Instruction::I64Extend8S => todo!(),
+                Instruction::I64Extend16S => todo!(),
+                Instruction::I64Extend32S => todo!(),
                 Instruction::RefNull(_ref_type) => todo!(),
                 Instruction::RefFunc(_) => todo!(),
             }
