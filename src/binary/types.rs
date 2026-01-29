@@ -354,7 +354,6 @@ impl<'a> FromReader<'a> for BranchTableIdx {
 pub struct MemArg {
     pub align: u32,
     pub offset: u64,
-    pub mem_idx: Option<MemIdx>,
 }
 
 #[derive(Debug)]
@@ -362,7 +361,6 @@ pub struct MemArg {
 pub enum MemArgReadError {
     Align(ReadError),
     Offset(ReadError),
-    MemIndex(ReadError),
 }
 
 impl error::Error for MemArgReadError {
@@ -370,7 +368,6 @@ impl error::Error for MemArgReadError {
         match self {
             Self::Align(e) => Some(e),
             Self::Offset(e) => Some(e),
-            Self::MemIndex(e) => Some(e),
         }
     }
 }
@@ -378,9 +375,8 @@ impl error::Error for MemArgReadError {
 impl fmt::Display for MemArgReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Align(_) => write!(f, ""),
-            Self::Offset(_) => write!(f, ""),
-            Self::MemIndex(_) => write!(f, ""),
+            Self::Align(_) => write!(f, "reading align"),
+            Self::Offset(_) => write!(f, "reading offset"),
         }
     }
 }
@@ -390,16 +386,8 @@ impl<'a> FromReader<'a> for MemArg {
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
         let align: u32 = reader.read().map_err(Self::Error::Align)?;
-        let mem_idx = (align & (1 << 6) != 0)
-            .then(|| reader.read())
-            .transpose()
-            .map_err(Self::Error::MemIndex)?;
         let offset: u64 = reader.read().map_err(Self::Error::Offset)?;
 
-        Ok(MemArg {
-            align,
-            offset,
-            mem_idx,
-        })
+        Ok(MemArg { align, offset })
     }
 }
