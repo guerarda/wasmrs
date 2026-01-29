@@ -445,6 +445,10 @@ impl Runtime {
                     // Ref
                     Instruction::RefNull(rt) => self.value_stack.push(Value::NullRef(*rt)),
                     Instruction::RefFunc(fi) => self.value_stack.push(Value::FuncRef(*fi)),
+                    Instruction::I32TruncSatF32S => todo!(),
+                    Instruction::I32TruncSatF32U => todo!(),
+                    Instruction::I64TruncSatF64S => todo!(),
+                    Instruction::I64TruncSatF64U => todo!(),
                 }
             }
         }

@@ -690,6 +690,11 @@ impl Validator {
                 Instruction::I64Extend32S => todo!(),
                 Instruction::RefNull(_ref_type) => todo!(),
                 Instruction::RefFunc(_) => todo!(),
+
+                Instruction::I32TruncSatF32S => todo!(),
+                Instruction::I32TruncSatF32U => todo!(),
+                Instruction::I64TruncSatF64S => todo!(),
+                Instruction::I64TruncSatF64U => todo!(),
             }
         }
         self.pop_ctrl()?;

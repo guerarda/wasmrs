@@ -18,6 +18,11 @@ use crate::binary::{
 macro_rules! instructions {
     (
         $($name:ident $(($arg:ty))? : $opcode:literal : $instr_name:literal,)*
+        $(
+            @prefix $prefix:literal {
+                $($pname:ident $(($parg:ty))? : $popcode:literal : $pinstr_name:literal,)*
+            }
+        )*
     ) => {
         /// WebAssembly Instructions
         #[cfg_attr(test, derive(PartialEq))]
@@ -26,6 +31,9 @@ macro_rules! instructions {
             $(
                 $name $(($arg))?,
             )*
+            $($(
+                $pname $(($parg))?,
+            )*)*
         }
 
         pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
@@ -34,6 +42,26 @@ macro_rules! instructions {
             match opcode {
                 $(
                     $opcode => instructions!(@decode reader $name $(($arg))? $instr_name),
+                )*
+                $(
+                    $prefix => {
+                        let second = reader.read_u32()?;
+                        match second {
+                            $(
+                            $popcode => instructions!(@decode reader $pname $(($parg))? $pinstr_name),
+                            )*
+                            _ => Err(InstructionError {
+                                kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {
+                                    value: second as u8,
+                                    enum_name: std::any::type_name::<Instruction>(),
+                                }),
+                                instr: None,
+                                offset,
+                            }),
+
+                        }
+
+                    }
                 )*
                 _ => Err(InstructionError {
                     kind: InstructionErrorKind::InvalidOpCode(InvalidEnumValueError {
@@ -187,6 +215,13 @@ instructions! {
     // Reference
     RefNull(RefType) : 0xd0 : "ref.null",
     RefFunc(FuncIdx) : 0xd2 : "ref.func",
+
+    @prefix 0xfc {
+        I32TruncSatF32S : 0 : "i32_trunc_sat_f32_s",
+        I32TruncSatF32U : 1 : "i32_trunc_sat_f32_u",
+        I64TruncSatF64S : 6 : "i64_trunc_sat_f64_s",
+        I64TruncSatF64U : 7 : "i64_trunc_sat_f64_u",
+    }
 }
 
 fn decode_arg<'a, T>(reader: &mut Reader<'a>, instr: &'static str) -> Result<T, InstructionError>
