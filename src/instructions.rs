@@ -564,6 +564,54 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_prefix_single_byte() {
+        // i32_trunc_sat_f32_s: 0xfc 0x00
+        let mut reader = Reader::from_bytes(&[0xfc, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I32TruncSatF32S
+        );
+
+        // i64_trunc_sat_f64_u: 0xfc 0x07
+        let mut reader = Reader::from_bytes(&[0xfc, 0x07], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I64TruncSatF64U
+        );
+    }
+
+    #[test]
+    fn test_decode_prefix_multi_byte_leb128() {
+        // Sub-opcode 7 encoded as 2-byte LEB128: 0x87 0x00
+        let mut reader = Reader::from_bytes(&[0xfc, 0x87, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I64TruncSatF64U
+        );
+
+        // Sub-opcode 0 encoded as 2-byte LEB128: 0x80 0x00
+        let mut reader = Reader::from_bytes(&[0xfc, 0x80, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I32TruncSatF32S
+        );
+
+        // Sub-opcode 7 encoded as 5-byte LEB128 (max for u32): 0x87 0x80 0x80 0x80 0x00
+        let mut reader = Reader::from_bytes(&[0xfc, 0x87, 0x80, 0x80, 0x80, 0x00], 0);
+        assert_eq!(
+            decode_instruction(&mut reader).unwrap(),
+            Instruction::I64TruncSatF64U
+        );
+    }
+
+    #[test]
+    fn test_decode_prefix_too_long_leb128() {
+        // Sub-opcode encoded as 6 bytes (exceeds u32 LEB128 max of 5)
+        let mut reader = Reader::from_bytes(&[0xfc, 0x87, 0x80, 0x80, 0x80, 0x80, 0x00], 0);
+        assert!(decode_instruction(&mut reader).is_err());
+    }
+
+    #[test]
     fn test_decode_invalid_opcode() {
         let mut reader = Reader::from_bytes(&[0xff], 0);
         assert!(decode_instruction(&mut reader).is_err());
