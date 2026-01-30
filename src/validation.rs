@@ -328,6 +328,7 @@ impl Validator {
     }
 
     fn validate_bin_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+        // [t t] -> [t]
         let valtype = ValTypeOrUnknown::Val(valtype);
         self.pop_val_expect(valtype)?;
         self.pop_val_expect(valtype)?;
@@ -336,13 +337,28 @@ impl Validator {
     }
 
     fn validate_unary_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+        // [t] -> [t]
         let valtype = ValTypeOrUnknown::Val(valtype);
         self.pop_val_expect(valtype)?;
         self.push_val(valtype);
         Ok(())
     }
 
+    fn validate_conversion_op(
+        &mut self,
+        from_valtype: ValType,
+        to_valtype: ValType,
+    ) -> result::Result<(), ValidationError> {
+        // [t1] -> [t2]
+        let from_valtype = ValTypeOrUnknown::Val(from_valtype);
+        let to_valtype = ValTypeOrUnknown::Val(to_valtype);
+        self.pop_val_expect(from_valtype)?;
+        self.push_val(to_valtype);
+        Ok(())
+    }
+
     fn validate_comp_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+        // [t t] -> [i32]
         let valtype = ValTypeOrUnknown::Val(valtype);
         self.pop_val_expect(valtype)?;
         self.pop_val_expect(valtype)?;
@@ -380,6 +396,7 @@ impl Validator {
                     self.push_ctrl(Instruction::Loop(*bt), t1, t2);
                 }
                 Instruction::If(bt) => {
+                    // [t1* i32] -> [t2*]
                     let (t1, t2) = Self::block_type(bt, module)?;
 
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
@@ -479,7 +496,6 @@ impl Validator {
                 Instruction::CallIndirect((type_idx, table_idx)) => {
                     // [t1* i32] -> [t2*]
                     let table_type = Self::table_type(module, *table_idx)?;
-
                     if !matches!(table_type.etype, RefType::Func) {
                         return Err(ValidationError::TableTypeMismatch);
                     }
@@ -506,9 +522,11 @@ impl Validator {
                 }
 
                 Instruction::Drop => {
+                    // [t] -> []
                     self.pop_val()?;
                 }
                 Instruction::Select => {
+                    // [t t i32] -> [t]
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     let t1 = self.pop_val()?;
                     let t2 = self.pop_val()?;
@@ -531,6 +549,7 @@ impl Validator {
                     }
                 }
                 Instruction::SelectT(vt) => {
+                    // [t t i32] -> [t]
                     let [t] = vt.as_slice() else {
                         return Err(ValidationError::InvalidSelectTypes);
                     };
@@ -541,23 +560,28 @@ impl Validator {
                     self.push_val(ValTypeOrUnknown::Val(*t));
                 }
                 Instruction::LocalGet(idx) => {
+                    // [] -> [t]
                     let vt = Self::local_type(functype, &entry.locals, *idx)?;
                     self.push_val(vt);
                 }
                 Instruction::LocalSet(idx) => {
+                    // [t] -> []
                     let vt = Self::local_type(functype, &entry.locals, *idx)?;
                     self.pop_val_expect(vt)?;
                 }
                 Instruction::LocalTee(idx) => {
+                    // [t] -> [t]
                     let vt = Self::local_type(functype, &entry.locals, *idx)?;
                     self.pop_val_expect(vt)?;
                     self.push_val(vt);
                 }
                 Instruction::GlobalGet(idx) => {
+                    // [] -> [t]
                     let gt = Self::global_type(module, *idx)?;
                     self.push_val(gt.into());
                 }
                 Instruction::GlobalSet(idx) => {
+                    // [t] -> []
                     let gt = Self::global_type(module, *idx)?;
                     if matches!(gt.mutflag, MutabilityFlag::Const) {
                         return Err(ValidationError::ImmutableGlobal);
@@ -606,6 +630,7 @@ impl Validator {
                 Instruction::F32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::F32)),
                 Instruction::F64Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::F64)),
                 Instruction::I32Eqz => {
+                    // [i32] -> [i32]
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     self.push_val(ValTypeOrUnknown::Val(ValType::I32));
                 }
@@ -622,8 +647,9 @@ impl Validator {
                 | Instruction::I32GeU => self.validate_comp_op(ValType::I32)?,
 
                 Instruction::I64Eqz => {
+                    // [i64] -> [i32]
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I64))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I64));
+                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
                 }
 
                 Instruction::I64Eq
@@ -683,26 +709,29 @@ impl Validator {
                 | Instruction::I64Rotl
                 | Instruction::I64Rotr => self.validate_bin_op(ValType::I64)?,
 
-                Instruction::I32Extend8S => todo!(),
-                Instruction::I32Extend16S => todo!(),
-                Instruction::I64Extend8S => todo!(),
-                Instruction::I64Extend16S => todo!(),
-                Instruction::I64Extend32S => todo!(),
-                Instruction::RefNull(_ref_type) => todo!(),
-                Instruction::RefFunc(_) => todo!(),
-
-                Instruction::I32TruncSatF32S => todo!(),
-                Instruction::I32TruncSatF32U => todo!(),
-                Instruction::I64TruncSatF64S => todo!(),
-                Instruction::I64TruncSatF64U => todo!(),
-
-                Instruction::I64ExtendI32S => {
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I64));
+                Instruction::I32Extend8S | Instruction::I32Extend16S => {
+                    self.validate_conversion_op(ValType::I32, ValType::I32)?
                 }
-                Instruction::I64ExtendI32U => {
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I64));
+                Instruction::I64Extend8S
+                | Instruction::I64Extend16S
+                | Instruction::I64Extend32S => {
+                    self.validate_conversion_op(ValType::I64, ValType::I64)?
+                }
+
+                Instruction::RefNull(rt) => self.push_val(ValTypeOrUnknown::Val(ValType::Ref(*rt))),
+                Instruction::RefFunc(_) => {
+                    self.push_val(ValTypeOrUnknown::Val(ValType::Ref(RefType::Func)))
+                }
+
+                Instruction::I32TruncSatF32S | Instruction::I32TruncSatF32U => {
+                    self.validate_conversion_op(ValType::F32, ValType::I32)?
+                }
+                Instruction::I64TruncSatF64S | Instruction::I64TruncSatF64U => {
+                    self.validate_conversion_op(ValType::F64, ValType::I64)?
+                }
+
+                Instruction::I64ExtendI32S | Instruction::I64ExtendI32U => {
+                    self.validate_conversion_op(ValType::I32, ValType::I64)?
                 }
             }
         }
