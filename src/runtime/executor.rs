@@ -1,10 +1,9 @@
 use std::ops::{BitAnd, BitOr, BitXor};
 
 use crate::{
-    Error,
     binary::types::BlockType,
     instructions::Instruction,
-    runtime::{Runtime, TrapError, instance::ModuleInstance, stack::Label, value::Value},
+    runtime::{Runtime, RuntimeError, instance::ModuleInstance, stack::Label, value::Value},
 };
 
 macro_rules! unary_op {
@@ -66,11 +65,11 @@ macro_rules! try_binary_op {
         let rhs = $self.value_stack.pop().unwrap();
         let lhs = $self.value_stack.pop().unwrap();
         let res = match (lhs, rhs) {
-            (Value::$variant(a), Value::$variant(b)) => $op(a, b).ok_or(TrapError::Unexpected)?,
+            (Value::$variant(a), Value::$variant(b)) => $op(a, b).ok_or(RuntimeError::trap())?,
             _ => unreachable!(),
         };
         $self.value_stack.push(Value::$variant(res as _));
-        Ok::<(), Error>(())
+        Ok::<(), RuntimeError>(())
     }};
 
     ($self:expr, $ty:ty, $variant:ident, $op:expr) => {{
@@ -78,12 +77,12 @@ macro_rules! try_binary_op {
         let lhs = $self.value_stack.pop().unwrap();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => {
-                $op(a as $ty, b as $ty).ok_or(TrapError::Unexpected)?
+                $op(a as $ty, b as $ty).ok_or(RuntimeError::trap())?
             }
             _ => unreachable!(),
         };
         $self.value_stack.push(Value::$variant(res as _));
-        Ok::<(), Error>(())
+        Ok::<(), RuntimeError>(())
     }};
 }
 
@@ -157,16 +156,32 @@ impl Runtime {
         }
     }
 
-    fn unwind_value_stack(value_stack: &mut Vec<Value>, sp: usize, arity: u32) {
-        let results = {
-            let idx = value_stack.len() - arity as usize;
-            value_stack.split_off(idx)
-        };
-        value_stack.truncate(sp);
-        value_stack.extend(results);
+    fn unwind_value_stack(
+        value_stack: &mut Vec<Value>,
+        sp: usize,
+        arity: u32,
+    ) -> Result<(), RuntimeError> {
+        let arity = arity as usize;
+
+        if value_stack.len() < arity {
+            return Err(RuntimeError::internal());
+        }
+
+        let results_idx = value_stack.len() - arity;
+        if results_idx < sp {
+            dbg!(value_stack);
+            dbg!(arity);
+            dbg!(sp);
+            return Err(RuntimeError::internal());
+        }
+        // Rotate the results down to sp, then truncate
+        value_stack[sp..].rotate_left(results_idx - sp);
+        value_stack.truncate(sp + arity);
+
+        Ok(())
     }
 
-    pub(super) fn execute(&mut self) -> Result<(), Error> {
+    pub(super) fn execute(&mut self) -> Result<(), RuntimeError> {
         while let Some(frame) = self.call_stack.last_mut() {
             let func_inst = self.store.get_func(frame.funcaddr);
             let module_inst = self.module_registry.get_instance(func_inst.module);
@@ -176,7 +191,7 @@ impl Runtime {
             if let Some(inst) = instrs.get(frame.pc as usize) {
                 match inst {
                     Instruction::Unreachable => {
-                        return Err(TrapError::Unreachable.into());
+                        return Err(RuntimeError::trap());
                     }
                     Instruction::Nop => continue,
                     Instruction::Block(bt) => {
@@ -193,7 +208,7 @@ impl Runtime {
                         let (end, else_) = Self::find_if_else_end(instrs, frame.pc);
                         frame.push_label(arity, end, self.value_stack.len());
 
-                        let cond = self.value_stack.pop().unwrap();
+                        let cond = self.value_stack.pop().ok_or(RuntimeError::trap())?;
                         match cond {
                             Value::I32(0) => {
                                 frame.pc = else_.unwrap_or(end);
@@ -207,17 +222,17 @@ impl Runtime {
                     }
                     Instruction::End => match frame.pop_label() {
                         Some(Label { arity, pc, sp }) => {
-                            Self::unwind_value_stack(&mut self.value_stack, sp, arity);
+                            Self::unwind_value_stack(&mut self.value_stack, sp, arity)?;
                             frame.pc = pc;
                         }
                         None => {
-                            Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity);
+                            Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity)?;
                             self.call_stack.pop();
                         }
                     },
                     Instruction::Br(label_idx) => {
                         let label = frame.pop_nth_label(*label_idx);
-                        Self::unwind_value_stack(&mut self.value_stack, label.sp, label.arity);
+                        Self::unwind_value_stack(&mut self.value_stack, label.sp, label.arity)?;
                         frame.pc = label.pc;
                     }
                     Instruction::BrIf(label_idx) => {
@@ -231,7 +246,7 @@ impl Runtime {
                                     &mut self.value_stack,
                                     label.sp,
                                     label.arity,
-                                );
+                                )?;
                                 frame.pc = label.pc;
                             }
                             _ => unreachable!(),
@@ -239,7 +254,7 @@ impl Runtime {
                     }
                     Instruction::BrTable(_) => todo!(),
                     Instruction::Return => {
-                        Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity);
+                        Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity)?;
                         self.call_stack.pop();
                     }
                     Instruction::Call(idx) => {
@@ -346,6 +361,7 @@ impl Runtime {
                     Instruction::I32DivS => {
                         try_binary_op!(self, I32, |a: i32, b| a.checked_div(b))?
                     }
+
                     Instruction::I32DivU => {
                         try_binary_op!(self, u32, I32, |a: u32, b| a.checked_div(b))?
                     }
@@ -356,7 +372,6 @@ impl Runtime {
                             Some(a.wrapping_rem(b))
                         }
                     })?,
-
                     Instruction::I32RemU => try_binary_op!(self, u32, I32, |a: u32, b| {
                         if b == 0 {
                             None

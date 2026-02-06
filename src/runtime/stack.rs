@@ -1,6 +1,6 @@
 use crate::runtime::{store::FuncAddr, value::Value};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Label {
     pub arity: u32,
     pub pc: isize,
@@ -13,7 +13,7 @@ impl Label {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Frame {
     labels: Vec<Label>,
     pub arity: u32,
