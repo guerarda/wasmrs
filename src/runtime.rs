@@ -175,7 +175,6 @@ impl RuntimeError {
     }
 
     fn internal() -> Self {
-        panic!("");
         Self {
             kind: RuntimeErrorKind::Internal,
             pc: -1,

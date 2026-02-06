@@ -206,9 +206,10 @@ impl Runtime {
                     Instruction::If(bt) => {
                         let arity = Self::block_arity(bt, module_inst);
                         let (end, else_) = Self::find_if_else_end(instrs, frame.pc);
-                        frame.push_label(arity, end, self.value_stack.len());
 
                         let cond = self.value_stack.pop().ok_or(RuntimeError::trap())?;
+                        frame.push_label(arity, end, self.value_stack.len());
+
                         match cond {
                             Value::I32(0) => {
                                 frame.pc = else_.unwrap_or(end);
