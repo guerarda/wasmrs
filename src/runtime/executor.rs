@@ -3,7 +3,12 @@ use std::ops::{BitAnd, BitOr, BitXor};
 use crate::{
     binary::types::BlockType,
     instructions::Instruction,
-    runtime::{Runtime, RuntimeError, instance::ModuleInstance, stack::Label, value::Value},
+    runtime::{
+        Runtime, RuntimeError,
+        instance::ModuleInstance,
+        stack::{Frame, Label},
+        value::Value,
+    },
 };
 
 macro_rules! unary_op {
@@ -178,6 +183,17 @@ impl Runtime {
         Ok(())
     }
 
+    fn branch(
+        stack: &mut Vec<Value>,
+        frame: &mut Frame,
+        label_idx: &u32,
+    ) -> Result<(), RuntimeError> {
+        let label = frame.pop_nth_label(*label_idx);
+        Self::unwind_value_stack(stack, label.sp, label.arity)?;
+        frame.pc = label.pc;
+        Ok(())
+    }
+
     pub(super) fn execute(&mut self) -> Result<(), RuntimeError> {
         while let Some(frame) = self.call_stack.last_mut() {
             let func_inst = self.store.get_func(frame.funcaddr);
@@ -229,24 +245,14 @@ impl Runtime {
                         }
                     },
                     Instruction::Br(label_idx) => {
-                        let label = frame.pop_nth_label(*label_idx);
-                        Self::unwind_value_stack(&mut self.value_stack, label.sp, label.arity)?;
-                        frame.pc = label.pc;
+                        Self::branch(&mut self.value_stack, frame, label_idx)?;
                     }
                     Instruction::BrIf(label_idx) => {
                         let cond = self.value_stack.pop().unwrap();
                         match cond {
                             Value::I32(0) => continue,
 
-                            Value::I32(_) => {
-                                let label = frame.pop_nth_label(*label_idx);
-                                Self::unwind_value_stack(
-                                    &mut self.value_stack,
-                                    label.sp,
-                                    label.arity,
-                                )?;
-                                frame.pc = label.pc;
-                            }
+                            Value::I32(_) => Self::branch(&mut self.value_stack, frame, label_idx)?,
                             _ => unreachable!(),
                         };
                     }
@@ -257,9 +263,7 @@ impl Runtime {
                         }? as usize;
 
                         let label_idx = br_idx.labels.get(i).unwrap_or(&br_idx.default);
-                        let label = frame.pop_nth_label(*label_idx);
-                        Self::unwind_value_stack(&mut self.value_stack, label.sp, label.arity)?;
-                        frame.pc = label.pc;
+                        Self::branch(&mut self.value_stack, frame, label_idx)?;
                     }
                     Instruction::Return => {
                         Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity)?;
