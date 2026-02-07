@@ -250,7 +250,17 @@ impl Runtime {
                             _ => unreachable!(),
                         };
                     }
-                    Instruction::BrTable(_) => todo!(),
+                    Instruction::BrTable(br_idx) => {
+                        let i = match self.value_stack.pop() {
+                            Some(Value::I32(v)) => Ok(v),
+                            _ => Err(RuntimeError::internal()),
+                        }? as usize;
+
+                        let label_idx = br_idx.labels.get(i).unwrap_or(&br_idx.default);
+                        let label = frame.pop_nth_label(*label_idx);
+                        Self::unwind_value_stack(&mut self.value_stack, label.sp, label.arity)?;
+                        frame.pc = label.pc;
+                    }
                     Instruction::Return => {
                         Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity)?;
                         self.call_stack.pop();
