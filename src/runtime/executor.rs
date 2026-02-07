@@ -209,14 +209,14 @@ impl Runtime {
 
                         match cond {
                             Value::I32(0) => {
-                                frame.pc = else_.unwrap_or(end);
+                                frame.pc = else_.unwrap_or(end - 1);
                             }
                             Value::I32(_) => continue,
                             _ => unreachable!(),
                         };
                     }
                     Instruction::Else => {
-                        frame.pc = frame.current_label().pc;
+                        frame.pc = frame.current_label().pc - 1;
                     }
                     Instruction::End => match frame.pop_label() {
                         Some(Label { arity, pc, sp }) => {
@@ -266,8 +266,8 @@ impl Runtime {
                     }
                     Instruction::Select => {
                         let cond = self.value_stack.pop().unwrap();
-                        let val1 = self.value_stack.pop().unwrap();
                         let val2 = self.value_stack.pop().unwrap();
+                        let val1 = self.value_stack.pop().unwrap();
 
                         match cond {
                             Value::I32(0) => self.value_stack.push(val2),
@@ -277,8 +277,8 @@ impl Runtime {
                     }
                     Instruction::SelectT(_vt) => {
                         let cond = self.value_stack.pop().unwrap();
-                        let val1 = self.value_stack.pop().unwrap();
                         let val2 = self.value_stack.pop().unwrap();
+                        let val1 = self.value_stack.pop().unwrap();
 
                         match cond {
                             Value::I32(0) => self.value_stack.push(val2),
