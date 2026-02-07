@@ -29,6 +29,21 @@ impl From<ValType> for Value {
     }
 }
 
+impl Value {
+    pub fn as_bool(self) -> Option<bool> {
+        match self {
+            Value::I32(v) => Some(v != 0),
+            _ => None,
+        }
+    }
+    pub fn as_i32(self) -> Option<i32> {
+        match self {
+            Value::I32(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

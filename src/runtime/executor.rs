@@ -248,19 +248,23 @@ impl Runtime {
                         Self::branch(&mut self.value_stack, frame, label_idx)?;
                     }
                     Instruction::BrIf(label_idx) => {
-                        let cond = self.value_stack.pop().unwrap();
-                        match cond {
-                            Value::I32(0) => continue,
+                        let cond = self
+                            .value_stack
+                            .pop()
+                            .and_then(Value::as_bool)
+                            .ok_or(RuntimeError::internal())?;
 
-                            Value::I32(_) => Self::branch(&mut self.value_stack, frame, label_idx)?,
-                            _ => unreachable!(),
-                        };
+                        if cond {
+                            Self::branch(&mut self.value_stack, frame, label_idx)?;
+                        }
                     }
                     Instruction::BrTable(br_idx) => {
-                        let i = match self.value_stack.pop() {
-                            Some(Value::I32(v)) => Ok(v),
-                            _ => Err(RuntimeError::internal()),
-                        }? as usize;
+                        let i = self
+                            .value_stack
+                            .pop()
+                            .and_then(Value::as_i32)
+                            .ok_or(RuntimeError::internal())?
+                            as usize;
 
                         let label_idx = br_idx.labels.get(i).unwrap_or(&br_idx.default);
                         Self::branch(&mut self.value_stack, frame, label_idx)?;
