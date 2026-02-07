@@ -59,6 +59,15 @@ impl<'a> FromReader<'a> for RefType {
     }
 }
 
+impl fmt::Display for RefType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Func => write!(f, "funcref"),
+            Self::Extern => write!(f, "externref"),
+        }
+    }
+}
+
 /// ValType
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]

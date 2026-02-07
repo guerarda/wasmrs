@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::{
     binary::types::{FuncType, TypeIdx, ValType},
     instructions::Instruction,
@@ -21,6 +23,12 @@ impl TryFrom<&ExternVal> for FuncAddr {
             ExternVal::Func(funcaddr) => Ok(funcaddr),
             _ => panic!("oops"),
         }
+    }
+}
+
+impl fmt::Display for FuncAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

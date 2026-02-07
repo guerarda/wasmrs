@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::{
     binary::types::{RefType, ValType},
     runtime::store::FuncAddr,
@@ -23,6 +25,20 @@ impl From<ValType> for Value {
             ValType::F64 => Value::F64(0.0),
             ValType::V128 => unimplemented!(),
             ValType::Ref(rt) => Value::NullRef(rt),
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::I32(v) => write!(f, "i32({v})"),
+            Self::I64(v) => write!(f, "i64({v})"),
+            Self::F32(v) => write!(f, "f32({v})"),
+            Self::F64(v) => write!(f, "f64({v})"),
+            Self::NullRef(v) => write!(f, "{v}(null)"),
+            Self::FuncRef(v) => write!(f, "funcref({v})"),
+            Self::ExternRef(v) => write!(f, "externref({v})"),
         }
     }
 }

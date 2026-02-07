@@ -169,9 +169,6 @@ impl Runtime {
 
         let results_idx = value_stack.len() - arity;
         if results_idx < sp {
-            dbg!(value_stack);
-            dbg!(arity);
-            dbg!(sp);
             return Err(RuntimeError::internal());
         }
         // Rotate the results down to sp, then truncate

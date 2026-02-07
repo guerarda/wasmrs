@@ -158,7 +158,34 @@ impl error::Error for RuntimeError {
 
 impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "trap error:\n {self:?}")
+        writeln!(f, "{} error", self.kind)?;
+        writeln!(f, "{}", self.instruction)?;
+
+        // Print value stack, topmosts only : ... | valtype(val) | ... |
+        write!(f, "value stack: ")?;
+        let n = 8;
+        if self.value_stack.len() > n {
+            write!(f, "... ")?;
+        }
+        for v in self.value_stack.iter().rev().take(n).rev() {
+            write!(f, "| {v} ")?;
+        }
+        writeln!(f, "|")?;
+
+        // Print call stack
+        writeln!(f, "call stack:")?;
+        for (i, frame) in self.call_stack.iter().rev().enumerate() {
+            writeln!(
+                f,
+                "  #{i}: func[{}] pc={} sp={} arity={} locals={}",
+                frame.funcaddr,
+                frame.pc,
+                frame.sp,
+                frame.arity,
+                frame.locals.len()
+            )?;
+        }
+        Ok(())
     }
 }
 
