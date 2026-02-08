@@ -592,7 +592,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_global_section2() -> anyhow::Result<()> {
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
