@@ -1,9 +1,9 @@
-use core::{error, fmt};
-use std::{iter::repeat_n, result};
+use std::{error, fmt, iter::repeat_n, result};
 
 use crate::{
     Error, Module,
-    binary::module,
+    binary::{module, sections::memory::MemType, types::MemIdx},
+    limits::MAX_WASM_32BIT_MEMORY_PAGES,
     runtime::{
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
@@ -18,12 +18,21 @@ pub mod stack;
 pub mod store;
 pub mod value;
 
+const WASM_MEM_PAGE_BYTE_SIZE: usize = 1 << 16;
+
+#[derive(Debug)]
+pub struct MemoryInstance {
+    memtype: MemType,
+    data: Vec<u8>,
+}
+
 #[derive(Debug, Default)]
 pub struct Runtime {
     call_stack: Vec<Frame>,
     value_stack: Vec<Value>,
 
     store: Store,
+    memories: Vec<MemoryInstance>,
     module_registry: ModuleRegistry,
 }
 
@@ -77,8 +86,62 @@ impl Runtime {
             }
         }
 
+        // Instantiate memory instance
+        if let Some(memsec) = &module.memories {
+            assert!(memsec.len() <= 1);
+
+            if let Some(memtype) = memsec.first() {
+                let memsize = (memtype.0.min as usize) * WASM_MEM_PAGE_BYTE_SIZE;
+                let mem = vec![0u8; memsize];
+                self.memories.push(MemoryInstance {
+                    memtype: memtype.clone(),
+                    data: mem,
+                });
+            }
+        }
+
         self.module_registry.register(h, mi);
         h
+    }
+
+    pub(super) fn memory_grow(
+        mem_instances: &mut Vec<MemoryInstance>,
+        idx: MemIdx,
+        n_pages: u32,
+    ) -> result::Result<Option<u32>, RuntimeError> {
+        let sz = Self::memory_size(mem_instances, idx)?;
+        let new_sz = match sz.checked_add(n_pages) {
+            Some(n) => n,
+            _ => return Ok(None),
+        };
+
+        if new_sz > MAX_WASM_32BIT_MEMORY_PAGES {
+            return Ok(None);
+        }
+
+        if let Some(max_sz) = mem_instances[0].memtype.0.max {
+            if new_sz > max_sz {
+                return Ok(None);
+            }
+        }
+
+        let len = new_sz as usize * WASM_MEM_PAGE_BYTE_SIZE;
+        mem_instances[0].data.resize(len, 0);
+
+        Ok(Some(sz))
+    }
+
+    pub(super) fn memory_size(
+        mem_instances: &Vec<MemoryInstance>,
+        idx: MemIdx,
+    ) -> result::Result<u32, RuntimeError> {
+        if idx != 0 {
+            return Err(RuntimeError::internal("assert: non-zero mem idx"));
+        }
+        mem_instances
+            .first()
+            .map(|mem| (mem.data.len() / WASM_MEM_PAGE_BYTE_SIZE) as u32)
+            .ok_or_else(|| RuntimeError::internal("assert: mems[0] does not exist"))
     }
 
     fn call(&mut self, funcaddr: FuncAddr) {
@@ -119,10 +182,11 @@ impl Runtime {
         self.execute()
             .map_err(|e| e.with_stacks(self.call_stack.clone(), self.value_stack.clone()))?;
 
-        if self.value_stack.len() < arity {
-            return Err(RuntimeError::internal().into());
+        let stack_len = self.value_stack.len();
+        if stack_len < arity {
+            return Err(RuntimeError::internal("invalid stack len after function invocation: len={stack_len}, function arity={arity}").into());
         }
-        let idx = self.value_stack.len() - arity;
+        let idx = stack_len - arity;
         let results = self.value_stack.split_off(idx);
         debug_assert!(
             self.value_stack.len() == base,
@@ -202,9 +266,9 @@ impl RuntimeError {
         }
     }
 
-    fn internal() -> Self {
+    fn internal(msg: &'static str) -> Self {
         Self {
-            kind: RuntimeErrorKind::Internal,
+            kind: RuntimeErrorKind::Internal(msg.to_string()),
             pc: -1,
             instruction: "",
             call_stack: vec![],
@@ -238,7 +302,7 @@ impl RuntimeError {
 #[non_exhaustive]
 pub enum RuntimeErrorKind {
     Trap,
-    Internal,
+    Internal(String),
 }
 
 impl error::Error for RuntimeErrorKind {
@@ -251,7 +315,7 @@ impl fmt::Display for RuntimeErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Trap => write!(f, "trap"),
-            Self::Internal => write!(f, "internal"),
+            Self::Internal(msg) => write!(f, "internal: {msg}"),
         }
     }
 }

@@ -169,13 +169,16 @@ impl Runtime {
     ) -> Result<(), RuntimeError> {
         let arity = arity as usize;
 
-        if value_stack.len() < arity {
-            return Err(RuntimeError::internal());
+        let stack_len = value_stack.len();
+        if stack_len < arity {
+            return Err(RuntimeError::internal(
+                "unwinding {arity} value from stack with len {stack_len}",
+            ));
         }
 
-        let results_idx = value_stack.len() - arity;
+        let results_idx = stack_len - arity;
         if results_idx < sp {
-            return Err(RuntimeError::internal());
+            return Err(RuntimeError::internal("unwinding past stack pointer"));
         }
         // Rotate the results down to sp, then truncate
         value_stack[sp..].rotate_left(results_idx - sp);
@@ -262,7 +265,7 @@ impl Runtime {
                             .value_stack
                             .pop()
                             .and_then(Value::as_bool)
-                            .ok_or(RuntimeError::internal())?;
+                            .ok_or(RuntimeError::internal("br_if, invalid cond type"))?;
 
                         if cond {
                             Self::branch(&mut self.value_stack, frame, label_idx)?;
@@ -273,7 +276,7 @@ impl Runtime {
                             .value_stack
                             .pop()
                             .and_then(Value::as_i32)
-                            .ok_or(RuntimeError::internal())?
+                            .ok_or(RuntimeError::internal("br_table, invalid index type"))?
                             as usize;
 
                         let label_idx = br_idx.labels.get(i).unwrap_or(&br_idx.default);
@@ -328,8 +331,20 @@ impl Runtime {
 
                     Instruction::I32Load(_) => todo!(),
                     Instruction::I32Store(_) => todo!(),
-                    Instruction::MemorySize(_) => todo!(),
-                    Instruction::MemoryGrow(_) => todo!(),
+                    Instruction::MemorySize(idx) => {
+                        let sz = Self::memory_size(&self.memories, *idx)?;
+                        self.value_stack.push(Value::I32(sz as i32));
+                    }
+                    Instruction::MemoryGrow(idx) => {
+                        let inc =
+                            self.value_stack.pop().and_then(Value::as_i32).ok_or(
+                                RuntimeError::internal("memory.grow, invalid argument type"),
+                            )?;
+                        let res = Self::memory_grow(&mut self.memories, *idx, inc as u32)?
+                            .map(|v| v as i32)
+                            .unwrap_or(-1);
+                        self.value_stack.push(Value::I32(res));
+                    }
 
                     Instruction::I32Const(v) => self.value_stack.push(Value::I32(*v)),
                     Instruction::I64Const(v) => self.value_stack.push(Value::I64(*v)),

@@ -7,7 +7,7 @@ use crate::binary::{
 };
 
 /// Memory Section
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct MemType(pub Limit);
 
