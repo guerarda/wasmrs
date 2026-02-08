@@ -610,4 +610,113 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    #[ignore]
+    fn test_i32_store_load() -> anyhow::Result<()> {
+        // (module
+        //   (memory 1)
+        //   (func (export "store") (param i32 i32) local.get 0 local.get 1 i32.store)
+        //   (func (export "load") (param i32) (result i32) local.get 0 i32.load))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 2 types
+            //   type 0: (i32 i32) -> ()
+            //   type 1: (i32) -> (i32)
+            b"\x01\x0b\x02\x60\x02\x7f\x7f\x00\x60\x01\x7f\x01\x7f",
+            // function section: 2 funcs, type 0 and type 1
+            b"\x03\x03\x02\x00\x01",
+            // memory section: 1 memory, min=1 page
+            b"\x05\x03\x01\x00\x01",
+            // export section: "store" -> func 0, "load" -> func 1
+            b"\x07\x10\x02\x05store\x00\x00\x04load\x00\x01",
+            // code section: 2 entries
+            //   func 0: local.get 0, local.get 1, i32.store align=2 offset=0, end
+            //   func 1: local.get 0, i32.load align=2 offset=0, end
+            b"\x0a\x13\x02\x09\x00\x20\x00\x20\x01\x36\x02\x00\x0b\x07\x00\x20\x00\x28\x02\x00\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        // Store 42 at address 0
+        runtime.invoke(mh, "store", &[Value::I32(0), Value::I32(42)])?;
+        assert_eq!(&runtime.memory_data(0)[0..4], &42_i32.to_le_bytes());
+
+        // Load from address 0
+        let r = runtime.invoke(mh, "load", &[Value::I32(0)])?;
+        assert!(matches!(r.as_slice(), [Value::I32(42)]));
+
+        // Store at a different offset and load it back
+        runtime.invoke(mh, "store", &[Value::I32(100), Value::I32(-1)])?;
+        assert_eq!(&runtime.memory_data(0)[100..104], &(-1_i32).to_le_bytes());
+
+        let r = runtime.invoke(mh, "load", &[Value::I32(100)])?;
+        assert!(matches!(r.as_slice(), [Value::I32(-1)]));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_if_param() -> anyhow::Result<()> {
+        // (module
+        //   (func (export "param") (param i32) (result i32)
+        //     (i32.const 1)
+        //     (if (param i32) (result i32) (local.get 0)
+        //       (then (i32.const 2) (i32.add))
+        //       (else (i32.const -2) (i32.add))))
+        //   (func (export "params") (param i32) (result i32)
+        //     (i32.const 1) (i32.const 2)
+        //     (if (param i32 i32) (result i32) (local.get 0)
+        //       (then (i32.add))
+        //       (else (i32.sub))))
+        //   (func (export "params-id") (param i32) (result i32)
+        //     (i32.const 1) (i32.const 2)
+        //     (if (param i32 i32) (result i32 i32) (local.get 0) (then))
+        //     (i32.add)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 3 types
+            //   type 0: (i32) -> (i32)
+            //   type 1: (i32 i32) -> (i32)
+            //   type 2: (i32 i32) -> (i32 i32)
+            b"\x01\x13\x03\x60\x01\x7f\x01\x7f\x60\x02\x7f\x7f\x01\x7f\x60\x02\x7f\x7f\x02\x7f\x7f",
+            // function section: 3 funcs, all type 0
+            b"\x03\x04\x03\x00\x00\x00",
+            // export section: "param" -> func 0, "params" -> func 1, "params-id" -> func 2
+            b"\x07\x1e\x03\x05param\x00\x00\x06params\x00\x01\x09params-id\x00\x02",
+            // code section: 3 entries
+            b"\x0a\x2e\x03",
+            // func 0: i32.const 1, local.get 0, if(type 0), i32.const 2, i32.add, else, i32.const -2, i32.add, end, end
+            b"\x10\x00\x41\x01\x20\x00\x04\x00\x41\x02\x6a\x05\x41\x7e\x6a\x0b\x0b",
+            // func 1: i32.const 1, i32.const 2, local.get 0, if(type 1), i32.add, else, i32.sub, end, end
+            b"\x0e\x00\x41\x01\x41\x02\x20\x00\x04\x01\x6a\x05\x6b\x0b\x0b",
+            // func 2: i32.const 1, i32.const 2, local.get 0, if(type 2), end, i32.add, end
+            b"\x0c\x00\x41\x01\x41\x02\x20\x00\x04\x02\x0b\x6a\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        let cases = [
+            ("param", 0, -1),
+            ("param", 1, 3),
+            ("params", 0, -1),
+            ("params", 1, 3),
+            ("params-id", 0, 3),
+            ("params-id", 1, 3),
+        ];
+
+        for (name, arg, expected) in cases {
+            let r = runtime.invoke(mh, name, &[Value::I32(arg)])?;
+            assert!(
+                matches!(r.as_slice(), [Value::I32(v)] if *v == expected),
+                "{name}({arg}): expected {expected}, got {r:?}",
+            );
+        }
+
+        Ok(())
+    }
 }
