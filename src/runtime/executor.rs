@@ -530,3 +530,84 @@ impl Runtime {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::runtime::{Runtime, value::Value};
+
+    #[test]
+    fn test_memory_size() -> anyhow::Result<()> {
+        // (module
+        //   (memory 1)
+        //   (func (export "size") (result i32) memory.size))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // memory section: 1 memory, min=1 page
+            b"\x05\x03\x01\x00\x01",
+            // export section: "size" -> func 0
+            b"\x07\x08\x01\x04size\x00\x00",
+            // code section: memory.size 0, end
+            b"\x0a\x06\x01\x04\x00\x3f\x00\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        let r = runtime.invoke(mh, "size", &[])?;
+        assert!(matches!(r.as_slice(), [Value::I32(1)]));
+        assert_eq!(runtime.memory_pages(0), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_grow() -> anyhow::Result<()> {
+        // (module
+        //   (memory 1)
+        //   (func (export "grow") (param i32) (result i32) local.get 0 memory.grow)
+        //   (func (export "size") (result i32) memory.size))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 2 types
+            //   type 0: (i32) -> (i32)
+            //   type 1: () -> (i32)
+            b"\x01\x0a\x02\x60\x01\x7f\x01\x7f\x60\x00\x01\x7f",
+            // function section: 2 funcs, type 0 and type 1
+            b"\x03\x03\x02\x00\x01",
+            // memory section: 1 memory, min=1 page
+            b"\x05\x03\x01\x00\x01",
+            // export section: "grow" -> func 0, "size" -> func 1
+            b"\x07\x0f\x02\x04grow\x00\x00\x04size\x00\x01",
+            // code section: 2 entries
+            //   func 0: local.get 0, memory.grow 0, end
+            //   func 1: memory.size 0, end
+            b"\x0a\x0d\x02\x06\x00\x20\x00\x40\x00\x0b\x04\x00\x3f\x00\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        // Initial size is 1 page
+        let r = runtime.invoke(mh, "size", &[])?;
+        assert!(matches!(r.as_slice(), [Value::I32(1)]));
+        assert_eq!(runtime.memory_pages(0), 1);
+
+        // Grow by 2 pages, returns old size (1)
+        let r = runtime.invoke(mh, "grow", &[Value::I32(2)])?;
+        assert!(matches!(r.as_slice(), [Value::I32(1)]));
+        assert_eq!(runtime.memory_pages(0), 3);
+        assert_eq!(runtime.memory_data(0).len(), 3 * 65536);
+
+        // New size is 3 pages
+        let r = runtime.invoke(mh, "size", &[])?;
+        assert!(matches!(r.as_slice(), [Value::I32(3)]));
+
+        Ok(())
+    }
+}

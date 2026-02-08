@@ -204,6 +204,17 @@ impl Runtime {
     }
 }
 
+#[cfg(test)]
+impl Runtime {
+    pub fn memory_pages(&self, idx: usize) -> usize {
+        self.memories[idx].data.len() / WASM_MEM_PAGE_BYTE_SIZE
+    }
+
+    pub fn memory_data(&self, idx: usize) -> &[u8] {
+        &self.memories[idx].data
+    }
+}
+
 /// Trap Error
 #[derive(Debug)]
 pub struct RuntimeError {
