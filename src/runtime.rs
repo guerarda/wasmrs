@@ -81,6 +81,27 @@ impl Runtime {
         h
     }
 
+    fn call(&mut self, funcaddr: FuncAddr) {
+        let func_instance = self.store.get_func(funcaddr);
+        let n_args = func_instance.ftype.params.len();
+        let arity = func_instance.ftype.results.len() as u32;
+        let sp = self.value_stack.len() - n_args;
+
+        let mut locals: Vec<Value> = self.value_stack.split_off(sp);
+        locals.extend(
+            func_instance
+                .func
+                .locals
+                .clone()
+                .into_iter()
+                .map(Into::<Value>::into),
+        );
+
+        self.call_stack
+            .push(Frame::new(arity, funcaddr, locals, sp));
+    }
+
+    /// Invoke a function from a given module
     pub fn invoke(
         &mut self,
         module: ModuleHandle,
@@ -108,26 +129,6 @@ impl Runtime {
             "value stack not fully unwound after function invocation"
         );
         Ok(results)
-    }
-
-    fn call(&mut self, funcaddr: FuncAddr) {
-        let func_instance = self.store.get_func(funcaddr);
-        let n_args = func_instance.ftype.params.len();
-        let arity = func_instance.ftype.results.len() as u32;
-        let sp = self.value_stack.len() - n_args;
-
-        let mut locals: Vec<Value> = self.value_stack.split_off(sp);
-        locals.extend(
-            func_instance
-                .func
-                .locals
-                .clone()
-                .into_iter()
-                .map(Into::<Value>::into),
-        );
-
-        self.call_stack
-            .push(Frame::new(arity, funcaddr, locals, sp));
     }
 
     /// Decode and instantiate a module from bytes
