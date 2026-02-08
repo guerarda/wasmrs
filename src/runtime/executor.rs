@@ -150,13 +150,14 @@ impl Runtime {
         panic!("block without matching end")
     }
 
-    fn block_arity(bt: &BlockType, module_inst: &ModuleInstance) -> u32 {
+    /// Returns the numbers of parameters and results for the block
+    fn block_arity(bt: &BlockType, module_inst: &ModuleInstance) -> (u32, u32) {
         match bt {
-            BlockType::Empty => 0,
-            BlockType::Value(_) => 1,
+            BlockType::Empty => (0, 0),
+            BlockType::Value(_) => (0, 1),
             BlockType::Index(idx) => {
                 let ftype = &module_inst.types[*idx as usize];
-                ftype.results.len() as u32
+                (ftype.params.len() as u32, ftype.results.len() as u32)
             }
         }
     }
@@ -208,23 +209,32 @@ impl Runtime {
                     }
                     Instruction::Nop => continue,
                     Instruction::Block(bt) => {
-                        let arity = Self::block_arity(bt, module_inst);
+                        let (n_params, n_results) = Self::block_arity(bt, module_inst);
                         let end = Self::find_block_end(instrs, frame.pc);
-                        frame.push_label(arity, end, self.value_stack.len())
+                        frame.push_label(n_results, end, self.value_stack.len() - n_params as usize)
                     }
                     Instruction::Loop(bt) => {
-                        let arity = Self::block_arity(bt, module_inst);
-                        frame.push_label(arity, frame.pc, self.value_stack.len())
+                        let (n_params, _) = Self::block_arity(bt, module_inst);
+                        frame.push_label(
+                            n_params,
+                            frame.pc,
+                            self.value_stack.len() - n_params as usize,
+                        )
                     }
                     Instruction::If(bt) => {
-                        let arity = Self::block_arity(bt, module_inst);
+                        let (n_params, n_results) = Self::block_arity(bt, module_inst);
                         let (end, else_) = Self::find_if_else_end(instrs, frame.pc);
 
                         let cond = self.value_stack.pop().ok_or(RuntimeError::trap())?;
-                        frame.push_label(arity, end, self.value_stack.len());
+                        frame.push_label(
+                            n_results,
+                            end,
+                            self.value_stack.len() - n_params as usize,
+                        );
 
                         match cond {
                             Value::I32(0) => {
+                                // Next instruction is one past else or end
                                 frame.pc = else_.unwrap_or(end - 1);
                             }
                             Value::I32(_) => continue,
