@@ -105,7 +105,7 @@ impl Runtime {
     }
 
     pub(super) fn memory_grow(
-        mem_instances: &mut Vec<MemoryInstance>,
+        mem_instances: &mut [MemoryInstance],
         idx: MemIdx,
         n_pages: u32,
     ) -> result::Result<Option<u32>, RuntimeError> {
@@ -119,10 +119,10 @@ impl Runtime {
             return Ok(None);
         }
 
-        if let Some(max_sz) = mem_instances[0].memtype.0.max {
-            if new_sz > max_sz {
-                return Ok(None);
-            }
+        if let Some(max_sz) = mem_instances[0].memtype.0.max
+            && new_sz > max_sz
+        {
+            return Ok(None);
         }
 
         let len = new_sz as usize * WASM_MEM_PAGE_BYTE_SIZE;
@@ -132,7 +132,7 @@ impl Runtime {
     }
 
     pub(super) fn memory_size(
-        mem_instances: &Vec<MemoryInstance>,
+        mem_instances: &[MemoryInstance],
         idx: MemIdx,
     ) -> result::Result<u32, RuntimeError> {
         if idx != 0 {
@@ -145,7 +145,7 @@ impl Runtime {
     }
 
     pub(super) fn memory_slice(
-        mem_instances: &Vec<MemoryInstance>,
+        mem_instances: &[MemoryInstance],
         idx: MemIdx,
         offset: usize,
         len: usize,
@@ -167,7 +167,7 @@ impl Runtime {
     }
 
     pub(super) fn memory_slice_mut(
-        mem_instances: &mut Vec<MemoryInstance>,
+        mem_instances: &mut [MemoryInstance],
         idx: MemIdx,
         offset: usize,
         len: usize,
