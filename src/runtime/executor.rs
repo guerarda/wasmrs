@@ -1,7 +1,7 @@
 use std::ops::{BitAnd, BitOr, BitXor};
 
 use crate::{
-    binary::types::BlockType,
+    binary::types::{BlockType, MemIdx},
     instructions::Instruction,
     runtime::{
         Runtime, RuntimeError,
@@ -370,7 +370,7 @@ impl Runtime {
 
                         // Read memory
                         let v = i32::from_le_bytes(
-                            Self::memory_slice(&self.memories, 0, ea, 4)?
+                            Self::memory_slice(&self.memories, MemIdx::ZERO, ea, 4)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -404,7 +404,8 @@ impl Runtime {
                             as usize;
 
                         // Get memory
-                        let slice = Self::memory_slice_mut(&mut self.memories, 0, ea, 4)?;
+                        let slice =
+                            Self::memory_slice_mut(&mut self.memories, MemIdx::ZERO, ea, 4)?;
                         // Store
                         slice.copy_from_slice(&v.to_le_bytes());
                     }

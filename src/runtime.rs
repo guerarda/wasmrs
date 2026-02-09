@@ -135,9 +135,8 @@ impl Runtime {
         mem_instances: &[MemoryInstance],
         idx: MemIdx,
     ) -> result::Result<u32, RuntimeError> {
-        if idx != 0 {
-            return Err(RuntimeError::internal("assert: non-zero mem idx"));
-        }
+        debug_assert!(idx == MemIdx::ZERO);
+
         mem_instances
             .first()
             .map(|mem| (mem.data.len() / WASM_MEM_PAGE_BYTE_SIZE) as u32)
@@ -150,9 +149,7 @@ impl Runtime {
         offset: usize,
         len: usize,
     ) -> result::Result<&[u8], RuntimeError> {
-        if idx != 0 {
-            return Err(RuntimeError::internal("assert: non-zero mem idx"));
-        }
+        debug_assert!(idx == MemIdx::ZERO);
 
         let mem_inst = &mem_instances[0];
         let end = offset
@@ -172,9 +169,7 @@ impl Runtime {
         offset: usize,
         len: usize,
     ) -> result::Result<&mut [u8], RuntimeError> {
-        if idx != 0 {
-            return Err(RuntimeError::internal("assert: non-zero mem idx"));
-        }
+        debug_assert!(idx == MemIdx::ZERO);
 
         let mem_inst = &mut mem_instances[0];
         let end = offset

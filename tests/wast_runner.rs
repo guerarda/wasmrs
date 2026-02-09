@@ -17,7 +17,6 @@ use wasmrs::{parse_module, validate_module};
 const EXCLUDED: &[&str] = &[
     "address.wast",
     "align.wast",
-    "binary.wast",
     "block.wast",
     "br.wast",
     "br_if.wast",

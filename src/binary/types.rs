@@ -11,12 +11,44 @@ use crate::{
 pub type TypeIdx = u32;
 pub type FuncIdx = u32;
 pub type TableIdx = u32;
-pub type MemIdx = u32;
 pub type GlobalIdx = u32;
 // pub type ElemIdx = u32;
 // pub type DataIdx = u32;
 // pub type LocalIdx = u32;
 pub type LabelIdx = u32;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MemIdx(pub u32); // TODO Make private
+
+impl MemIdx {
+    pub const ZERO: Self = Self(0);
+}
+
+impl TryFrom<u32> for MemIdx {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(MemIdx(0)),
+            _ => Err(InvalidEnumValueError {
+                value: value as u8,
+                enum_name: "memidx",
+            }),
+        }
+    }
+}
+
+impl<'a> FromReader<'a> for MemIdx {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        let pos = reader.position() as usize;
+        // Wasm 2.0 enforces that MemIdx should be a single byte 0x00
+        (reader.read_u8()? as u32)
+            .try_into()
+            .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
 
 /// RefType
 #[repr(u8)]

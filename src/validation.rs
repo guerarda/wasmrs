@@ -314,7 +314,7 @@ impl Validator {
         module
             .memories
             .as_ref()
-            .and_then(|mems| mems.get(mem_idx as usize))
+            .and_then(|mems| mems.get(mem_idx.0 as usize))
             .ok_or(ValidationError::UnknownMemory)
     }
 
@@ -590,7 +590,7 @@ impl Validator {
                 }
                 Instruction::I32Load(memarg) => {
                     // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, 0)?;
+                    let _ = Self::mem_type_at(module, MemIdx::ZERO)?;
 
                     // alignment not larger than bit width
                     Self::validate_mem_alignment(memarg.align, ValType::I32)?;
@@ -601,7 +601,7 @@ impl Validator {
                 }
                 Instruction::I32Store(memarg) => {
                     // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, 0)?;
+                    let _ = Self::mem_type_at(module, MemIdx::ZERO)?;
 
                     // alignment not larger than bit width
                     Self::validate_mem_alignment(memarg.align, ValType::I32)?;
@@ -610,16 +610,16 @@ impl Validator {
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                 }
-                Instruction::MemorySize(_) => {
+                Instruction::MemorySize(idx) => {
                     // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, 0)?;
+                    let _ = Self::mem_type_at(module, *idx)?;
 
                     // [] -> [i32]
                     self.push_val(ValTypeOrUnknown::Val(ValType::I32));
                 }
-                Instruction::MemoryGrow(_) => {
+                Instruction::MemoryGrow(idx) => {
                     // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, 0)?;
+                    let _ = Self::mem_type_at(module, *idx)?;
 
                     // [i32] -> [i32]
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
