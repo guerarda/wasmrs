@@ -5,9 +5,10 @@ use crate::{
     binary::{module, sections::memory::MemType, types::MemIndex},
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
     runtime::{
+        executor::ExecutionContext,
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
-        store::{Func, FuncAddr, FuncInstance, Store},
+        store::{Func, FuncInstance, Store},
         value::{ExternVal, Value},
     },
 };
@@ -28,9 +29,6 @@ pub struct MemoryInstance {
 
 #[derive(Debug, Default)]
 pub struct Runtime {
-    call_stack: Vec<Frame>,
-    value_stack: Vec<Value>,
-
     store: Store,
     memories: Vec<MemoryInstance>,
     module_registry: ModuleRegistry,
@@ -183,26 +181,6 @@ impl Runtime {
         Ok(&mut mem_inst.data[offset..end])
     }
 
-    fn call(&mut self, funcaddr: FuncAddr) {
-        let func_instance = self.store.get_func(funcaddr);
-        let n_args = func_instance.ftype.params.len();
-        let arity = func_instance.ftype.results.len() as u32;
-        let sp = self.value_stack.len() - n_args;
-
-        let mut locals: Vec<Value> = self.value_stack.split_off(sp);
-        locals.extend(
-            func_instance
-                .func
-                .locals
-                .clone()
-                .into_iter()
-                .map(Into::<Value>::into),
-        );
-
-        self.call_stack
-            .push(Frame::new(arity, funcaddr, locals, sp));
-    }
-
     /// Invoke a function from a given module
     pub fn invoke(
         &mut self,
@@ -214,24 +192,29 @@ impl Runtime {
         let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
         let arity = self.store.get_func(funcaddr).ftype.results.len();
 
-        let base = self.value_stack.len();
-        self.value_stack.extend_from_slice(fn_args);
+        let mut value_stack = Vec::from(fn_args);
+        let mut call_stack = vec![];
 
-        self.call(funcaddr);
-        self.execute()
-            .map_err(|e| e.with_stacks(self.call_stack.clone(), self.value_stack.clone()))?;
+        let result = {
+            let mut ctx = ExecutionContext::new(
+                &mut value_stack,
+                &mut call_stack,
+                &mut self.store,
+                &self.module_registry,
+                &mut self.memories,
+            );
 
-        let stack_len = self.value_stack.len();
+            ctx.call(funcaddr);
+            ctx.execute()
+        };
+        result.map_err(|e| e.with_stacks(call_stack.clone(), value_stack.clone()))?;
+
+        let stack_len = value_stack.len();
         if stack_len < arity {
             return Err(RuntimeError::internal("invalid stack len after function invocation: len={stack_len}, function arity={arity}").into());
         }
-        let idx = stack_len - arity;
-        let results = self.value_stack.split_off(idx);
-        debug_assert!(
-            self.value_stack.len() == base,
-            "value stack not fully unwound after function invocation"
-        );
-        Ok(results)
+
+        Ok(value_stack.split_off(stack_len - arity))
     }
 
     /// Decode and instantiate a module from bytes

@@ -4,9 +4,10 @@ use crate::{
     binary::types::{BlockType, MemIndex},
     instructions::Instruction,
     runtime::{
-        Runtime, RuntimeError,
-        instance::ModuleInstance,
+        MemoryInstance, Runtime, RuntimeError,
+        instance::{ModuleInstance, ModuleRegistry},
         stack::{Frame, Label},
+        store::{FuncAddr, Store},
         value::{Ref, Value},
     },
 };
@@ -91,7 +92,30 @@ macro_rules! try_binary_op {
     }};
 }
 
-impl Runtime {
+pub(super) struct ExecutionContext<'a> {
+    value_stack: &'a mut Vec<Value>,
+    call_stack: &'a mut Vec<Frame>,
+    store: &'a Store,
+    module_registry: &'a ModuleRegistry,
+    memories: &'a mut Vec<MemoryInstance>,
+}
+
+impl<'a> ExecutionContext<'a> {
+    pub(super) fn new(
+        value_stack: &'a mut Vec<Value>,
+        call_stack: &'a mut Vec<Frame>,
+        store: &'a mut Store,
+        module_registry: &'a ModuleRegistry,
+        memories: &'a mut Vec<MemoryInstance>,
+    ) -> Self {
+        Self {
+            value_stack,
+            call_stack,
+            store,
+            module_registry,
+            memories,
+        }
+    }
     /// Find the index of the 'end' instruction for the block at idx
     fn find_block_end(instrs: &[Instruction], mut idx: isize) -> isize {
         debug_assert!(
@@ -198,6 +222,26 @@ impl Runtime {
         Ok(())
     }
 
+    pub(super) fn call(&mut self, funcaddr: FuncAddr) {
+        let func_instance = self.store.get_func(funcaddr);
+        let n_args = func_instance.ftype.params.len();
+        let arity = func_instance.ftype.results.len() as u32;
+        let sp = self.value_stack.len() - n_args;
+
+        let mut locals: Vec<Value> = self.value_stack.split_off(sp);
+        locals.extend(
+            func_instance
+                .func
+                .locals
+                .clone()
+                .into_iter()
+                .map(Into::<Value>::into),
+        );
+
+        self.call_stack
+            .push(Frame::new(arity, funcaddr, locals, sp));
+    }
+
     pub(super) fn execute(&mut self) -> Result<(), RuntimeError> {
         while let Some(frame) = self.call_stack.last_mut() {
             let func_inst = self.store.get_func(frame.funcaddr);
@@ -251,16 +295,16 @@ impl Runtime {
                     }
                     Instruction::End => match frame.pop_label() {
                         Some(Label { arity, pc, sp }) => {
-                            Self::unwind_value_stack(&mut self.value_stack, sp, arity)?;
+                            Self::unwind_value_stack(self.value_stack, sp, arity)?;
                             frame.pc = pc;
                         }
                         None => {
-                            Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity)?;
+                            Self::unwind_value_stack(self.value_stack, frame.sp, frame.arity)?;
                             self.call_stack.pop();
                         }
                     },
                     Instruction::Br(label_idx) => {
-                        Self::branch(&mut self.value_stack, frame, label_idx)?;
+                        Self::branch(self.value_stack, frame, label_idx)?;
                     }
                     Instruction::BrIf(label_idx) => {
                         let cond = self
@@ -270,7 +314,7 @@ impl Runtime {
                             .ok_or(RuntimeError::internal("br_if, invalid cond type"))?;
 
                         if cond {
-                            Self::branch(&mut self.value_stack, frame, label_idx)?;
+                            Self::branch(self.value_stack, frame, label_idx)?;
                         }
                     }
                     Instruction::BrTable(br_idx) => {
@@ -282,10 +326,10 @@ impl Runtime {
                             as usize;
 
                         let label_idx = br_idx.labels.get(i).unwrap_or(&br_idx.default);
-                        Self::branch(&mut self.value_stack, frame, label_idx)?;
+                        Self::branch(self.value_stack, frame, label_idx)?;
                     }
                     Instruction::Return => {
-                        Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity)?;
+                        Self::unwind_value_stack(self.value_stack, frame.sp, frame.arity)?;
                         self.call_stack.pop();
                     }
                     Instruction::Call(idx) => {
@@ -370,7 +414,7 @@ impl Runtime {
 
                         // Read memory
                         let v = i32::from_le_bytes(
-                            Self::memory_slice(&self.memories, MemIndex::ZERO, ea, 4)?
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 4)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -405,12 +449,12 @@ impl Runtime {
 
                         // Get memory
                         let slice =
-                            Self::memory_slice_mut(&mut self.memories, MemIndex::ZERO, ea, 4)?;
+                            Runtime::memory_slice_mut(self.memories, MemIndex::ZERO, ea, 4)?;
                         // Store
                         slice.copy_from_slice(&v.to_le_bytes());
                     }
                     Instruction::MemorySize(idx) => {
-                        let sz = Self::memory_size(&self.memories, *idx)?;
+                        let sz = Runtime::memory_size(self.memories, *idx)?;
                         self.value_stack.push(Value::I32(sz as i32));
                     }
                     Instruction::MemoryGrow(idx) => {
@@ -418,7 +462,7 @@ impl Runtime {
                             self.value_stack.pop().and_then(Value::as_i32).ok_or(
                                 RuntimeError::internal("memory.grow, invalid argument type"),
                             )?;
-                        let res = Self::memory_grow(&mut self.memories, *idx, inc as u32)?
+                        let res = Runtime::memory_grow(self.memories, *idx, inc as u32)?
                             .map(|v| v as i32)
                             .unwrap_or(-1);
                         self.value_stack.push(Value::I32(res));
@@ -612,6 +656,8 @@ impl Runtime {
         Ok(())
     }
 }
+
+impl Runtime {}
 
 #[cfg(test)]
 mod tests {
