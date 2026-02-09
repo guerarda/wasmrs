@@ -266,9 +266,9 @@ impl fmt::Display for RuntimeError {
 }
 
 impl RuntimeError {
-    fn trap() -> Self {
+    fn trap(msg: &'static str) -> Self {
         Self {
-            kind: RuntimeErrorKind::Trap,
+            kind: RuntimeErrorKind::Trap(msg.to_string()),
             pc: -1,
             instruction: "",
             call_stack: vec![],
@@ -312,7 +312,7 @@ impl RuntimeError {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum RuntimeErrorKind {
-    Trap,
+    Trap(String),
     Internal(String),
 }
 
@@ -325,7 +325,7 @@ impl error::Error for RuntimeErrorKind {
 impl fmt::Display for RuntimeErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Trap => write!(f, "trap"),
+            Self::Trap(msg) => write!(f, "trap: {msg}"),
             Self::Internal(msg) => write!(f, "internal: {msg}"),
         }
     }

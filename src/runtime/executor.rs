@@ -70,7 +70,7 @@ macro_rules! try_binary_op {
         let rhs = $self.value_stack.pop().unwrap();
         let lhs = $self.value_stack.pop().unwrap();
         let res = match (lhs, rhs) {
-            (Value::$variant(a), Value::$variant(b)) => $op(a, b).ok_or(RuntimeError::trap())?,
+            (Value::$variant(a), Value::$variant(b)) => $op(a, b).ok_or(RuntimeError::trap(""))?,
             _ => unreachable!(),
         };
         $self.value_stack.push(Value::$variant(res as _));
@@ -82,7 +82,7 @@ macro_rules! try_binary_op {
         let lhs = $self.value_stack.pop().unwrap();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => {
-                $op(a as $ty, b as $ty).ok_or(RuntimeError::trap())?
+                $op(a as $ty, b as $ty).ok_or(RuntimeError::trap(""))?
             }
             _ => unreachable!(),
         };
@@ -208,7 +208,7 @@ impl Runtime {
             if let Some(inst) = instrs.get(frame.pc as usize) {
                 match inst {
                     Instruction::Unreachable => {
-                        return Err(RuntimeError::trap());
+                        return Err(RuntimeError::trap("unreachable"));
                     }
                     Instruction::Nop => continue,
                     Instruction::Block(bt) => {
@@ -228,7 +228,9 @@ impl Runtime {
                         let (n_params, n_results) = Self::block_arity(bt, module_inst);
                         let (end, else_) = Self::find_if_else_end(instrs, frame.pc);
 
-                        let cond = self.value_stack.pop().ok_or(RuntimeError::trap())?;
+                        let cond = self.value_stack.pop().ok_or(RuntimeError::internal(
+                            "assert: expected i32 cond on the stack",
+                        ))?;
                         frame.push_label(
                             n_results,
                             end,
