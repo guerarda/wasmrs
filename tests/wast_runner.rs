@@ -4,6 +4,7 @@ use std::path::Path;
 use libtest_mimic::{Arguments, Failed, Trial};
 use std::collections::HashMap;
 use wast::core::{NanPattern, WastArgCore, WastRetCore};
+use wast::lexer::Lexer;
 use wast::parser::{self, ParseBuffer};
 use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
@@ -199,8 +200,10 @@ fn collect_file_test_cases(
 
     for path in wast_files {
         let contents = std::fs::read_to_string(&path).expect("failed to read wast file");
-        let buf = ParseBuffer::new(&contents).expect("failed to create parse buffer");
-        let wast: Wast = parser::parse(&buf).expect("failed to parse wast file");
+        let mut lexer = Lexer::new(&contents);
+        lexer.allow_confusing_unicode(true);
+        let buf = ParseBuffer::new_with_lexer(lexer).expect("failed to create parse buffer");
+        let wast: Wast = parser::parse(&buf).expect(&format!("failed to parse wast file {path:?}"));
 
         let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
         let tests = file_tests.entry(file_name.clone()).or_default();
