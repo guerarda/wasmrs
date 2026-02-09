@@ -320,14 +320,35 @@ impl Runtime {
                         }
                     }
                     Instruction::LocalGet(idx) => {
-                        let v = frame.locals[*idx as usize];
-                        self.value_stack.push(v)
+                        let idx = *idx as usize;
+                        let v = frame
+                            .locals
+                            .get(idx)
+                            .ok_or_else(|| RuntimeError::internal("local index out of bounds"))?;
+                        self.value_stack.push(*v)
                     }
                     Instruction::LocalSet(idx) => {
-                        let v = self.value_stack.pop().unwrap();
-                        frame.locals[*idx as usize] = v;
+                        let v = self.value_stack.pop().ok_or_else(|| {
+                            RuntimeError::internal("assert, value expected on the stack")
+                        })?;
+                        let idx = *idx as usize;
+                        *frame
+                            .locals
+                            .get_mut(idx)
+                            .ok_or_else(|| RuntimeError::internal("local index out of bounds"))? =
+                            v;
                     }
-                    Instruction::LocalTee(_) => todo!(),
+                    Instruction::LocalTee(idx) => {
+                        let v = self.value_stack.last().ok_or_else(|| {
+                            RuntimeError::internal("assert, value expected on the stack")
+                        })?;
+                        let idx = *idx as usize;
+                        *frame
+                            .locals
+                            .get_mut(idx)
+                            .ok_or_else(|| RuntimeError::internal("local index out of bounds"))? =
+                            *v;
+                    }
                     Instruction::GlobalGet(_) => todo!(),
                     Instruction::GlobalSet(_) => todo!(),
 
