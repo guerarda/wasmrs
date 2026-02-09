@@ -144,6 +144,50 @@ impl Runtime {
             .ok_or_else(|| RuntimeError::internal("assert: mems[0] does not exist"))
     }
 
+    pub(super) fn memory_slice(
+        mem_instances: &Vec<MemoryInstance>,
+        idx: MemIdx,
+        offset: usize,
+        len: usize,
+    ) -> result::Result<&[u8], RuntimeError> {
+        if idx != 0 {
+            return Err(RuntimeError::internal("assert: non-zero mem idx"));
+        }
+
+        let mem_inst = &mem_instances[0];
+        let end = offset
+            .checked_add(len)
+            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?;
+
+        if end > mem_inst.data.len() {
+            return Err(RuntimeError::trap("out-of-bound memory access"));
+        }
+
+        Ok(&mem_inst.data[offset..end])
+    }
+
+    pub(super) fn memory_slice_mut(
+        mem_instances: &mut Vec<MemoryInstance>,
+        idx: MemIdx,
+        offset: usize,
+        len: usize,
+    ) -> result::Result<&mut [u8], RuntimeError> {
+        if idx != 0 {
+            return Err(RuntimeError::internal("assert: non-zero mem idx"));
+        }
+
+        let mem_inst = &mut mem_instances[0];
+        let end = offset
+            .checked_add(len)
+            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?;
+
+        if end > mem_inst.data.len() {
+            return Err(RuntimeError::trap("out-of-bound memory access"));
+        }
+
+        Ok(&mut mem_inst.data[offset..end])
+    }
+
     fn call(&mut self, funcaddr: FuncAddr) {
         let func_instance = self.store.get_func(funcaddr);
         let n_args = func_instance.ftype.params.len();

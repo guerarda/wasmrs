@@ -331,8 +331,62 @@ impl Runtime {
                     Instruction::GlobalGet(_) => todo!(),
                     Instruction::GlobalSet(_) => todo!(),
 
-                    Instruction::I32Load(_) => todo!(),
-                    Instruction::I32Store(_) => todo!(),
+                    Instruction::I32Load(memarg) => {
+                        // Get the base address
+                        let i =
+                            self.value_stack
+                                .pop()
+                                .and_then(Value::as_i32)
+                                .ok_or_else(|| {
+                                    RuntimeError::internal("assert, i32 expected on the stack")
+                                })?;
+
+                        // Calculate effective address
+                        let ea = (i as u32)
+                            .checked_add(memarg.offset)
+                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
+                            as usize;
+
+                        // Read memory
+                        let v = i32::from_le_bytes(
+                            Self::memory_slice(&self.memories, 0, ea, 4)?
+                                .try_into()
+                                .unwrap(),
+                        );
+
+                        // Push value
+                        self.value_stack.push(Value::I32(v));
+                    }
+                    Instruction::I32Store(memarg) => {
+                        // Get the value
+                        let v =
+                            self.value_stack
+                                .pop()
+                                .and_then(Value::as_i32)
+                                .ok_or_else(|| {
+                                    RuntimeError::internal("asserts, i32 expected on the stack")
+                                })?;
+
+                        // Get the base address
+                        let i =
+                            self.value_stack
+                                .pop()
+                                .and_then(Value::as_i32)
+                                .ok_or_else(|| {
+                                    RuntimeError::internal("assert, i32 expected on the stack")
+                                })?;
+
+                        // Calculate effective address
+                        let ea = (i as u32)
+                            .checked_add(memarg.offset)
+                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
+                            as usize;
+
+                        // Get memory
+                        let slice = Self::memory_slice_mut(&mut self.memories, 0, ea, 4)?;
+                        // Store
+                        slice.copy_from_slice(&v.to_le_bytes());
+                    }
                     Instruction::MemorySize(idx) => {
                         let sz = Self::memory_size(&self.memories, *idx)?;
                         self.value_stack.push(Value::I32(sz as i32));
@@ -614,7 +668,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_i32_store_load() -> anyhow::Result<()> {
         // (module
         //   (memory 1)
