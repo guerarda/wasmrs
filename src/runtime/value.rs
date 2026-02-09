@@ -6,14 +6,35 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy)]
+pub enum Ref {
+    NullRef(RefType),
+    FuncRef(u32),
+    ExternRef(u32),
+}
+
+impl fmt::Display for Ref {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NullRef(v) => write!(f, "{v}(null)"),
+            Self::FuncRef(v) => write!(f, "funcref({v})"),
+            Self::ExternRef(v) => write!(f, "externref({v})"),
+        }
+    }
+}
+
+impl From<RefType> for Ref {
+    fn from(value: RefType) -> Self {
+        Ref::NullRef(value)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum Value {
     I32(i32),
     I64(i64),
     F32(f32),
     F64(f64),
-    NullRef(RefType),
-    FuncRef(u32),
-    ExternRef(u32),
+    Ref(Ref),
 }
 
 impl From<ValType> for Value {
@@ -24,7 +45,7 @@ impl From<ValType> for Value {
             ValType::F32 => Value::F32(0.0),
             ValType::F64 => Value::F64(0.0),
             ValType::V128 => unimplemented!(),
-            ValType::Ref(rt) => Value::NullRef(rt),
+            ValType::Ref(rt) => Value::Ref(Ref::NullRef(rt)),
         }
     }
 }
@@ -51,9 +72,7 @@ impl fmt::Display for Value {
             Self::I64(v) => write!(f, "i64({v})"),
             Self::F32(v) => write!(f, "f32({v})"),
             Self::F64(v) => write!(f, "f64({v})"),
-            Self::NullRef(v) => write!(f, "{v}(null)"),
-            Self::FuncRef(v) => write!(f, "funcref({v})"),
-            Self::ExternRef(v) => write!(f, "externref({v})"),
+            Self::Ref(v) => write!(f, "{}", v),
         }
     }
 }

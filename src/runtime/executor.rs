@@ -7,7 +7,7 @@ use crate::{
         Runtime, RuntimeError,
         instance::ModuleInstance,
         stack::{Frame, Label},
-        value::Value,
+        value::{Ref, Value},
     },
 };
 
@@ -596,8 +596,12 @@ impl Runtime {
                     Instruction::I64Extend32S => unary_op!(self, I64, |a| a as i32),
 
                     // Ref
-                    Instruction::RefNull(rt) => self.value_stack.push(Value::NullRef(*rt)),
-                    Instruction::RefFunc(fi) => self.value_stack.push(Value::FuncRef(*fi)),
+                    Instruction::RefNull(rt) => {
+                        self.value_stack.push(Value::Ref(Ref::NullRef(*rt)))
+                    }
+                    Instruction::RefFunc(fi) => {
+                        self.value_stack.push(Value::Ref(Ref::FuncRef(*fi)))
+                    }
                     Instruction::I32TruncSatF32S => todo!(),
                     Instruction::I32TruncSatF32U => todo!(),
                     Instruction::I64TruncSatF64S => todo!(),
