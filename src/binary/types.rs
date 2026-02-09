@@ -362,7 +362,7 @@ impl<'a> FromReader<'a> for BranchTableIdx {
 #[cfg_attr(test, derive(PartialEq))]
 pub struct MemArg {
     pub align: u32,
-    pub offset: u64,
+    pub offset: u32,
 }
 
 #[derive(Debug)]
@@ -395,7 +395,7 @@ impl<'a> FromReader<'a> for MemArg {
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
         let align: u32 = reader.read().map_err(Self::Error::Align)?;
-        let offset: u64 = reader.read().map_err(Self::Error::Offset)?;
+        let offset: u32 = reader.read().map_err(Self::Error::Offset)?;
 
         Ok(MemArg { align, offset })
     }
