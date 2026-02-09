@@ -7,10 +7,10 @@ use crate::binary::{
 /// Table Section
 pub type TableSection = Vec<TableType>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TableType {
     #[allow(dead_code)]
-    pub etype: RefType,
+    pub elemtype: RefType,
     #[allow(dead_code)]
     pub limit: Limit,
 }
@@ -43,10 +43,10 @@ impl<'a> FromReader<'a> for TableType {
     type Error = TableTypeReadError;
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let etype = reader.read().map_err(Self::Error::RefType)?;
+        let elemtype = reader.read().map_err(Self::Error::RefType)?;
         let limit = reader.read().map_err(Self::Error::Limit)?;
 
-        Ok(TableType { etype, limit })
+        Ok(TableType { elemtype, limit })
     }
 }
 

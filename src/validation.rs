@@ -499,7 +499,7 @@ impl Validator {
                 Instruction::CallIndirect((type_idx, table_idx)) => {
                     // [t1* i32] -> [t2*]
                     let table_type = Self::table_type(module, *table_idx)?;
-                    if !matches!(table_type.etype, RefType::Func) {
+                    if !matches!(table_type.elemtype, RefType::Func) {
                         return Err(ValidationError::TableTypeMismatch);
                     }
 
