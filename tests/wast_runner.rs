@@ -13,6 +13,9 @@ use wasmrs::runtime::Runtime;
 use wasmrs::runtime::value::Value;
 use wasmrs::{parse_module, validate_module};
 
+/// Wast files to skip by default. Use --all to include them.
+const EXCLUDED: &[&str] = &[];
+
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
 #[derive(Debug, Clone)]
 enum TestArg {
@@ -159,6 +162,7 @@ enum TestCase {
 fn main() {
     let mut detailed = false;
     let mut run_assert_invalid = false;
+    let mut run_all = false;
     let args: Vec<String> = std::env::args()
         .filter(|arg| {
             if arg == "--detailed" {
@@ -167,13 +171,16 @@ fn main() {
             } else if arg == "--assert-invalid" {
                 run_assert_invalid = true;
                 false
+            } else if arg == "--all" {
+                run_all = true;
+                false
             } else {
                 true
             }
         })
         .collect();
     let args = Arguments::from_iter(args);
-    let tests = collect_tests(detailed, run_assert_invalid);
+    let tests = collect_tests(detailed, run_assert_invalid, run_all);
     libtest_mimic::run(&args, tests).exit();
 }
 
@@ -186,16 +193,21 @@ enum CollectedTest {
 /// Collect test cases from all wast files, grouped by file
 fn collect_file_test_cases(
     run_assert_invalid: bool,
+    run_all: bool,
 ) -> HashMap<String, Vec<(String, CollectedTest)>> {
     let mut file_tests: HashMap<String, Vec<(String, CollectedTest)>> = HashMap::new();
 
-    let spec_dir = Path::new("tests/spec");
+    let spec_dir = Path::new("tests/wasm-spec/test/core");
     let wast_files: Vec<_> = std::fs::read_dir(spec_dir)
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.is_file() && p.extension().is_some_and(|ext| ext == "wast"))
+        .filter(|p| {
+            let name = p.file_name().unwrap().to_str().unwrap();
+            run_all || !EXCLUDED.contains(&name)
+        })
         .collect();
 
     for path in wast_files {
@@ -449,8 +461,8 @@ fn collect_file_test_cases(
     file_tests
 }
 
-fn collect_tests(detailed: bool, run_assert_invalid: bool) -> Vec<Trial> {
-    let file_tests = collect_file_test_cases(run_assert_invalid);
+fn collect_tests(detailed: bool, run_assert_invalid: bool, run_all: bool) -> Vec<Trial> {
+    let file_tests = collect_file_test_cases(run_assert_invalid, run_all);
 
     if detailed {
         // Detailed mode: one Trial per test case
@@ -541,7 +553,10 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             match result {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(e)) => Err(Failed::from(format!("expected Ok, got {}", e))),
-                Err(p) => Err(Failed::from(format!("expected Ok, got PANIC: {}", panic_message(p)))),
+                Err(p) => Err(Failed::from(format!(
+                    "expected Ok, got PANIC: {}",
+                    panic_message(p)
+                ))),
             }
         }
         TestCase::AssertMalformed {
@@ -561,7 +576,8 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                 ))),
                 Err(p) => Err(Failed::from(format!(
                     "expected malformed error '{}', got PANIC: {}",
-                    message, panic_message(p)
+                    message,
+                    panic_message(p)
                 ))),
             }
         }
@@ -586,7 +602,8 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                 ))),
                 Err(p) => Err(Failed::from(format!(
                     "expected validation error '{}', got PANIC: {}",
-                    message, panic_message(p)
+                    message,
+                    panic_message(p)
                 ))),
             }
         }
@@ -601,7 +618,12 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
             let mh = match result {
                 Ok(Ok(mh)) => mh,
                 Ok(Err(e)) => return Err(Failed::from(format!("module load failed: {}", e))),
-                Err(p) => return Err(Failed::from(format!("module load panicked: {}", panic_message(p)))),
+                Err(p) => {
+                    return Err(Failed::from(format!(
+                        "module load panicked: {}",
+                        panic_message(p)
+                    )));
+                }
             };
 
             // Run each assertion, collecting all failures
@@ -629,7 +651,10 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                             Err(p) => {
                                 failures.push(format!(
                                     "[{}]line {}: '{}' panicked: {}",
-                                    idx, a.line, a.func_name, panic_message(p)
+                                    idx,
+                                    a.line,
+                                    a.func_name,
+                                    panic_message(p)
                                 ));
                                 break; // runtime state is corrupted after panic
                             }
@@ -676,7 +701,11 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                             Err(p) => {
                                 failures.push(format!(
                                     "[{}]line {}: '{}' expected trap '{}', got panic: {}",
-                                    idx, a.line, a.func_name, a.message, panic_message(p)
+                                    idx,
+                                    a.line,
+                                    a.func_name,
+                                    a.message,
+                                    panic_message(p)
                                 ));
                                 break; // runtime state is corrupted after panic
                             }
