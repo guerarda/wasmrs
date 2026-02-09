@@ -18,18 +18,18 @@ pub type GlobalIdx = u32;
 pub type LabelIdx = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MemIdx(pub u32); // TODO Make private
+pub struct MemIndex(pub u32); // TODO Make private
 
-impl MemIdx {
+impl MemIndex {
     pub const ZERO: Self = Self(0);
 }
 
-impl TryFrom<u32> for MemIdx {
+impl TryFrom<u32> for MemIndex {
     type Error = InvalidEnumValueError;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
-            0x00 => Ok(MemIdx(0)),
+            0x00 => Ok(MemIndex(0)),
             _ => Err(InvalidEnumValueError {
                 value: value as u8,
                 enum_name: "memidx",
@@ -38,7 +38,7 @@ impl TryFrom<u32> for MemIdx {
     }
 }
 
-impl<'a> FromReader<'a> for MemIdx {
+impl<'a> FromReader<'a> for MemIndex {
     type Error = ReadError;
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {

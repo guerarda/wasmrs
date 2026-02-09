@@ -2,7 +2,7 @@ use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
     types::{
         BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, GlobalIdx, LabelIdx, MemArg,
-        MemArgReadError, MemIdx, RefType, TableIdx, TypeIdx, ValType,
+        MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx, ValType,
     },
 };
 
@@ -123,9 +123,8 @@ instructions! {
     I32Load(MemArg) : 0x28 : "i32.load",
     I32Store(MemArg) : 0x36 : "i32.store",
 
-    // TODO MemIdx has to be 0x00
-    MemorySize(MemIdx) :0x3f : "memory.size",
-    MemoryGrow(MemIdx) :0x40 : "memory.grow",
+    MemorySize(MemIndex) :0x3f : "memory.size",
+    MemoryGrow(MemIndex) :0x40 : "memory.grow",
 
     // Const
     I32Const(i32) : 0x41 : "i32.const",

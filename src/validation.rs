@@ -7,7 +7,7 @@ use crate::{
             memory::MemType,
             table::TableType,
         },
-        types::{BlockType, FuncType, GlobalIdx, MemIdx, RefType, ValType},
+        types::{BlockType, FuncType, GlobalIdx, MemIndex, RefType, ValType},
     },
     instructions::Instruction,
 };
@@ -310,7 +310,10 @@ impl Validator {
         }
     }
 
-    fn mem_type_at(module: &Module, mem_idx: MemIdx) -> result::Result<&MemType, ValidationError> {
+    fn mem_type_at(
+        module: &Module,
+        mem_idx: MemIndex,
+    ) -> result::Result<&MemType, ValidationError> {
         module
             .memories
             .as_ref()
@@ -590,7 +593,7 @@ impl Validator {
                 }
                 Instruction::I32Load(memarg) => {
                     // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, MemIdx::ZERO)?;
+                    let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
 
                     // alignment not larger than bit width
                     Self::validate_mem_alignment(memarg.align, ValType::I32)?;
@@ -601,7 +604,7 @@ impl Validator {
                 }
                 Instruction::I32Store(memarg) => {
                     // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, MemIdx::ZERO)?;
+                    let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
 
                     // alignment not larger than bit width
                     Self::validate_mem_alignment(memarg.align, ValType::I32)?;

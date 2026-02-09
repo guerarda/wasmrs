@@ -2,7 +2,7 @@ use std::{error, fmt, iter::repeat_n, result};
 
 use crate::{
     Error, Module,
-    binary::{module, sections::memory::MemType, types::MemIdx},
+    binary::{module, sections::memory::MemType, types::MemIndex},
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
     runtime::{
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
@@ -106,7 +106,7 @@ impl Runtime {
 
     pub(super) fn memory_grow(
         mem_instances: &mut [MemoryInstance],
-        idx: MemIdx,
+        idx: MemIndex,
         n_pages: u32,
     ) -> result::Result<Option<u32>, RuntimeError> {
         let sz = Self::memory_size(mem_instances, idx)?;
@@ -133,9 +133,9 @@ impl Runtime {
 
     pub(super) fn memory_size(
         mem_instances: &[MemoryInstance],
-        idx: MemIdx,
+        idx: MemIndex,
     ) -> result::Result<u32, RuntimeError> {
-        debug_assert!(idx == MemIdx::ZERO);
+        debug_assert!(idx == MemIndex::ZERO);
 
         mem_instances
             .first()
@@ -145,11 +145,11 @@ impl Runtime {
 
     pub(super) fn memory_slice(
         mem_instances: &[MemoryInstance],
-        idx: MemIdx,
+        idx: MemIndex,
         offset: usize,
         len: usize,
     ) -> result::Result<&[u8], RuntimeError> {
-        debug_assert!(idx == MemIdx::ZERO);
+        debug_assert!(idx == MemIndex::ZERO);
 
         let mem_inst = &mem_instances[0];
         let end = offset
@@ -165,11 +165,11 @@ impl Runtime {
 
     pub(super) fn memory_slice_mut(
         mem_instances: &mut [MemoryInstance],
-        idx: MemIdx,
+        idx: MemIndex,
         offset: usize,
         len: usize,
     ) -> result::Result<&mut [u8], RuntimeError> {
-        debug_assert!(idx == MemIdx::ZERO);
+        debug_assert!(idx == MemIndex::ZERO);
 
         let mem_inst = &mut mem_instances[0];
         let end = offset
