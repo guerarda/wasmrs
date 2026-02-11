@@ -144,7 +144,7 @@ impl Runtime {
                 match &elem.items {
                     ElementSegmentItems::Functions(items) => {
                         for (i, item) in items.iter().enumerate() {
-                            let func_ref = Ref::FuncRef(mi.lookup_func(item));
+                            let func_ref = Ref::Func(mi.lookup_func(item));
                             self.tables[idx].elem[offset + i] = func_ref;
                         }
                     }

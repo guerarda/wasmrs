@@ -237,10 +237,10 @@ impl<'a> ExecutionContext<'a> {
                 Instruction::F32Const(v) => self.value_stack.push(Value::F32(*v)),
                 Instruction::F64Const(v) => self.value_stack.push(Value::F64(*v)),
                 Instruction::GlobalGet(_) => todo!(),
-                Instruction::RefNull(rt) => self.value_stack.push(Value::Ref(Ref::NullRef(*rt))),
-                Instruction::RefFunc(fi) => self
-                    .value_stack
-                    .push(Value::Ref(Ref::FuncRef((*fi).into()))),
+                Instruction::RefNull(rt) => self.value_stack.push(Value::Ref(Ref::Null(*rt))),
+                Instruction::RefFunc(fi) => {
+                    self.value_stack.push(Value::Ref(Ref::Func((*fi).into())))
+                }
                 _ => return Err(RuntimeError::trap("invalid const expression")),
             }
         }
@@ -665,12 +665,10 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I64Extend32S => unary_op!(self, I64, |a| a as i32),
 
                     // Ref
-                    Instruction::RefNull(rt) => {
-                        self.value_stack.push(Value::Ref(Ref::NullRef(*rt)))
+                    Instruction::RefNull(rt) => self.value_stack.push(Value::Ref(Ref::Null(*rt))),
+                    Instruction::RefFunc(fi) => {
+                        self.value_stack.push(Value::Ref(Ref::Func((*fi).into())))
                     }
-                    Instruction::RefFunc(fi) => self
-                        .value_stack
-                        .push(Value::Ref(Ref::FuncRef((*fi).into()))),
                     Instruction::I32TruncSatF32S => todo!(),
                     Instruction::I32TruncSatF32U => todo!(),
                     Instruction::I64TruncSatF64S => todo!(),

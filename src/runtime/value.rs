@@ -7,17 +7,17 @@ use crate::{
 
 #[derive(Debug, Clone, Copy)]
 pub enum Ref {
-    NullRef(RefType),
-    FuncRef(FuncAddr),
-    ExternRef(u32),
+    Null(RefType),
+    Func(FuncAddr),
+    Extern(u32),
 }
 
 impl Ref {
     pub fn is_ref_type(&self, ref_type: &RefType) -> bool {
         match self {
-            Self::NullRef(rt) => rt == ref_type,
-            Self::FuncRef(_) => ref_type == &RefType::Func,
-            Self::ExternRef(_) => ref_type == &RefType::Extern,
+            Self::Null(rt) => rt == ref_type,
+            Self::Func(_) => ref_type == &RefType::Func,
+            Self::Extern(_) => ref_type == &RefType::Extern,
         }
     }
 }
@@ -36,16 +36,16 @@ impl TryFrom<Value> for Ref {
 impl fmt::Display for Ref {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NullRef(v) => write!(f, "{v}(null)"),
-            Self::FuncRef(v) => write!(f, "funcref({v})"),
-            Self::ExternRef(v) => write!(f, "externref({v})"),
+            Self::Null(v) => write!(f, "{v}(null)"),
+            Self::Func(v) => write!(f, "funcref({v})"),
+            Self::Extern(v) => write!(f, "externref({v})"),
         }
     }
 }
 
 impl From<RefType> for Ref {
     fn from(value: RefType) -> Self {
-        Ref::NullRef(value)
+        Ref::Null(value)
     }
 }
 
@@ -66,7 +66,7 @@ impl From<ValType> for Value {
             ValType::F32 => Value::F32(0.0),
             ValType::F64 => Value::F64(0.0),
             ValType::V128 => unimplemented!(),
-            ValType::Ref(rt) => Value::Ref(Ref::NullRef(rt)),
+            ValType::Ref(rt) => Value::Ref(Ref::Null(rt)),
         }
     }
 }
