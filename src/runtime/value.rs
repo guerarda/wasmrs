@@ -20,6 +20,17 @@ impl Ref {
             Self::Extern(_) => ref_type == &RefType::Extern,
         }
     }
+
+    pub fn is_null(&self) -> bool {
+        matches!(self, Ref::Null(_))
+    }
+
+    pub fn as_funcref(&self) -> Option<FuncAddr> {
+        match self {
+            Self::Func(addr) => Some(*addr),
+            _ => None,
+        }
+    }
 }
 
 impl TryFrom<Value> for Ref {

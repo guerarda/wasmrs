@@ -7,7 +7,7 @@ use crate::{
     binary::types::{BlockType, MemIndex},
     instructions::Instruction,
     runtime::{
-        MemoryInstance, Runtime, RuntimeError,
+        MemoryInstance, Runtime, RuntimeError, TableInstance,
         instance::{ModuleInstance, ModuleRegistry},
         stack::{Frame, Label},
         store::{FuncAddr, Store},
@@ -101,6 +101,7 @@ pub(super) struct ExecutionContext<'a> {
     store: &'a Store,
     module_registry: &'a ModuleRegistry,
     memories: &'a mut Vec<MemoryInstance>,
+    tables: &'a mut Vec<TableInstance>,
 }
 
 impl<'a> ExecutionContext<'a> {
@@ -110,6 +111,7 @@ impl<'a> ExecutionContext<'a> {
         store: &'a mut Store,
         module_registry: &'a ModuleRegistry,
         memories: &'a mut Vec<MemoryInstance>,
+        tables: &'a mut Vec<TableInstance>,
     ) -> Self {
         Self {
             value_stack,
@@ -117,6 +119,7 @@ impl<'a> ExecutionContext<'a> {
             store,
             module_registry,
             memories,
+            tables,
         }
     }
     /// Find the index of the 'end' instruction for the block at idx
@@ -339,8 +342,32 @@ impl<'a> ExecutionContext<'a> {
                         let funcaddr = module_inst.funcaddrs[*idx as usize];
                         self.call(funcaddr);
                     }
-                    Instruction::CallIndirect((_, _)) => {
-                        todo!();
+                    Instruction::CallIndirect((table_idx, type_idx)) => {
+                        let tab_addr = module_inst.lookup_table(table_idx);
+                        let tab_inst = &self.tables[tab_addr.0];
+                        let ft = &module_inst.types[*type_idx as usize];
+
+                        let i = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_i32())
+                            .ok_or(RuntimeError::internal("assert: expect i32 on the stack"))?;
+                        let r = tab_inst
+                            .elem
+                            .get(i as usize)
+                            .ok_or(RuntimeError::trap("tab index out of bounds"))?;
+
+                        if r.is_null() {
+                            return Err(RuntimeError::trap("unexpected null ref"));
+                        }
+
+                        let func_addr = r
+                            .as_funcref()
+                            .ok_or(RuntimeError::internal("assert: expected func ref"))?;
+                        if self.store.get_func(func_addr).ftype != *ft {
+                            return Err(RuntimeError::trap("function type mismatch"));
+                        }
+                        self.call(func_addr);
                     }
                     Instruction::Drop => {
                         self.value_stack.pop();

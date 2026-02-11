@@ -11,6 +11,7 @@ use crate::{
         },
         types::{ConstExpression, MemIndex},
     },
+    instructions::Instruction,
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
     runtime::{
         executor::ExecutionContext,
@@ -117,6 +118,7 @@ impl Runtime {
         // Allocate table instances
         if let Some(tablesec) = &module.tables {
             for tabletype in tablesec {
+                mi.tableaddrs.push(self.tables.len().into());
                 self.tables.push(TableInstance {
                     tabletype: tabletype.clone(),
                     elem: vec![tabletype.elemtype.into(); tabletype.limit.min as usize],
@@ -295,6 +297,7 @@ impl Runtime {
                 &mut self.store,
                 &self.module_registry,
                 &mut self.memories,
+                &mut self.tables,
             );
 
             ctx.call(funcaddr);

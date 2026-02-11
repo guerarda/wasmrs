@@ -6,6 +6,7 @@ use crate::{
     runtime::{instance::ModuleHandle, value::ExternVal},
 };
 
+/// Func Addr
 #[derive(Debug, Clone, Copy)]
 pub struct FuncAddr(pub usize);
 
@@ -38,6 +39,23 @@ impl fmt::Display for FuncAddr {
     }
 }
 
+/// Table Addr
+#[derive(Debug, Clone, Copy)]
+pub struct TableAddr(pub usize);
+
+impl From<usize> for TableAddr {
+    fn from(value: usize) -> Self {
+        TableAddr(value)
+    }
+}
+
+impl From<u32> for TableAddr {
+    fn from(value: u32) -> Self {
+        TableAddr(value as usize)
+    }
+}
+
+/// Func Instance
 #[derive(Debug)]
 pub struct Func {
     #[allow(dead_code)]

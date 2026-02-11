@@ -200,7 +200,7 @@ impl<'a> FromReader<'a> for BlockType {
 }
 
 /// Functype
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncType {
     pub params: Vec<ValType>,
     pub results: Vec<ValType>,

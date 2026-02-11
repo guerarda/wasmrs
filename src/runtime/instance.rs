@@ -1,20 +1,31 @@
 use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
-    binary::{sections::element::FuncIndex, types::FuncType},
-    runtime::{store::FuncAddr, value::ExternVal},
+    binary::{
+        sections::element::FuncIndex,
+        types::{FuncType, TableIdx},
+    },
+    runtime::{
+        store::{FuncAddr, TableAddr},
+        value::ExternVal,
+    },
 };
 
 #[derive(Debug, Default)]
 pub struct ModuleInstance {
     pub types: Vec<FuncType>,
     pub funcaddrs: Vec<FuncAddr>,
+    pub tableaddrs: Vec<TableAddr>,
     pub exports: HashMap<String, ExternVal>,
 }
 
 impl ModuleInstance {
     pub fn lookup_func(&self, func_index: &FuncIndex) -> FuncAddr {
         self.funcaddrs[func_index.0 as usize]
+    }
+
+    pub fn lookup_table(&self, table_index: &TableIdx) -> TableAddr {
+        self.tableaddrs[*table_index as usize]
     }
 }
 
