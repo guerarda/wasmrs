@@ -931,4 +931,87 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_global_get() -> anyhow::Result<()> {
+        // (module
+        //   (global $g (mut i32) (i32.const 42))
+        //   (func (export "get") (result i32) global.get $g))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // global section: 1 global, i32 mut, init=i32.const 42
+            b"\x06\x06\x01\x7f\x01\x41\x2a\x0b",
+            // export section: "get" -> func 0
+            b"\x07\x07\x01\x03\x67\x65\x74\x00\x00",
+            // code section: global.get 0, end
+            b"\x0a\x06\x01\x04\x00\x23\x00\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        // Init expression is (i32.const 42), so get must return 42
+        let r = runtime.invoke(mh, "get", &[])?;
+        assert!(
+            matches!(r.as_slice(), [Value::I32(42)]),
+            "expected 42 from init expr, got {r:?}",
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_set() -> anyhow::Result<()> {
+        // (module
+        //   (global $g (mut i32) (i32.const 10))
+        //   (func (export "set") (param i32) local.get 0 global.set $g)
+        //   (func (export "get") (result i32) global.get $g))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 2 types — (i32)->() and ()->(i32)
+            b"\x01\x09\x02\x60\x01\x7f\x00\x60\x00\x01\x7f",
+            // function section: 2 funcs, type 0 and type 1
+            b"\x03\x03\x02\x00\x01",
+            // global section: 1 global, i32 mut, init=i32.const 10
+            b"\x06\x06\x01\x7f\x01\x41\x0a\x0b",
+            // export section: "set" -> func 0, "get" -> func 1
+            b"\x07\x0d\x02\x03\x73\x65\x74\x00\x00\x03\x67\x65\x74\x00\x01",
+            // code section: 2 funcs
+            b"\x0a\x0d\x02\x06\x00\x20\x00\x24\x00\x0b\x04\x00\x23\x00\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        // Initial value from init expr is 10
+        let r = runtime.invoke(mh, "get", &[])?;
+        assert!(
+            matches!(r.as_slice(), [Value::I32(10)]),
+            "expected 10 from init expr, got {r:?}",
+        );
+
+        // Set to 99, read back
+        runtime.invoke(mh, "set", &[Value::I32(99)])?;
+        let r = runtime.invoke(mh, "get", &[])?;
+        assert!(
+            matches!(r.as_slice(), [Value::I32(99)]),
+            "expected 99 after set, got {r:?}",
+        );
+
+        // Set to -1, read back
+        runtime.invoke(mh, "set", &[Value::I32(-1)])?;
+        let r = runtime.invoke(mh, "get", &[])?;
+        assert!(
+            matches!(r.as_slice(), [Value::I32(-1)]),
+            "expected -1 after set, got {r:?}",
+        );
+
+        Ok(())
+    }
 }
