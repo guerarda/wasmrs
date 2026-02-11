@@ -9,7 +9,6 @@ pub type TableSection = Vec<TableType>;
 
 #[derive(Debug, Clone)]
 pub struct TableType {
-    #[allow(dead_code)]
     pub elemtype: RefType,
     #[allow(dead_code)]
     pub limit: Limit,

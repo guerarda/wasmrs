@@ -208,8 +208,7 @@ pub struct FuncType {
 
 /// Const Expression
 #[derive(Debug)]
-#[allow(dead_code)]
-pub struct ConstExpression(Vec<Instruction>);
+pub struct ConstExpression(pub Vec<Instruction>);
 
 #[derive(Debug)]
 #[non_exhaustive]

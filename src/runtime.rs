@@ -4,7 +4,11 @@ use crate::{
     Error, Module,
     binary::{
         module,
-        sections::{memory::MemType, table::TableType},
+        sections::{
+            element::{ElementSegmentItems, ElementSegmentMode},
+            memory::MemType,
+            table::TableType,
+        },
         types::{ConstExpression, MemIndex},
     },
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
@@ -13,7 +17,7 @@ use crate::{
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
         store::{Func, FuncInstance, Store},
-        value::{ExternVal, Value},
+        value::{ExternVal, Ref, Value},
     },
 };
 
@@ -33,6 +37,7 @@ pub struct MemoryInstance {
 
 #[derive(Debug)]
 pub struct TableInstance {
+    #[allow(dead_code)]
     tabletype: TableType,
     elem: Vec<Ref>,
 }
@@ -109,13 +114,58 @@ impl Runtime {
             }
         }
 
-        // Instantiate table instances
+        // Allocate table instances
         if let Some(tablesec) = &module.tables {
             for tabletype in tablesec {
                 self.tables.push(TableInstance {
                     tabletype: tabletype.clone(),
                     elem: vec![tabletype.elemtype.into(); tabletype.limit.min as usize],
                 })
+            }
+        }
+
+        // Init table instance
+        if let Some(elemsec) = &module.elements {
+            for elem in elemsec {
+                let Some((idx, offset)) = (match &elem.mode {
+                    ElementSegmentMode::Active {
+                        table_index,
+                        offset,
+                    } => {
+                        let idx = table_index.unwrap_or(0);
+                        let offset = self.eval_expression(offset).unwrap();
+                        Some((idx as usize, offset.as_i32().unwrap() as usize))
+                    }
+                    _ => None,
+                }) else {
+                    continue;
+                };
+
+                match &elem.items {
+                    ElementSegmentItems::Functions(items) => {
+                        for (i, item) in items.iter().enumerate() {
+                            let func_ref = Ref::FuncRef(mi.lookup_func(item));
+                            self.tables[idx].elem[offset + i] = func_ref;
+                        }
+                    }
+                    ElementSegmentItems::Expressions(rt, expressions) => {
+                        for (i, expr) in expressions.iter().enumerate() {
+                            let vref: Ref = self
+                                .eval_expression(expr)
+                                .and_then(|v| v.try_into())
+                                .and_then(|r: Ref| {
+                                    if r.is_ref_type(rt) {
+                                        Ok(r)
+                                    } else {
+                                        Err(RuntimeError::internal("non matching ref type"))
+                                    }
+                                })
+                                .unwrap();
+
+                            self.tables[idx].elem[offset + i] = vref;
+                        }
+                    }
+                }
             }
         }
 
@@ -200,6 +250,24 @@ impl Runtime {
         }
 
         Ok(&mut mem_inst.data[offset..end])
+    }
+
+    /// Evaluate a constant expression (e.g. element or data segment)
+    fn eval_expression(&mut self, expr: &ConstExpression) -> result::Result<Value, RuntimeError> {
+        let mut value_stack = vec![];
+        let mut call_stack = vec![];
+
+        let mut ctx = ExecutionContext::new(
+            &mut value_stack,
+            &mut call_stack,
+            &mut self.store,
+            &self.module_registry,
+            &mut self.memories,
+        );
+        ctx.eval_const_instructions(&expr.0)?;
+        value_stack
+            .pop()
+            .ok_or_else(|| RuntimeError::trap("const expression produced no value"))
     }
 
     /// Invoke a function from a given module

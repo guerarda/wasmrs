@@ -2,7 +2,7 @@ use core::fmt;
 
 use crate::{
     binary::types::{RefType, ValType},
-    runtime::store::FuncAddr,
+    runtime::{RuntimeError, store::FuncAddr},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -10,6 +10,27 @@ pub enum Ref {
     NullRef(RefType),
     FuncRef(FuncAddr),
     ExternRef(u32),
+}
+
+impl Ref {
+    pub fn is_ref_type(&self, ref_type: &RefType) -> bool {
+        match self {
+            Self::NullRef(rt) => rt == ref_type,
+            Self::FuncRef(_) => ref_type == &RefType::Func,
+            Self::ExternRef(_) => ref_type == &RefType::Extern,
+        }
+    }
+}
+
+impl TryFrom<Value> for Ref {
+    type Error = RuntimeError;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Ref(r) => Ok(r),
+            _ => Err(RuntimeError::internal("expected value ref")),
+        }
+    }
 }
 
 impl fmt::Display for Ref {

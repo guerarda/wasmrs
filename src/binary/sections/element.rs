@@ -11,9 +11,7 @@ use crate::binary::{
 pub enum ElementSegmentMode {
     Passive,
     Active {
-        #[allow(dead_code)]
         table_index: Option<u32>,
-        #[allow(dead_code)]
         offset: ConstExpression,
     },
     Declarative,

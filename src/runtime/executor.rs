@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    binary::types::{BlockType, ConstExpression, MemIndex},
+    binary::types::{BlockType, MemIndex},
     instructions::Instruction,
     runtime::{
         MemoryInstance, Runtime, RuntimeError,
@@ -193,7 +193,7 @@ impl<'a> ExecutionContext<'a> {
         value_stack: &mut Vec<Value>,
         sp: usize,
         arity: u32,
-    ) -> Result<(), RuntimeError> {
+    ) -> result::Result<(), RuntimeError> {
         let arity = arity as usize;
 
         let stack_len = value_stack.len();
@@ -218,13 +218,34 @@ impl<'a> ExecutionContext<'a> {
         stack: &mut Vec<Value>,
         frame: &mut Frame,
         label_idx: &u32,
-    ) -> Result<(), RuntimeError> {
+    ) -> result::Result<(), RuntimeError> {
         let label = frame.pop_nth_label(*label_idx);
         Self::unwind_value_stack(stack, label.sp, label.arity)?;
         frame.pc = label.pc;
         Ok(())
     }
 
+    pub(super) fn eval_const_instructions(
+        &mut self,
+        instrs: &[Instruction],
+    ) -> result::Result<(), RuntimeError> {
+        for inst in instrs {
+            match inst {
+                Instruction::End => break,
+                Instruction::I32Const(v) => self.value_stack.push(Value::I32(*v)),
+                Instruction::I64Const(v) => self.value_stack.push(Value::I64(*v)),
+                Instruction::F32Const(v) => self.value_stack.push(Value::F32(*v)),
+                Instruction::F64Const(v) => self.value_stack.push(Value::F64(*v)),
+                Instruction::GlobalGet(_) => todo!(),
+                Instruction::RefNull(rt) => self.value_stack.push(Value::Ref(Ref::NullRef(*rt))),
+                Instruction::RefFunc(fi) => self
+                    .value_stack
+                    .push(Value::Ref(Ref::FuncRef((*fi).into()))),
+                _ => return Err(RuntimeError::trap("invalid const expression")),
+            }
+        }
+        Ok(())
+    }
     pub(super) fn call(&mut self, funcaddr: FuncAddr) {
         let func_instance = self.store.get_func(funcaddr);
         let n_args = func_instance.ftype.params.len();
@@ -245,7 +266,7 @@ impl<'a> ExecutionContext<'a> {
             .push(Frame::new(arity, funcaddr, locals, sp));
     }
 
-    pub(super) fn execute(&mut self) -> Result<(), RuntimeError> {
+    pub(super) fn execute(&mut self) -> result::Result<(), RuntimeError> {
         while let Some(frame) = self.call_stack.last_mut() {
             let func_inst = self.store.get_func(frame.funcaddr);
             let module_inst = self.module_registry.get_instance(func_inst.module);
@@ -339,7 +360,7 @@ impl<'a> ExecutionContext<'a> {
                         let funcaddr = module_inst.funcaddrs[*idx as usize];
                         self.call(funcaddr);
                     }
-                    Instruction::CallIndirect((type_idx, table_idx)) => {
+                    Instruction::CallIndirect((_, _)) => {
                         todo!();
                     }
                     Instruction::Drop => {
@@ -647,9 +668,9 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::RefNull(rt) => {
                         self.value_stack.push(Value::Ref(Ref::NullRef(*rt)))
                     }
-                    Instruction::RefFunc(fi) => {
-                        self.value_stack.push(Value::Ref(Ref::FuncRef(*fi)))
-                    }
+                    Instruction::RefFunc(fi) => self
+                        .value_stack
+                        .push(Value::Ref(Ref::FuncRef((*fi).into()))),
                     Instruction::I32TruncSatF32S => todo!(),
                     Instruction::I32TruncSatF32U => todo!(),
                     Instruction::I64TruncSatF64S => todo!(),
