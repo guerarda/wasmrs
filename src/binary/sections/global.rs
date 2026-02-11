@@ -87,8 +87,7 @@ impl<'a> FromReader<'a> for GlobalType {
 #[derive(Debug)]
 pub struct GlobalEntry {
     pub gt: GlobalType,
-    #[allow(dead_code)]
-    body: ConstExpression,
+    pub body: ConstExpression,
 }
 
 impl SectionEntry for GlobalEntry {

@@ -115,7 +115,7 @@ impl Runtime {
             for global in globalsec {
                 self.globals.push(GlobalInstance {
                     globaltype: global.gt.clone(),
-                    value: global.gt.type_.into(),
+                    value: self.eval_expression(&global.body).unwrap(),
                 })
             }
         }
@@ -299,7 +299,7 @@ impl Runtime {
     }
 
     /// Evaluate a constant expression (e.g. element or data segment)
-    fn eval_expression(&mut self, expr: &ConstExpression) -> result::Result<Value, RuntimeError> {
+    fn eval_expression(&self, expr: &ConstExpression) -> result::Result<Value, RuntimeError> {
         let mut value_stack = vec![];
 
         for inst in &expr.0 {
