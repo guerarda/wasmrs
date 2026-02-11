@@ -875,4 +875,51 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_call_indirect() -> anyhow::Result<()> {
+        // (module
+        //   (type $t (func (param i32 i32) (result i32)))
+        //   (table 2 funcref)
+        //   (elem (i32.const 0) func $add $sub)
+        //   (func $add (type $t) local.get 0 local.get 1 i32.add)
+        //   (func $sub (type $t) local.get 0 local.get 1 i32.sub)
+        //   (func (export "call") (param i32 i32 i32) (result i32)
+        //     local.get 0 local.get 1 local.get 2 call_indirect (type $t)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 2 types — (i32,i32)->(i32) and (i32,i32,i32)->(i32)
+            b"\x01\x0e\x02\x60\x02\x7f\x7f\x01\x7f\x60\x03\x7f\x7f\x7f\x01\x7f",
+            // function section: 3 funcs — type 0, type 0, type 1
+            b"\x03\x04\x03\x00\x00\x01",
+            // table section: 1 table, funcref, min=2
+            b"\x04\x04\x01\x70\x00\x02",
+            // export section: "call" -> func 2
+            b"\x07\x08\x01\x04\x63\x61\x6c\x6c\x00\x02",
+            // element section: active, table 0, offset=0, 2 funcs [0, 1]
+            b"\x09\x08\x01\x00\x41\x00\x0b\x02\x00\x01",
+            // code section: 3 funcs
+            b"\x0a\x1d\x03\x07\x00\x20\x00\x20\x01\x6a\x0b\x07\x00\x20\x00\x20\x01\x6b\x0b\x0b\x00\x20\x00\x20\x01\x20\x02\x11\x00\x00\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        let cases = [
+            // (a, b, table_idx, expected)
+            (10, 3, 0, 13), // add
+            (10, 3, 1, 7),  // sub
+        ];
+
+        for (a, b, idx, expected) in cases {
+            let r = runtime.invoke(mh, "call", &[Value::I32(a), Value::I32(b), Value::I32(idx)])?;
+            assert!(
+                matches!(r.as_slice(), [Value::I32(v)] if *v == expected),
+                "call({a}, {b}, {idx}): expected {expected}, got {r:?}",
+            );
+        }
+
+        Ok(())
+    }
 }
