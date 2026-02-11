@@ -7,7 +7,7 @@ use crate::{
     binary::types::{BlockType, MemIndex},
     instructions::Instruction,
     runtime::{
-        MemoryInstance, Runtime, RuntimeError, TableInstance,
+        GlobalInstance, MemoryInstance, Runtime, RuntimeError, TableInstance,
         instance::{ModuleInstance, ModuleRegistry},
         stack::{Frame, Label},
         store::{FuncAddr, Store},
@@ -100,6 +100,7 @@ pub(super) struct ExecutionContext<'a> {
     call_stack: &'a mut Vec<Frame>,
     store: &'a Store,
     module_registry: &'a ModuleRegistry,
+    globals: &'a mut Vec<GlobalInstance>,
     memories: &'a mut Vec<MemoryInstance>,
     tables: &'a mut Vec<TableInstance>,
 }
@@ -110,6 +111,7 @@ impl<'a> ExecutionContext<'a> {
         call_stack: &'a mut Vec<Frame>,
         store: &'a mut Store,
         module_registry: &'a ModuleRegistry,
+        globals: &'a mut Vec<GlobalInstance>,
         memories: &'a mut Vec<MemoryInstance>,
         tables: &'a mut Vec<TableInstance>,
     ) -> Self {
@@ -118,6 +120,7 @@ impl<'a> ExecutionContext<'a> {
             call_stack,
             store,
             module_registry,
+            globals,
             memories,
             tables,
         }
@@ -424,8 +427,14 @@ impl<'a> ExecutionContext<'a> {
                             .ok_or_else(|| RuntimeError::internal("local index out of bounds"))? =
                             *v;
                     }
-                    Instruction::GlobalGet(_) => todo!(),
-                    Instruction::GlobalSet(_) => todo!(),
+                    Instruction::GlobalGet(idx) => {
+                        let v = Runtime::global_get(self.globals, *idx)?;
+                        self.value_stack.push(v);
+                    }
+                    Instruction::GlobalSet(idx) => {
+                        let v = self.value_stack.pop().unwrap();
+                        Runtime::global_set(self.globals, *idx, v)?;
+                    }
 
                     Instruction::I32Load(memarg) => {
                         // Get the base address

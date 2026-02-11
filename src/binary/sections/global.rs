@@ -9,7 +9,7 @@ use crate::binary::{
 /// Global Section
 pub type GlobalSection = Vec<GlobalEntry>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum MutabilityFlag {
     Const = 0x00,
     Var = 0x01,
@@ -42,7 +42,7 @@ impl<'a> FromReader<'a> for MutabilityFlag {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GlobalType {
     pub type_: ValType,
     pub mutflag: MutabilityFlag,

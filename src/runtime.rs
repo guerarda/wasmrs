@@ -6,10 +6,11 @@ use crate::{
         module,
         sections::{
             element::{ElementSegmentItems, ElementSegmentMode},
+            global::GlobalType,
             memory::MemType,
             table::TableType,
         },
-        types::{ConstExpression, MemIndex},
+        types::{ConstExpression, GlobalIdx, MemIndex},
     },
     instructions::Instruction,
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
@@ -31,6 +32,13 @@ pub mod value;
 const WASM_MEM_PAGE_BYTE_SIZE: usize = 1 << 16;
 
 #[derive(Debug)]
+pub struct GlobalInstance {
+    #[allow(dead_code)]
+    globaltype: GlobalType,
+    value: Value,
+}
+
+#[derive(Debug)]
 pub struct MemoryInstance {
     memtype: MemType,
     data: Vec<u8>,
@@ -46,6 +54,7 @@ pub struct TableInstance {
 #[derive(Debug, Default)]
 pub struct Runtime {
     store: Store,
+    globals: Vec<GlobalInstance>,
     memories: Vec<MemoryInstance>,
     tables: Vec<TableInstance>,
     module_registry: ModuleRegistry,
@@ -98,6 +107,16 @@ impl Runtime {
                 let funcaddr = mi.funcaddrs[export.index as usize];
                 mi.exports
                     .insert(export.name.clone(), ExternVal::Func(funcaddr));
+            }
+        }
+
+        // Instantiate Globals
+        if let Some(globalsec) = &module.globals {
+            for global in globalsec {
+                self.globals.push(GlobalInstance {
+                    globaltype: global.gt.clone(),
+                    value: global.gt.type_.into(),
+                })
             }
         }
 
@@ -173,6 +192,31 @@ impl Runtime {
 
         self.module_registry.register(h, mi);
         h
+    }
+
+    pub(super) fn global_get(
+        globals: &[GlobalInstance],
+        idx: GlobalIdx,
+    ) -> result::Result<Value, RuntimeError> {
+        globals
+            .get(idx as usize)
+            .map(|g| g.value)
+            .ok_or_else(|| RuntimeError::internal("global index out of bounds"))
+    }
+
+    pub(super) fn global_set(
+        globals: &mut [GlobalInstance],
+        idx: GlobalIdx,
+        val: Value,
+    ) -> result::Result<(), RuntimeError> {
+        let g = globals
+            .get_mut(idx as usize)
+            .ok_or_else(|| RuntimeError::internal("global index out of bounds"))?;
+
+        // TODO assert on value type
+        g.value = val;
+
+        Ok(())
     }
 
     pub(super) fn memory_grow(
@@ -296,6 +340,7 @@ impl Runtime {
                 &mut call_stack,
                 &mut self.store,
                 &self.module_registry,
+                &mut self.globals,
                 &mut self.memories,
                 &mut self.tables,
             );
