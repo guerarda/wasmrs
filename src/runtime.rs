@@ -255,16 +255,20 @@ impl Runtime {
     /// Evaluate a constant expression (e.g. element or data segment)
     fn eval_expression(&mut self, expr: &ConstExpression) -> result::Result<Value, RuntimeError> {
         let mut value_stack = vec![];
-        let mut call_stack = vec![];
 
-        let mut ctx = ExecutionContext::new(
-            &mut value_stack,
-            &mut call_stack,
-            &mut self.store,
-            &self.module_registry,
-            &mut self.memories,
-        );
-        ctx.eval_const_instructions(&expr.0)?;
+        for inst in &expr.0 {
+            match inst {
+                Instruction::End => break,
+                Instruction::I32Const(v) => value_stack.push(Value::I32(*v)),
+                Instruction::I64Const(v) => value_stack.push(Value::I64(*v)),
+                Instruction::F32Const(v) => value_stack.push(Value::F32(*v)),
+                Instruction::F64Const(v) => value_stack.push(Value::F64(*v)),
+                Instruction::GlobalGet(_) => todo!(),
+                Instruction::RefNull(rt) => value_stack.push(Value::Ref(Ref::Null(*rt))),
+                Instruction::RefFunc(fi) => value_stack.push(Value::Ref(Ref::Func((*fi).into()))),
+                _ => return Err(RuntimeError::trap("invalid const expression")),
+            }
+        }
         value_stack
             .pop()
             .ok_or_else(|| RuntimeError::trap("const expression produced no value"))

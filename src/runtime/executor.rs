@@ -225,27 +225,6 @@ impl<'a> ExecutionContext<'a> {
         Ok(())
     }
 
-    pub(super) fn eval_const_instructions(
-        &mut self,
-        instrs: &[Instruction],
-    ) -> result::Result<(), RuntimeError> {
-        for inst in instrs {
-            match inst {
-                Instruction::End => break,
-                Instruction::I32Const(v) => self.value_stack.push(Value::I32(*v)),
-                Instruction::I64Const(v) => self.value_stack.push(Value::I64(*v)),
-                Instruction::F32Const(v) => self.value_stack.push(Value::F32(*v)),
-                Instruction::F64Const(v) => self.value_stack.push(Value::F64(*v)),
-                Instruction::GlobalGet(_) => todo!(),
-                Instruction::RefNull(rt) => self.value_stack.push(Value::Ref(Ref::Null(*rt))),
-                Instruction::RefFunc(fi) => {
-                    self.value_stack.push(Value::Ref(Ref::Func((*fi).into())))
-                }
-                _ => return Err(RuntimeError::trap("invalid const expression")),
-            }
-        }
-        Ok(())
-    }
     pub(super) fn call(&mut self, funcaddr: FuncAddr) {
         let func_instance = self.store.get_func(funcaddr);
         let n_args = func_instance.ftype.params.len();
