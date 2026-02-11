@@ -7,11 +7,17 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub struct FuncAddr(usize);
+pub struct FuncAddr(pub usize);
 
 impl From<usize> for FuncAddr {
     fn from(value: usize) -> Self {
         FuncAddr(value)
+    }
+}
+
+impl From<u32> for FuncAddr {
+    fn from(value: u32) -> Self {
+        FuncAddr(value as usize)
     }
 }
 

@@ -8,7 +8,7 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub enum Ref {
     NullRef(RefType),
-    FuncRef(u32),
+    FuncRef(FuncAddr),
     ExternRef(u32),
 }
 

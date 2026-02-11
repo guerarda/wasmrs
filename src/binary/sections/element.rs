@@ -109,7 +109,7 @@ impl<'a> FromReader<'a> for ElementKindMarker {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct FuncIndex(u32);
+pub struct FuncIndex(pub u32);
 
 impl<'a> FromReader<'a> for FuncIndex {
     type Error = ReadError;
