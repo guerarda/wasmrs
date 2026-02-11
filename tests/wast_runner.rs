@@ -42,7 +42,6 @@ const EXCLUDED: &[&str] = &[
     "func.wast",
     "func_ptrs.wast",
     "global.wast",
-    "if.wast",
     "imports.wast",
     "int_exprs.wast",
     "labels.wast",

@@ -1,7 +1,10 @@
-use std::ops::{BitAnd, BitOr, BitXor};
+use std::{
+    ops::{BitAnd, BitOr, BitXor},
+    result,
+};
 
 use crate::{
-    binary::types::{BlockType, MemIndex},
+    binary::types::{BlockType, ConstExpression, MemIndex},
     instructions::Instruction,
     runtime::{
         MemoryInstance, Runtime, RuntimeError,
@@ -333,11 +336,12 @@ impl<'a> ExecutionContext<'a> {
                         self.call_stack.pop();
                     }
                     Instruction::Call(idx) => {
-                        let mi = self.module_registry.get_instance(func_inst.module);
-                        let funcaddr = mi.funcaddrs[*idx as usize];
+                        let funcaddr = module_inst.funcaddrs[*idx as usize];
                         self.call(funcaddr);
                     }
-                    Instruction::CallIndirect(_) => todo!(),
+                    Instruction::CallIndirect((type_idx, table_idx)) => {
+                        todo!();
+                    }
                     Instruction::Drop => {
                         self.value_stack.pop();
                     }

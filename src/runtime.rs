@@ -2,7 +2,11 @@ use std::{error, fmt, iter::repeat_n, result};
 
 use crate::{
     Error, Module,
-    binary::{module, sections::memory::MemType, types::MemIndex},
+    binary::{
+        module,
+        sections::{memory::MemType, table::TableType},
+        types::{ConstExpression, MemIndex},
+    },
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
     runtime::{
         executor::ExecutionContext,
@@ -27,10 +31,17 @@ pub struct MemoryInstance {
     data: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub struct TableInstance {
+    tabletype: TableType,
+    elem: Vec<Ref>,
+}
+
 #[derive(Debug, Default)]
 pub struct Runtime {
     store: Store,
     memories: Vec<MemoryInstance>,
+    tables: Vec<TableInstance>,
     module_registry: ModuleRegistry,
 }
 
@@ -95,6 +106,16 @@ impl Runtime {
                     memtype: memtype.clone(),
                     data: mem,
                 });
+            }
+        }
+
+        // Instantiate table instances
+        if let Some(tablesec) = &module.tables {
+            for tabletype in tablesec {
+                self.tables.push(TableInstance {
+                    tabletype: tabletype.clone(),
+                    elem: vec![tabletype.elemtype.into(); tabletype.limit.min as usize],
+                })
             }
         }
 
