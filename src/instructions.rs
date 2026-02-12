@@ -121,7 +121,17 @@ instructions! {
 
     // Memory
     I32Load(MemArg) : 0x28 : "i32.load",
+    F32Load(MemArg) : 0x2a : "f32.load",
+    F64Load(MemArg) : 0x2b : "f64.load",
+    I32Load8S(MemArg) : 0x2c :  "i32.load8_s",
+    I64Load8S(MemArg) : 0x30 :  "i64.load8_s",
     I32Store(MemArg) : 0x36 : "i32.store",
+    I64Store(MemArg) : 0x37 : "i64.store",
+    F32Store(MemArg) : 0x38 : "f32.store",
+    F64Store(MemArg) : 0x39 : "f64.store",
+    I32Store8(MemArg) : 0x3a : "i32.store8",
+    I32Store16(MemArg) : 0x3b : "i32.store16",
+    I64Store16(MemArg) : 0x3d : "i64.store16",
 
     MemorySize(MemIndex) :0x3f : "memory.size",
     MemoryGrow(MemIndex) :0x40 : "memory.grow",
@@ -164,6 +174,8 @@ instructions! {
     F32Le : 0x5f : "f32.le",
     F32Ge : 0x60 : "f32.ge",
 
+    F64Le : 0x65 : "f64.le",
+
     // Unary ops
     I32Clz : 0x67 : "i32.clz",
     I32Ctz : 0x68 : "i32.ctz",
@@ -204,6 +216,12 @@ instructions! {
     I64ShrU : 0x88 : "i64.shr_u",
     I64Rotl : 0x89 : "i64.rotl",
     I64Rotr : 0x8a : "i64.rotr",
+
+    F32Neg : 0x8c : "f32.neg",
+    F32Add : 0x92 : "f32.add",
+    F64Neg: 0x9a : "f64.neg",
+    F64Add : 0xa0 : "f64.add",
+    I32WrapI64 : 0xa7 : "i32.wrap_i64",
 
     I64ExtendI32S : 0xac : "i64.extend_i32_s",
     I64ExtendI32U : 0xad : "i64.extend_i32_u",

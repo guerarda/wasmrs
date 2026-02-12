@@ -462,6 +462,110 @@ impl<'a> ExecutionContext<'a> {
                         // Push value
                         self.value_stack.push(Value::I32(v));
                     }
+                    Instruction::F32Load(memarg) => {
+                        // Get the base address
+                        let i =
+                            self.value_stack
+                                .pop()
+                                .and_then(Value::as_i32)
+                                .ok_or_else(|| {
+                                    RuntimeError::internal("assert, i32 expected on the stack")
+                                })?;
+
+                        // Calculate effective address
+                        let ea = (i as u32)
+                            .checked_add(memarg.offset)
+                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
+                            as usize;
+
+                        // Read memory
+                        let v = f32::from_le_bytes(
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 4)?
+                                .try_into()
+                                .unwrap(),
+                        );
+
+                        // Push value
+                        self.value_stack.push(Value::F32(v));
+                    }
+                    Instruction::F64Load(memarg) => {
+                        // Get the base address
+                        let i =
+                            self.value_stack
+                                .pop()
+                                .and_then(Value::as_i32)
+                                .ok_or_else(|| {
+                                    RuntimeError::internal("assert, i32 expected on the stack")
+                                })?;
+
+                        // Calculate effective address
+                        let ea = (i as u32)
+                            .checked_add(memarg.offset)
+                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
+                            as usize;
+
+                        // Read memory
+                        let v = f64::from_le_bytes(
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 8)?
+                                .try_into()
+                                .unwrap(),
+                        );
+
+                        // Push value
+                        self.value_stack.push(Value::F64(v));
+                    }
+                    Instruction::I32Load8S(memarg) => {
+                        // Get the base address
+                        let i =
+                            self.value_stack
+                                .pop()
+                                .and_then(Value::as_i32)
+                                .ok_or_else(|| {
+                                    RuntimeError::internal("assert, i32 expected on the stack")
+                                })?;
+
+                        // Calculate effective address
+                        let ea = (i as u32)
+                            .checked_add(memarg.offset)
+                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
+                            as usize;
+
+                        // Read memory
+                        let v = i8::from_le_bytes(
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 1)?
+                                .try_into()
+                                .unwrap(),
+                        );
+
+                        // Push value
+                        self.value_stack.push(Value::I32(v as i32));
+                    }
+                    Instruction::I64Load8S(memarg) => {
+                        // Get the base address
+                        let i =
+                            self.value_stack
+                                .pop()
+                                .and_then(Value::as_i32)
+                                .ok_or_else(|| {
+                                    RuntimeError::internal("assert, i32 expected on the stack")
+                                })?;
+
+                        // Calculate effective address
+                        let ea = (i as u32)
+                            .checked_add(memarg.offset)
+                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
+                            as usize;
+
+                        // Read memory
+                        let v = i8::from_le_bytes(
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 1)?
+                                .try_into()
+                                .unwrap(),
+                        );
+
+                        // Push value
+                        self.value_stack.push(Value::I64(v as i64));
+                    }
                     Instruction::I32Store(memarg) => {
                         // Get the value
                         let v =
@@ -493,6 +597,12 @@ impl<'a> ExecutionContext<'a> {
                         // Store
                         slice.copy_from_slice(&v.to_le_bytes());
                     }
+                    Instruction::I64Store(_) => todo!(),
+                    Instruction::F32Store(_) => todo!(),
+                    Instruction::F64Store(_) => todo!(),
+                    Instruction::I32Store8(_) => todo!(),
+                    Instruction::I32Store16(_) => todo!(),
+                    Instruction::I64Store16(_) => todo!(),
                     Instruction::MemorySize(idx) => {
                         let sz = Runtime::memory_size(self.memories, *idx)?;
                         self.value_stack.push(Value::I32(sz as i32));
@@ -551,6 +661,8 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F32Gt => comp_op!(self, F32, |a, b| a > b),
                     Instruction::F32Le => comp_op!(self, F32, |a, b| a <= b),
                     Instruction::F32Ge => comp_op!(self, F32, |a, b| a >= b),
+
+                    Instruction::F64Le => comp_op!(self, F64, |a, b| a <= b),
 
                     // Unary ops
                     Instruction::I32Clz => unary_op!(self, I32, |a: i32| a.leading_zeros() as i32),
@@ -652,6 +764,24 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I64Rotr => {
                         binary_op!(self, I64, |a: i64, b| a.rotate_right(b as u32))
                     }
+
+                    Instruction::F32Neg => {
+                        unary_op!(self, F32, |a: f32| -a);
+                    }
+
+                    Instruction::F32Add => {
+                        binary_op!(self, F32, |a: f32, b: f32| a + b);
+                    }
+
+                    Instruction::F64Neg => {
+                        unary_op!(self, F64, |a: f64| -a);
+                    }
+
+                    Instruction::F64Add => {
+                        binary_op!(self, F64, |a: f64, b: f64| a + b);
+                    }
+
+                    Instruction::I32WrapI64 => todo!(),
 
                     // Conversion ops
                     Instruction::I64ExtendI32S => {

@@ -602,6 +602,30 @@ impl Validator {
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     self.push_val(ValTypeOrUnknown::Val(ValType::I32));
                 }
+                Instruction::F32Load(memarg) => {
+                    // mems[0] is defined in the context
+                    let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
+
+                    // alignment not larger than bit width
+                    Self::validate_mem_alignment(memarg.align, ValType::F32)?;
+
+                    // [f32] -> [t]
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::F32))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::F32));
+                }
+                Instruction::F64Load(memarg) => {
+                    // mems[0] is defined in the context
+                    let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
+
+                    // alignment not larger than bit width
+                    Self::validate_mem_alignment(memarg.align, ValType::F64)?;
+
+                    // [f64] -> [t]
+                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::F64))?;
+                    self.push_val(ValTypeOrUnknown::Val(ValType::F64));
+                }
+                Instruction::I32Load8S(_) => todo!(),
+                Instruction::I64Load8S(_) => todo!(),
                 Instruction::I32Store(memarg) => {
                     // mems[0] is defined in the context
                     let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
@@ -613,6 +637,12 @@ impl Validator {
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                     self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
                 }
+                Instruction::I64Store(_) => todo!(),
+                Instruction::F32Store(_) => todo!(),
+                Instruction::F64Store(_) => todo!(),
+                Instruction::I32Store8(_) => todo!(),
+                Instruction::I32Store16(_) => todo!(),
+                Instruction::I64Store16(_) => todo!(),
                 Instruction::MemorySize(idx) => {
                     // mems[0] is defined in the context
                     let _ = Self::mem_type_at(module, *idx)?;
@@ -673,6 +703,8 @@ impl Validator {
                 | Instruction::F32Le
                 | Instruction::F32Ge => self.validate_comp_op(ValType::F32)?,
 
+                Instruction::F64Le => self.validate_comp_op(ValType::F64)?,
+
                 Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => {
                     self.validate_unary_op(ValType::I32)?
                 }
@@ -711,6 +743,15 @@ impl Validator {
                 | Instruction::I64ShrU
                 | Instruction::I64Rotl
                 | Instruction::I64Rotr => self.validate_bin_op(ValType::I64)?,
+
+                Instruction::F32Neg => self.validate_unary_op(ValType::F32)?,
+
+                Instruction::F32Add => self.validate_bin_op(ValType::F32)?,
+
+                Instruction::F64Neg => self.validate_unary_op(ValType::F64)?,
+
+                Instruction::F64Add => self.validate_bin_op(ValType::F64)?,
+                Instruction::I32WrapI64 => todo!(),
 
                 Instruction::I32Extend8S | Instruction::I32Extend16S => {
                     self.validate_conversion_op(ValType::I32, ValType::I32)?
