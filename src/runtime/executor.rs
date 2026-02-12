@@ -325,11 +325,8 @@ impl<'a> ExecutionContext<'a> {
                         frame.pc = frame.current_label().pc - 1;
                     }
                     Instruction::End => match frame.labels.pop() {
-                        Some(Label {
-                            end_arity, pc, sp, ..
-                        }) => {
+                        Some(Label { end_arity, sp, .. }) => {
                             Self::unwind_value_stack(self.value_stack, sp, end_arity)?;
-                            frame.pc = pc;
                         }
                         None => {
                             Self::unwind_value_stack(self.value_stack, frame.sp, frame.arity)?;
@@ -1023,6 +1020,72 @@ mod tests {
         assert!(
             matches!(r.as_slice(), [Value::I32(42)]),
             "expected 42 from init expr, got {r:?}",
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_br_to_function_return() -> anyhow::Result<()> {
+        // (module
+        //   (func (export "test") (result i32)
+        //     (loop
+        //       (i32.const 42)
+        //       (br 1)
+        //     )
+        //     (unreachable)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // export section: "test" -> func 0
+            b"\x07\x08\x01\x04\x74\x65\x73\x74\x00\x00",
+            // code section: loop, i32.const 42, br 1, end, unreachable, end
+            b"\x0a\x0c\x01\x0a\x00\x03\x40\x41\x2a\x0c\x01\x0b\x00\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        let r = runtime.invoke(mh, "test", &[])?;
+        assert!(
+            matches!(r.as_slice(), [Value::I32(42)]),
+            "expected 42 from br 1 (return), got {r:?}",
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_loop_result_arity() -> anyhow::Result<()> {
+        // (module
+        //   (func (export "test") (result i32)
+        //     (loop (result i32)
+        //       (i32.const 42)
+        //     )))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // export section: "test" -> func 0
+            b"\x07\x08\x01\x04\x74\x65\x73\x74\x00\x00",
+            // code section: loop (result i32), i32.const 42, end, end
+            b"\x0a\x09\x01\x07\x00\x03\x7f\x41\x2a\x0b\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        let r = runtime.invoke(mh, "test", &[])?;
+        assert!(
+            matches!(r.as_slice(), [Value::I32(42)]),
+            "expected 42 from loop fallthrough, got {r:?}",
         );
 
         Ok(())
