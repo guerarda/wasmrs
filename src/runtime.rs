@@ -10,7 +10,7 @@ use crate::{
             memory::MemType,
             table::TableType,
         },
-        types::{ConstExpression, GlobalIdx, MemIndex},
+        types::{ConstExpression, GlobalIdx, MemArg, MemIndex},
     },
     instructions::Instruction,
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
@@ -258,16 +258,22 @@ impl Runtime {
             .ok_or_else(|| RuntimeError::internal("assert: mems[0] does not exist"))
     }
 
-    pub(super) fn memory_slice(
-        mem_instances: &[MemoryInstance],
+    pub(super) fn memory_slice<'a>(
+        mem_instances: &'a [MemoryInstance],
         idx: MemIndex,
-        offset: usize,
+        base: i32,
+        memarg: &'a MemArg,
         len: usize,
-    ) -> result::Result<&[u8], RuntimeError> {
+    ) -> result::Result<&'a [u8], RuntimeError> {
         debug_assert!(idx == MemIndex::ZERO);
+
+        let ea = (base as u32)
+            .checked_add(memarg.offset)
+            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
+            as usize;
 
         let mem_inst = &mem_instances[0];
-        let end = offset
+        let end = ea
             .checked_add(len)
             .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?;
 
@@ -275,19 +281,26 @@ impl Runtime {
             return Err(RuntimeError::trap("out-of-bound memory access"));
         }
 
-        Ok(&mem_inst.data[offset..end])
+        Ok(&mem_inst.data[ea..end])
     }
 
-    pub(super) fn memory_slice_mut(
-        mem_instances: &mut [MemoryInstance],
+    pub(super) fn memory_slice_mut<'a>(
+        mem_instances: &'a mut [MemoryInstance],
         idx: MemIndex,
-        offset: usize,
+        base: i32,
+        memarg: &MemArg,
         len: usize,
-    ) -> result::Result<&mut [u8], RuntimeError> {
+    ) -> result::Result<&'a mut [u8], RuntimeError> {
         debug_assert!(idx == MemIndex::ZERO);
 
+        // Calculate effective address
+        let ea = (base as u32)
+            .checked_add(memarg.offset)
+            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
+            as usize;
+
         let mem_inst = &mut mem_instances[0];
-        let end = offset
+        let end = ea
             .checked_add(len)
             .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?;
 
@@ -295,7 +308,7 @@ impl Runtime {
             return Err(RuntimeError::trap("out-of-bound memory access"));
         }
 
-        Ok(&mut mem_inst.data[offset..end])
+        Ok(&mut mem_inst.data[ea..end])
     }
 
     /// Evaluate a constant expression (e.g. element or data segment)

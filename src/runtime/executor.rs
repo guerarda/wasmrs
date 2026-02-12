@@ -435,15 +435,9 @@ impl<'a> ExecutionContext<'a> {
                         // Get the base address
                         let i = Self::pop_i32(self.value_stack)?;
 
-                        // Calculate effective address
-                        let ea = (i as u32)
-                            .checked_add(memarg.offset)
-                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-                            as usize;
-
                         // Read memory
                         let v = i32::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 4)?
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 4)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -455,15 +449,9 @@ impl<'a> ExecutionContext<'a> {
                         // Get the base address
                         let i = Self::pop_i32(self.value_stack)?;
 
-                        // Calculate effective address
-                        let ea = (i as u32)
-                            .checked_add(memarg.offset)
-                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-                            as usize;
-
                         // Read memory
                         let v = f32::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 4)?
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 4)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -475,15 +463,9 @@ impl<'a> ExecutionContext<'a> {
                         // Get the base address
                         let i = Self::pop_i32(self.value_stack)?;
 
-                        // Calculate effective address
-                        let ea = (i as u32)
-                            .checked_add(memarg.offset)
-                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-                            as usize;
-
                         // Read memory
                         let v = f64::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 8)?
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 8)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -495,15 +477,9 @@ impl<'a> ExecutionContext<'a> {
                         // Get the base address
                         let i = Self::pop_i32(self.value_stack)?;
 
-                        // Calculate effective address
-                        let ea = (i as u32)
-                            .checked_add(memarg.offset)
-                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-                            as usize;
-
                         // Read memory
                         let v = i8::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 1)?
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 1)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -515,15 +491,9 @@ impl<'a> ExecutionContext<'a> {
                         // Get the base address
                         let i = Self::pop_i32(self.value_stack)?;
 
-                        // Calculate effective address
-                        let ea = (i as u32)
-                            .checked_add(memarg.offset)
-                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-                            as usize;
-
                         // Read memory
                         let v = i8::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, ea, 1)?
+                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 1)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -538,15 +508,9 @@ impl<'a> ExecutionContext<'a> {
                         // Get the base address
                         let i = Self::pop_i32(self.value_stack)?;
 
-                        // Calculate effective address
-                        let ea = (i as u32)
-                            .checked_add(memarg.offset)
-                            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-                            as usize;
-
                         // Get memory
                         let slice =
-                            Runtime::memory_slice_mut(self.memories, MemIndex::ZERO, ea, 4)?;
+                            Runtime::memory_slice_mut(self.memories, MemIndex::ZERO, i, memarg, 4)?;
                         // Store
                         slice.copy_from_slice(&v.to_le_bytes());
                     }
