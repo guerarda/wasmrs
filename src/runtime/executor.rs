@@ -221,12 +221,22 @@ impl<'a> ExecutionContext<'a> {
     }
 
     fn branch(
-        stack: &mut Vec<Value>,
-        frame: &mut Frame,
+        value_stack: &mut Vec<Value>,
+        call_stack: &mut Vec<Frame>,
         label_idx: &u32,
     ) -> result::Result<(), RuntimeError> {
+        let frame = call_stack.last_mut().unwrap();
+        let n = *label_idx as usize;
+
+        if n == frame.labels.len() {
+            // function return
+            Self::unwind_value_stack(value_stack, frame.sp, frame.arity)?;
+            call_stack.pop();
+            return Ok(());
+        }
+
         let label = frame.pop_nth_label(*label_idx);
-        Self::unwind_value_stack(stack, label.sp, label.arity)?;
+        Self::unwind_value_stack(value_stack, label.sp, label.br_arity)?;
         frame.pc = label.pc;
         Ok(())
     }
@@ -260,7 +270,6 @@ impl<'a> ExecutionContext<'a> {
                 .into_iter()
                 .map(Into::<Value>::into),
         );
-
         self.call_stack
             .push(Frame::new(arity, funcaddr, locals, sp));
     }
@@ -281,27 +290,32 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::Block(bt) => {
                         let (n_params, n_results) = Self::block_arity(bt, module_inst);
                         let end = Self::find_block_end(instrs, frame.pc);
-                        frame.push_label(n_results, end, self.value_stack.len() - n_params as usize)
+                        frame.enter_block(
+                            n_results,
+                            end,
+                            self.value_stack.len() - n_params as usize,
+                        );
                     }
                     Instruction::Loop(bt) => {
-                        let (n_params, _) = Self::block_arity(bt, module_inst);
-                        frame.push_label(
+                        let (n_params, n_results) = Self::block_arity(bt, module_inst);
+                        frame.enter_loop(
                             n_params,
+                            n_results,
                             frame.pc,
                             self.value_stack.len() - n_params as usize,
-                        )
+                        );
                     }
                     Instruction::If(bt) => {
                         let (n_params, n_results) = Self::block_arity(bt, module_inst);
                         let (end, else_) = Self::find_if_else_end(instrs, frame.pc);
 
                         let cond = Self::pop_bool(self.value_stack)?;
-
-                        frame.push_label(
+                        frame.enter_block(
                             n_results,
                             end,
                             self.value_stack.len() - n_params as usize,
                         );
+
                         if !cond {
                             // Next instruction is one past else or end
                             frame.pc = else_.unwrap_or(end - 1);
@@ -310,9 +324,11 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::Else => {
                         frame.pc = frame.current_label().pc - 1;
                     }
-                    Instruction::End => match frame.pop_label() {
-                        Some(Label { arity, pc, sp }) => {
-                            Self::unwind_value_stack(self.value_stack, sp, arity)?;
+                    Instruction::End => match frame.labels.pop() {
+                        Some(Label {
+                            end_arity, pc, sp, ..
+                        }) => {
+                            Self::unwind_value_stack(self.value_stack, sp, end_arity)?;
                             frame.pc = pc;
                         }
                         None => {
@@ -321,19 +337,19 @@ impl<'a> ExecutionContext<'a> {
                         }
                     },
                     Instruction::Br(label_idx) => {
-                        Self::branch(self.value_stack, frame, label_idx)?;
+                        Self::branch(self.value_stack, self.call_stack, label_idx)?;
                     }
                     Instruction::BrIf(label_idx) => {
                         let cond = Self::pop_bool(self.value_stack)?;
                         if cond {
-                            Self::branch(self.value_stack, frame, label_idx)?;
+                            Self::branch(self.value_stack, self.call_stack, label_idx)?;
                         }
                     }
                     Instruction::BrTable(br_idx) => {
                         let i = Self::pop_i32(self.value_stack)? as usize;
 
                         let label_idx = br_idx.labels.get(i).unwrap_or(&br_idx.default);
-                        Self::branch(self.value_stack, frame, label_idx)?;
+                        Self::branch(self.value_stack, self.call_stack, label_idx)?;
                     }
                     Instruction::Return => {
                         Self::unwind_value_stack(self.value_stack, frame.sp, frame.arity)?;
