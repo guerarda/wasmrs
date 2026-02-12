@@ -1092,6 +1092,46 @@ mod tests {
     }
 
     #[test]
+    fn test_loop_br_reentry() -> anyhow::Result<()> {
+        // (module
+        //   (func (export "test") (result i32)
+        //     (local $i i32)
+        //     (block $exit (result i32)
+        //       (loop $cont (result i32)
+        //         (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        //         (if (i32.eq (local.get $i) (i32.const 3))
+        //           (then (br $exit (local.get $i)))
+        //         )
+        //         (br $cont)
+        //       )
+        //     )
+        //   ))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // export section: "test" -> func 0
+            b"\x07\x08\x01\x04test\x00\x00",
+            // code section
+            b"\x0a\x21\x01\x1f\x01\x01\x7f\x02\x7f\x03\x7f\x20\x00\x41\x01\x6a\x21\x00\x20\x00\x41\x03\x46\x04\x40\x20\x00\x0c\x02\x0b\x0c\x00\x0b\x0b\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        let mh = runtime.load_module(&bytes)?;
+
+        let r = runtime.invoke(mh, "test", &[])?;
+        assert!(
+            matches!(r.as_slice(), [Value::I32(3)]),
+            "expected 3 from loop counter, got {r:?}",
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn test_global_set() -> anyhow::Result<()> {
         // (module
         //   (global $g (mut i32) (i32.const 10))
