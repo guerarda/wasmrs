@@ -301,7 +301,7 @@ impl<'a> ExecutionContext<'a> {
                         frame.enter_loop(
                             n_params,
                             n_results,
-                            frame.pc,
+                            frame.pc - 1, // Make sure we create the label on every loop
                             self.value_stack.len() - n_params as usize,
                         );
                     }
