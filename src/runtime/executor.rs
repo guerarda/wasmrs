@@ -231,6 +231,20 @@ impl<'a> ExecutionContext<'a> {
         Ok(())
     }
 
+    fn pop_i32(value_stack: &mut Vec<Value>) -> result::Result<i32, RuntimeError> {
+        value_stack
+            .pop()
+            .and_then(Value::as_i32)
+            .ok_or_else(|| RuntimeError::internal("assert, i32 expected on the stack"))
+    }
+
+    fn pop_bool(value_stack: &mut Vec<Value>) -> result::Result<bool, RuntimeError> {
+        value_stack
+            .pop()
+            .and_then(Value::as_bool)
+            .ok_or_else(|| RuntimeError::internal("assert, i32 expected on the stack"))
+    }
+
     pub(super) fn call(&mut self, funcaddr: FuncAddr) {
         let func_instance = self.store.get_func(funcaddr);
         let n_args = func_instance.ftype.params.len();
@@ -281,23 +295,17 @@ impl<'a> ExecutionContext<'a> {
                         let (n_params, n_results) = Self::block_arity(bt, module_inst);
                         let (end, else_) = Self::find_if_else_end(instrs, frame.pc);
 
-                        let cond = self.value_stack.pop().ok_or(RuntimeError::internal(
-                            "assert: expected i32 cond on the stack",
-                        ))?;
+                        let cond = Self::pop_bool(self.value_stack)?;
+
                         frame.push_label(
                             n_results,
                             end,
                             self.value_stack.len() - n_params as usize,
                         );
-
-                        match cond {
-                            Value::I32(0) => {
-                                // Next instruction is one past else or end
-                                frame.pc = else_.unwrap_or(end - 1);
-                            }
-                            Value::I32(_) => continue,
-                            _ => unreachable!(),
-                        };
+                        if !cond {
+                            // Next instruction is one past else or end
+                            frame.pc = else_.unwrap_or(end - 1);
+                        }
                     }
                     Instruction::Else => {
                         frame.pc = frame.current_label().pc - 1;
@@ -316,23 +324,13 @@ impl<'a> ExecutionContext<'a> {
                         Self::branch(self.value_stack, frame, label_idx)?;
                     }
                     Instruction::BrIf(label_idx) => {
-                        let cond = self
-                            .value_stack
-                            .pop()
-                            .and_then(Value::as_bool)
-                            .ok_or(RuntimeError::internal("br_if, invalid cond type"))?;
-
+                        let cond = Self::pop_bool(self.value_stack)?;
                         if cond {
                             Self::branch(self.value_stack, frame, label_idx)?;
                         }
                     }
                     Instruction::BrTable(br_idx) => {
-                        let i = self
-                            .value_stack
-                            .pop()
-                            .and_then(Value::as_i32)
-                            .ok_or(RuntimeError::internal("br_table, invalid index type"))?
-                            as usize;
+                        let i = Self::pop_i32(self.value_stack)? as usize;
 
                         let label_idx = br_idx.labels.get(i).unwrap_or(&br_idx.default);
                         Self::branch(self.value_stack, frame, label_idx)?;
@@ -350,11 +348,8 @@ impl<'a> ExecutionContext<'a> {
                         let tab_inst = &self.tables[tab_addr.0];
                         let ft = &module_inst.types[*type_idx as usize];
 
-                        let i = self
-                            .value_stack
-                            .pop()
-                            .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::internal("assert: expect i32 on the stack"))?;
+                        let i = Self::pop_i32(self.value_stack)?;
+
                         let r = tab_inst
                             .elem
                             .get(i as usize)
@@ -387,14 +382,14 @@ impl<'a> ExecutionContext<'a> {
                         }
                     }
                     Instruction::SelectT(_vt) => {
-                        let cond = self.value_stack.pop().unwrap();
+                        let cond = Self::pop_bool(self.value_stack)?;
                         let val2 = self.value_stack.pop().unwrap();
                         let val1 = self.value_stack.pop().unwrap();
 
-                        match cond {
-                            Value::I32(0) => self.value_stack.push(val2),
-                            Value::I32(_) => self.value_stack.push(val1),
-                            _ => unreachable!(),
+                        if cond {
+                            self.value_stack.push(val1);
+                        } else {
+                            self.value_stack.push(val2);
                         }
                     }
                     Instruction::LocalGet(idx) => {
@@ -438,13 +433,7 @@ impl<'a> ExecutionContext<'a> {
 
                     Instruction::I32Load(memarg) => {
                         // Get the base address
-                        let i =
-                            self.value_stack
-                                .pop()
-                                .and_then(Value::as_i32)
-                                .ok_or_else(|| {
-                                    RuntimeError::internal("assert, i32 expected on the stack")
-                                })?;
+                        let i = Self::pop_i32(self.value_stack)?;
 
                         // Calculate effective address
                         let ea = (i as u32)
@@ -464,13 +453,7 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::F32Load(memarg) => {
                         // Get the base address
-                        let i =
-                            self.value_stack
-                                .pop()
-                                .and_then(Value::as_i32)
-                                .ok_or_else(|| {
-                                    RuntimeError::internal("assert, i32 expected on the stack")
-                                })?;
+                        let i = Self::pop_i32(self.value_stack)?;
 
                         // Calculate effective address
                         let ea = (i as u32)
@@ -490,13 +473,7 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::F64Load(memarg) => {
                         // Get the base address
-                        let i =
-                            self.value_stack
-                                .pop()
-                                .and_then(Value::as_i32)
-                                .ok_or_else(|| {
-                                    RuntimeError::internal("assert, i32 expected on the stack")
-                                })?;
+                        let i = Self::pop_i32(self.value_stack)?;
 
                         // Calculate effective address
                         let ea = (i as u32)
@@ -516,13 +493,7 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::I32Load8S(memarg) => {
                         // Get the base address
-                        let i =
-                            self.value_stack
-                                .pop()
-                                .and_then(Value::as_i32)
-                                .ok_or_else(|| {
-                                    RuntimeError::internal("assert, i32 expected on the stack")
-                                })?;
+                        let i = Self::pop_i32(self.value_stack)?;
 
                         // Calculate effective address
                         let ea = (i as u32)
@@ -542,13 +513,7 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::I64Load8S(memarg) => {
                         // Get the base address
-                        let i =
-                            self.value_stack
-                                .pop()
-                                .and_then(Value::as_i32)
-                                .ok_or_else(|| {
-                                    RuntimeError::internal("assert, i32 expected on the stack")
-                                })?;
+                        let i = Self::pop_i32(self.value_stack)?;
 
                         // Calculate effective address
                         let ea = (i as u32)
@@ -568,22 +533,10 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::I32Store(memarg) => {
                         // Get the value
-                        let v =
-                            self.value_stack
-                                .pop()
-                                .and_then(Value::as_i32)
-                                .ok_or_else(|| {
-                                    RuntimeError::internal("asserts, i32 expected on the stack")
-                                })?;
+                        let v = Self::pop_i32(self.value_stack)?;
 
                         // Get the base address
-                        let i =
-                            self.value_stack
-                                .pop()
-                                .and_then(Value::as_i32)
-                                .ok_or_else(|| {
-                                    RuntimeError::internal("assert, i32 expected on the stack")
-                                })?;
+                        let i = Self::pop_i32(self.value_stack)?;
 
                         // Calculate effective address
                         let ea = (i as u32)
