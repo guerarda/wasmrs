@@ -221,15 +221,15 @@ enum TestCase {
 
 fn main() {
     let mut detailed = false;
-    let mut run_assert_invalid = false;
+    let mut run_assert_invalid = true;
     let mut run_all = false;
     let args: Vec<String> = std::env::args()
         .filter(|arg| {
             if arg == "--detailed" {
                 detailed = true;
                 false
-            } else if arg == "--assert-invalid" {
-                run_assert_invalid = true;
+            } else if arg == "--no-assert" {
+                run_assert_invalid = false;
                 false
             } else if arg == "--all" {
                 run_all = true;
