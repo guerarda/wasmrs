@@ -1,3 +1,5 @@
+use std::{error, fmt, result};
+
 use crate::{
     binary::{
         module::Module,
@@ -12,56 +14,72 @@ use crate::{
     instructions::Instruction,
 };
 
-use std::{error, fmt, result};
-
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ValTypeOrUnknown {
-    Val(ValType),
+pub enum ValueType {
+    I32,
+    I64,
+    F32,
+    F64,
+    V128,
+    Ref(RefType),
     Unknown,
 }
 
-impl ValTypeOrUnknown {
+impl ValueType {
     fn is_num(&self) -> bool {
         matches!(
             self,
-            Self::Val(ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64) | Self::Unknown
+            Self::I32 | Self::I64 | Self::F32 | Self::F64 | Self::Unknown
         )
     }
 
     fn is_vec(&self) -> bool {
-        matches!(self, Self::Val(ValType::V128) | Self::Unknown)
+        matches!(self, Self::V128 | Self::Unknown)
     }
 
     #[allow(dead_code)]
     fn is_ref(&self) -> bool {
-        matches!(self, Self::Val(ValType::Ref(_)) | Self::Unknown)
+        matches!(self, Self::Ref(_) | Self::Unknown)
     }
 }
 
-impl From<&ValType> for ValTypeOrUnknown {
+impl From<&ValType> for ValueType {
     fn from(value: &ValType) -> Self {
-        ValTypeOrUnknown::Val(*value)
+        match value {
+            ValType::Ref(rt) => Self::Ref(*rt),
+            ValType::V128 => Self::V128,
+            ValType::F64 => Self::F64,
+            ValType::F32 => Self::F32,
+            ValType::I64 => Self::I64,
+            ValType::I32 => Self::I32,
+        }
     }
 }
 
-impl From<&GlobalType> for ValTypeOrUnknown {
+impl From<ValType> for ValueType {
+    fn from(value: ValType) -> Self {
+        (&value).into()
+    }
+}
+
+impl From<&GlobalType> for ValueType {
     fn from(value: &GlobalType) -> Self {
-        ValTypeOrUnknown::Val(value.type_)
+        (&(value.type_)).into()
     }
 }
 
 #[derive(Debug)]
 pub struct CtrlFrame {
     opcode: Instruction,
-    start_types: Vec<ValTypeOrUnknown>,
-    end_types: Vec<ValTypeOrUnknown>,
+    start_types: Vec<ValueType>,
+    end_types: Vec<ValueType>,
     height: usize,
     unreachable: bool,
 }
 
 #[derive(Debug, Default)]
 struct Validator {
-    vals: Vec<ValTypeOrUnknown>,
+    vals: Vec<ValueType>,
     ctrls: Vec<CtrlFrame>,
 }
 
@@ -114,18 +132,18 @@ impl fmt::Display for ValidationError {
 }
 
 impl Validator {
-    fn push_val(&mut self, val: ValTypeOrUnknown) {
+    fn push_val(&mut self, val: ValueType) {
         self.vals.push(val)
     }
 
-    fn push_vals(&mut self, vals: &[ValTypeOrUnknown]) {
+    fn push_vals(&mut self, vals: &[ValueType]) {
         self.vals.extend_from_slice(vals)
     }
 
     fn pop_vals_expect(
         &mut self,
-        expected: &[ValTypeOrUnknown],
-    ) -> result::Result<Vec<ValTypeOrUnknown>, ValidationError> {
+        expected: &[ValueType],
+    ) -> result::Result<Vec<ValueType>, ValidationError> {
         let mut res = vec![];
         for t in expected.iter().rev() {
             res.push(self.pop_val_expect(*t)?);
@@ -134,10 +152,10 @@ impl Validator {
         Ok(res)
     }
 
-    fn pop_val(&mut self) -> result::Result<ValTypeOrUnknown, ValidationError> {
+    fn pop_val(&mut self) -> result::Result<ValueType, ValidationError> {
         let last = self.ctrls.last().expect("unexpected empty control stack");
         if self.vals.len() == last.height && last.unreachable {
-            return Ok(ValTypeOrUnknown::Unknown);
+            return Ok(ValueType::Unknown);
         }
 
         if self.vals.len() == last.height {
@@ -149,24 +167,16 @@ impl Validator {
 
     fn pop_val_expect(
         &mut self,
-        expected: ValTypeOrUnknown,
-    ) -> result::Result<ValTypeOrUnknown, ValidationError> {
+        expected: ValueType,
+    ) -> result::Result<ValueType, ValidationError> {
         let actual = self.pop_val()?;
-        if actual != expected
-            && actual != ValTypeOrUnknown::Unknown
-            && expected != ValTypeOrUnknown::Unknown
-        {
+        if actual != expected && actual != ValueType::Unknown && expected != ValueType::Unknown {
             return Err(ValidationError::TypeMismatch);
         }
         Ok(actual)
     }
 
-    fn push_ctrl(
-        &mut self,
-        opcode: Instruction,
-        start: Vec<ValTypeOrUnknown>,
-        end: Vec<ValTypeOrUnknown>,
-    ) {
+    fn push_ctrl(&mut self, opcode: Instruction, start: Vec<ValueType>, end: Vec<ValueType>) {
         self.ctrls.push(CtrlFrame {
             opcode,
             start_types: start,
@@ -200,7 +210,7 @@ impl Validator {
             .ctrls
             .last_mut()
             .expect("unexpected empty control stack");
-        self.vals.resize(last.height, ValTypeOrUnknown::Unknown);
+        self.vals.resize(last.height, ValueType::Unknown);
         last.unreachable = true;
     }
 
@@ -208,25 +218,17 @@ impl Validator {
     fn block_type(
         bt: &BlockType,
         module: &Module,
-    ) -> result::Result<(Vec<ValTypeOrUnknown>, Vec<ValTypeOrUnknown>), ValidationError> {
+    ) -> result::Result<(Vec<ValueType>, Vec<ValueType>), ValidationError> {
         Ok(match bt {
             BlockType::Empty => (vec![], vec![]),
-            BlockType::Value(vt) => (vec![], vec![ValTypeOrUnknown::Val(*vt)]),
+            BlockType::Value(vt) => (vec![], vec![vt.into()]),
             BlockType::Index(idx) => {
                 let types = &module.types.as_ref().ok_or(ValidationError::UnknownType)?;
 
                 let t = &types[*idx as usize];
                 (
-                    t.params
-                        .iter()
-                        .copied()
-                        .map(ValTypeOrUnknown::Val)
-                        .collect(),
-                    t.results
-                        .iter()
-                        .copied()
-                        .map(ValTypeOrUnknown::Val)
-                        .collect(),
+                    t.params.iter().copied().map(|v| (&v).into()).collect(),
+                    t.results.iter().copied().map(|v| (&v).into()).collect(),
                 )
             }
         })
@@ -267,16 +269,16 @@ impl Validator {
         functype: &FuncType,
         locals: &[FuncLocal],
         idx: u32,
-    ) -> result::Result<ValTypeOrUnknown, ValidationError> {
-        if let Some(&param) = functype.params.get(idx as usize) {
-            return Ok(ValTypeOrUnknown::Val(param));
+    ) -> result::Result<ValueType, ValidationError> {
+        if let Some(param) = functype.params.get(idx as usize) {
+            return Ok(param.into());
         }
         let local_idx = idx - functype.params.len() as u32;
         let mut count: u32 = 0;
 
         for local in locals {
             if local_idx < count + local.count {
-                return Ok(ValTypeOrUnknown::Val(local.valtype));
+                return Ok(local.valtype.into());
             }
             count += local.count;
         }
@@ -301,7 +303,7 @@ impl Validator {
     }
 
     /// Returns the label_types for the nth frame from the top
-    fn label_types(n: usize, frames: &[CtrlFrame]) -> &[ValTypeOrUnknown] {
+    fn label_types(n: usize, frames: &[CtrlFrame]) -> &[ValueType] {
         let frame = &frames[frames.len() - n - 1];
         if matches!(frame.opcode, Instruction::Loop(_)) {
             &frame.start_types
@@ -332,7 +334,7 @@ impl Validator {
 
     fn validate_bin_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
         // [t t] -> [t]
-        let valtype = ValTypeOrUnknown::Val(valtype);
+        let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
         self.pop_val_expect(valtype)?;
         self.push_val(valtype);
@@ -341,7 +343,7 @@ impl Validator {
 
     fn validate_unary_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
         // [t] -> [t]
-        let valtype = ValTypeOrUnknown::Val(valtype);
+        let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
         self.push_val(valtype);
         Ok(())
@@ -353,8 +355,8 @@ impl Validator {
         to_valtype: ValType,
     ) -> result::Result<(), ValidationError> {
         // [t1] -> [t2]
-        let from_valtype = ValTypeOrUnknown::Val(from_valtype);
-        let to_valtype = ValTypeOrUnknown::Val(to_valtype);
+        let from_valtype = from_valtype.into();
+        let to_valtype = to_valtype.into();
         self.pop_val_expect(from_valtype)?;
         self.push_val(to_valtype);
         Ok(())
@@ -362,10 +364,10 @@ impl Validator {
 
     fn validate_comp_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
         // [t t] -> [i32]
-        let valtype = ValTypeOrUnknown::Val(valtype);
+        let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
         self.pop_val_expect(valtype)?;
-        self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+        self.push_val(ValueType::I32);
         Ok(())
     }
 
@@ -375,13 +377,8 @@ impl Validator {
         entry: &CodeEntry,
         module: &Module,
     ) -> result::Result<(), ValidationError> {
-        let start_types: Vec<ValTypeOrUnknown> =
-            functype.params.iter().map(ValTypeOrUnknown::from).collect();
-        let end_types: Vec<ValTypeOrUnknown> = functype
-            .results
-            .iter()
-            .map(ValTypeOrUnknown::from)
-            .collect();
+        let start_types: Vec<ValueType> = functype.params.iter().map(ValueType::from).collect();
+        let end_types: Vec<ValueType> = functype.results.iter().map(ValueType::from).collect();
         self.push_ctrl(Instruction::Call(0), start_types, end_types);
 
         for inst in &entry.body {
@@ -402,7 +399,7 @@ impl Validator {
                     // [t1* i32] -> [t2*]
                     let (t1, t2) = Self::block_type(bt, module)?;
 
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValueType::I32)?;
                     self.pop_vals_expect(&t1)?;
 
                     self.push_ctrl(Instruction::If(*bt), t1, t2);
@@ -433,7 +430,7 @@ impl Validator {
                     if self.ctrls.len() < n {
                         return Err(ValidationError::ControlStackUnderflow);
                     }
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValueType::I32)?;
 
                     // FIXME Avoid Copy. pop_vals must be in ValueStack impl
                     let lt = Self::label_types(n, &self.ctrls).to_vec();
@@ -441,7 +438,7 @@ impl Validator {
                     self.push_vals(&lt);
                 }
                 Instruction::BrTable(idx) => {
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValueType::I32)?;
 
                     let m = idx.default as usize;
                     if self.ctrls.len() <= m {
@@ -479,19 +476,15 @@ impl Validator {
                 Instruction::Call(idx) => {
                     // [t1*] -> [t2*]
                     let func_type = Self::func_type_at(module, *idx)?;
-                    let params: Vec<ValTypeOrUnknown> = func_type
-                        .params
-                        .iter()
-                        .copied()
-                        .map(ValTypeOrUnknown::Val)
-                        .collect();
+                    let params: Vec<ValueType> =
+                        func_type.params.iter().copied().map(|v| v.into()).collect();
                     self.pop_vals_expect(&params)?;
 
-                    let results: Vec<ValTypeOrUnknown> = func_type
+                    let results: Vec<ValueType> = func_type
                         .results
                         .iter()
                         .copied()
-                        .map(ValTypeOrUnknown::Val)
+                        .map(|v| v.into())
                         .collect();
 
                     self.push_vals(&results);
@@ -503,22 +496,18 @@ impl Validator {
                         return Err(ValidationError::TableTypeMismatch);
                     }
 
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValueType::I32)?;
 
                     let func_type = Self::type_at(module, *type_idx)?;
-                    let params: Vec<ValTypeOrUnknown> = func_type
-                        .params
-                        .iter()
-                        .copied()
-                        .map(ValTypeOrUnknown::Val)
-                        .collect();
+                    let params: Vec<ValueType> =
+                        func_type.params.iter().copied().map(|v| v.into()).collect();
                     self.pop_vals_expect(&params)?;
 
-                    let results: Vec<ValTypeOrUnknown> = func_type
+                    let results: Vec<ValueType> = func_type
                         .results
                         .iter()
                         .copied()
-                        .map(ValTypeOrUnknown::Val)
+                        .map(|v| v.into())
                         .collect();
 
                     self.push_vals(&results);
@@ -530,7 +519,7 @@ impl Validator {
                 }
                 Instruction::Select => {
                     // [t t i32] -> [t]
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValueType::I32)?;
                     let t1 = self.pop_val()?;
                     let t2 = self.pop_val()?;
 
@@ -538,14 +527,11 @@ impl Validator {
                         return Err(ValidationError::TypeMismatch);
                     }
 
-                    if t1 != t2
-                        && t1 != ValTypeOrUnknown::Unknown
-                        && t2 != ValTypeOrUnknown::Unknown
-                    {
+                    if t1 != t2 && t1 != ValueType::Unknown && t2 != ValueType::Unknown {
                         return Err(ValidationError::TypeMismatch);
                     }
 
-                    if matches!(t1, ValTypeOrUnknown::Unknown) {
+                    if matches!(t1, ValueType::Unknown) {
                         self.push_val(t2);
                     } else {
                         self.push_val(t1);
@@ -557,10 +543,11 @@ impl Validator {
                         return Err(ValidationError::InvalidSelectTypes);
                     };
 
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.pop_val_expect(ValTypeOrUnknown::Val(*t))?;
-                    self.pop_val_expect(ValTypeOrUnknown::Val(*t))?;
-                    self.push_val(ValTypeOrUnknown::Val(*t));
+                    let t = t.into();
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(t)?;
+                    self.pop_val_expect(t)?;
+                    self.push_val(t);
                 }
                 Instruction::LocalGet(idx) => {
                     // [] -> [t]
@@ -599,8 +586,8 @@ impl Validator {
                     Self::validate_mem_alignment(memarg.align, ValType::I32)?;
 
                     // [i32] -> [t]
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.push_val(ValueType::I32);
                 }
                 Instruction::F32Load(memarg) => {
                     // mems[0] is defined in the context
@@ -610,8 +597,8 @@ impl Validator {
                     Self::validate_mem_alignment(memarg.align, ValType::F32)?;
 
                     // [f32] -> [t]
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::F32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::F32));
+                    self.pop_val_expect(ValueType::F32)?;
+                    self.push_val(ValueType::F32);
                 }
                 Instruction::F64Load(memarg) => {
                     // mems[0] is defined in the context
@@ -621,8 +608,8 @@ impl Validator {
                     Self::validate_mem_alignment(memarg.align, ValType::F64)?;
 
                     // [f64] -> [t]
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::F64))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::F64));
+                    self.pop_val_expect(ValueType::F64)?;
+                    self.push_val(ValueType::F64);
                 }
                 Instruction::I32Load8S(_) => todo!(),
                 Instruction::I64Load8S(_) => todo!(),
@@ -634,8 +621,8 @@ impl Validator {
                     Self::validate_mem_alignment(memarg.align, ValType::I32)?;
 
                     // [i32 t] -> []
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
                 }
                 Instruction::I64Store(_) => todo!(),
                 Instruction::F32Store(_) => todo!(),
@@ -648,24 +635,24 @@ impl Validator {
                     let _ = Self::mem_type_at(module, *idx)?;
 
                     // [] -> [i32]
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                    self.push_val(ValueType::I32);
                 }
                 Instruction::MemoryGrow(idx) => {
                     // mems[0] is defined in the context
                     let _ = Self::mem_type_at(module, *idx)?;
 
                     // [i32] -> [i32]
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.push_val(ValueType::I32);
                 }
-                Instruction::I32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I32)),
-                Instruction::I64Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::I64)),
-                Instruction::F32Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::F32)),
-                Instruction::F64Const(_) => self.push_val(ValTypeOrUnknown::Val(ValType::F64)),
+                Instruction::I32Const(_) => self.push_val(ValueType::I32),
+                Instruction::I64Const(_) => self.push_val(ValueType::I64),
+                Instruction::F32Const(_) => self.push_val(ValueType::F32),
+                Instruction::F64Const(_) => self.push_val(ValueType::F64),
                 Instruction::I32Eqz => {
                     // [i32] -> [i32]
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I32))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.push_val(ValueType::I32);
                 }
 
                 Instruction::I32Eq
@@ -681,8 +668,8 @@ impl Validator {
 
                 Instruction::I64Eqz => {
                     // [i64] -> [i32]
-                    self.pop_val_expect(ValTypeOrUnknown::Val(ValType::I64))?;
-                    self.push_val(ValTypeOrUnknown::Val(ValType::I32));
+                    self.pop_val_expect(ValueType::I64)?;
+                    self.push_val(ValueType::I32);
                 }
 
                 Instruction::I64Eq
@@ -762,10 +749,8 @@ impl Validator {
                     self.validate_conversion_op(ValType::I64, ValType::I64)?
                 }
 
-                Instruction::RefNull(rt) => self.push_val(ValTypeOrUnknown::Val(ValType::Ref(*rt))),
-                Instruction::RefFunc(_) => {
-                    self.push_val(ValTypeOrUnknown::Val(ValType::Ref(RefType::Func)))
-                }
+                Instruction::RefNull(rt) => self.push_val(ValueType::Ref(*rt)),
+                Instruction::RefFunc(_) => self.push_val(ValueType::Ref(RefType::Func)),
 
                 Instruction::I32TruncSatF32S | Instruction::I32TruncSatF32U => {
                     self.validate_conversion_op(ValType::F32, ValType::I32)?
