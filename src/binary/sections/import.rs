@@ -27,8 +27,8 @@ impl TryFrom<u8> for ImportDescType {
         match value {
             0x00 => Ok(Self::Func),
             0x01 => Ok(Self::Table),
-            0x03 => Ok(Self::Mem),
-            0x04 => Ok(Self::Global),
+            0x02 => Ok(Self::Mem),
+            0x03 => Ok(Self::Global),
             _ => Err(InvalidEnumValueError {
                 value,
                 enum_name: std::any::type_name::<Self>(),
