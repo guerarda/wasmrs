@@ -69,6 +69,17 @@ macro_rules! comp_op {
     }};
 }
 
+macro_rules! conv_op {
+    ($self:expr, $from_variant:ident, $to_variant:ident, $op:expr) => {{
+        let val = $self.value_stack.pop().unwrap();
+        let res = match (val) {
+            Value::$from_variant(a) => $op(a),
+            _ => unreachable!(),
+        };
+        $self.value_stack.push(Value::$to_variant(res));
+    }};
+}
+
 macro_rules! try_binary_op {
     ($self:expr, $variant:ident, $op:expr) => {{
         let rhs = $self.value_stack.pop().unwrap();
@@ -717,37 +728,21 @@ impl<'a> ExecutionContext<'a> {
                     }
                     // Conversion ops
                     Instruction::I32WrapI64 => {
-                        let val = self.value_stack.pop().unwrap();
-                        let result = match val {
-                            Value::I64(a) => Value::I32(a as i32),
-                            _ => unreachable!(),
-                        };
-                        self.value_stack.push(result);
+                        conv_op!(self, I64, I32, |a| a as i32);
                     }
                     Instruction::I64ExtendI32S => {
-                        let val = self.value_stack.pop().unwrap();
-                        let result = match val {
-                            Value::I32(a) => Value::I64(i64::from(a)),
-                            _ => unreachable!(),
-                        };
-                        self.value_stack.push(result);
+                        conv_op!(self, I32, I64, |a| i64::from(a));
                     }
                     Instruction::I64ExtendI32U => {
-                        let val = self.value_stack.pop().unwrap();
-                        let result = match val {
-                            // Musn't do sign extension, so cast as u32 first
-                            Value::I32(a) => Value::I64(a as u32 as i64),
-                            _ => unreachable!(),
-                        };
-                        self.value_stack.push(result);
+                        conv_op!(self, I32, I64, |a| a as u32 as i64);
                     }
 
                     // Sign extension ops
-                    Instruction::I32Extend8S => unary_op!(self, I32, |a| a as i8),
-                    Instruction::I32Extend16S => unary_op!(self, I32, |a| a as i16),
-                    Instruction::I64Extend8S => unary_op!(self, I64, |a| a as i8),
-                    Instruction::I64Extend16S => unary_op!(self, I64, |a| a as i16),
-                    Instruction::I64Extend32S => unary_op!(self, I64, |a| a as i32),
+                    Instruction::I32Extend8S => conv_op!(self, I32, I32, |a| a as i8 as i32),
+                    Instruction::I32Extend16S => conv_op!(self, I32, I32, |a| a as i16 as i32),
+                    Instruction::I64Extend8S => conv_op!(self, I64, I64, |a| a as i8 as i64),
+                    Instruction::I64Extend16S => conv_op!(self, I64, I64, |a| a as i16 as i64),
+                    Instruction::I64Extend32S => conv_op!(self, I64, I64, |a| a as i32 as i64),
 
                     // Ref
                     Instruction::RefNull(rt) => self.value_stack.push(Value::Ref(Ref::Null(*rt))),
