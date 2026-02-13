@@ -9,7 +9,7 @@ use crate::{
             memory::MemType,
             table::TableType,
         },
-        types::{BlockType, FuncType, GlobalIdx, MemIndex, RefType, ValType},
+        types::{BlockType, FuncType, GlobalIdx, MemArg, MemIndex, RefType, ValType},
     },
     instructions::Instruction,
 };
@@ -323,9 +323,13 @@ impl Validator {
             .ok_or(ValidationError::UnknownMemory)
     }
 
-    /// Validate that the memory alignment is valid for the given type
-    fn validate_mem_alignment(align: u32, t: ValType) -> result::Result<(), ValidationError> {
-        if (1 << align) > t.size_bytes() {
+    /// Validate that the memory alignment does not exceed the natural
+    /// alignment for the given byte size
+    fn validate_mem_alignment(
+        memarg: &MemArg,
+        byte_size: u32,
+    ) -> result::Result<(), ValidationError> {
+        if (1 << memarg.align) > byte_size {
             Err(ValidationError::InvalidMemAlignment)
         } else {
             Ok(())
@@ -368,6 +372,44 @@ impl Validator {
         self.pop_val_expect(valtype)?;
         self.pop_val_expect(valtype)?;
         self.push_val(ValueType::I32);
+        Ok(())
+    }
+
+    fn validate_mem_load(
+        &mut self,
+        module: &Module,
+        memarg: &MemArg,
+        byte_size: u32,
+        valuetype: ValType,
+    ) -> result::Result<(), ValidationError> {
+        // mems[0] is defined in the context
+        let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
+
+        // alignment not larger than bit width
+        Self::validate_mem_alignment(memarg, byte_size)?;
+
+        // [i32] -> [t]
+        self.pop_val_expect(ValueType::I32)?;
+        self.push_val(valuetype.into());
+        Ok(())
+    }
+
+    fn validate_mem_store(
+        &mut self,
+        module: &Module,
+        memarg: &MemArg,
+        byte_size: u32,
+        valuetype: ValType,
+    ) -> result::Result<(), ValidationError> {
+        // mems[0] is defined in the context
+        let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
+
+        // alignment not larger than bit width
+        Self::validate_mem_alignment(memarg, byte_size)?;
+
+        // [i32 t] -> []
+        self.pop_val_expect(valuetype.into())?;
+        self.pop_val_expect(ValueType::I32)?;
         Ok(())
     }
 
@@ -579,57 +621,41 @@ impl Validator {
                     self.pop_val_expect(gt.into())?;
                 }
                 Instruction::I32Load(memarg) => {
-                    // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
-
-                    // alignment not larger than bit width
-                    Self::validate_mem_alignment(memarg.align, ValType::I32)?;
-
-                    // [i32] -> [t]
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.push_val(ValueType::I32);
+                    self.validate_mem_load(module, memarg, 4, ValType::I32)?;
                 }
                 Instruction::F32Load(memarg) => {
-                    // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
-
-                    // alignment not larger than bit width
-                    Self::validate_mem_alignment(memarg.align, ValType::F32)?;
-
-                    // [f32] -> [t]
-                    self.pop_val_expect(ValueType::F32)?;
-                    self.push_val(ValueType::F32);
+                    self.validate_mem_load(module, memarg, 4, ValType::F32)?;
                 }
                 Instruction::F64Load(memarg) => {
-                    // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
-
-                    // alignment not larger than bit width
-                    Self::validate_mem_alignment(memarg.align, ValType::F64)?;
-
-                    // [f64] -> [t]
-                    self.pop_val_expect(ValueType::F64)?;
-                    self.push_val(ValueType::F64);
+                    self.validate_mem_load(module, memarg, 8, ValType::F64)?;
                 }
-                Instruction::I32Load8S(_) => todo!(),
-                Instruction::I64Load8S(_) => todo!(),
+                Instruction::I32Load8S(memarg) => {
+                    self.validate_mem_load(module, memarg, 1, ValType::I32)?;
+                }
+                Instruction::I64Load8S(memarg) => {
+                    self.validate_mem_load(module, memarg, 1, ValType::I64)?;
+                }
                 Instruction::I32Store(memarg) => {
-                    // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
-
-                    // alignment not larger than bit width
-                    Self::validate_mem_alignment(memarg.align, ValType::I32)?;
-
-                    // [i32 t] -> []
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
+                    self.validate_mem_store(module, memarg, 4, ValType::I32)?;
                 }
-                Instruction::I64Store(_) => todo!(),
-                Instruction::F32Store(_) => todo!(),
-                Instruction::F64Store(_) => todo!(),
-                Instruction::I32Store8(_) => todo!(),
-                Instruction::I32Store16(_) => todo!(),
-                Instruction::I64Store16(_) => todo!(),
+                Instruction::I64Store(memarg) => {
+                    self.validate_mem_store(module, memarg, 8, ValType::I64)?;
+                }
+                Instruction::F32Store(memarg) => {
+                    self.validate_mem_store(module, memarg, 4, ValType::F32)?;
+                }
+                Instruction::F64Store(memarg) => {
+                    self.validate_mem_store(module, memarg, 8, ValType::F64)?;
+                }
+                Instruction::I32Store8(memarg) => {
+                    self.validate_mem_store(module, memarg, 1, ValType::I32)?;
+                }
+                Instruction::I32Store16(memarg) => {
+                    self.validate_mem_store(module, memarg, 2, ValType::I32)?;
+                }
+                Instruction::I64Store16(memarg) => {
+                    self.validate_mem_store(module, memarg, 2, ValType::I64)?;
+                }
                 Instruction::MemorySize(idx) => {
                     // mems[0] is defined in the context
                     let _ = Self::mem_type_at(module, *idx)?;
@@ -738,7 +764,9 @@ impl Validator {
                 Instruction::F64Neg => self.validate_unary_op(ValType::F64)?,
 
                 Instruction::F64Add => self.validate_bin_op(ValType::F64)?,
-                Instruction::I32WrapI64 => todo!(),
+                Instruction::I32WrapI64 => {
+                    self.validate_conversion_op(ValType::I64, ValType::I32)?
+                }
 
                 Instruction::I32Extend8S | Instruction::I32Extend16S => {
                     self.validate_conversion_op(ValType::I32, ValType::I32)?
