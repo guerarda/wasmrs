@@ -1,14 +1,14 @@
 use crate::runtime::{store::FuncAddr, value::Value};
 
-/// A Labels hold the arity of the block, the continuation (pc) and
-/// the stack height (sp) for unwinding on exit.
+/// A Labels hold the arity of the block, the continuation (`pc`) and
+/// the stack height (`sp`) for unwinding on exit.
 ///
 /// We need two arities to handle branching on loops correctly.
-/// A loop of type [t1*] -> [t2*], so when exiting the loop, on end,
-/// t2 values needs to be left on the stack, but when looping
-/// t1 values should be present on the stack
+/// A loop can be of block type `[t1*] -> [t2*]`. On exiting the loop
+/// on an `end` instruction, `end_arity` values needs to be left on the stack
+/// Whereas on looping, `br_arity` value sshould remain on the stack.
 ///
-/// For other blocks, the br_arity and end_arity should be the same.
+/// For regualar blocks, the br_arity and end_arity is the same.
 #[derive(Debug, Clone)]
 pub struct Label {
     pub br_arity: u32,
