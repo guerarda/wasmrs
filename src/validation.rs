@@ -763,9 +763,21 @@ impl Validator {
                 | Instruction::I64Rotl
                 | Instruction::I64Rotr => self.validate_binop(ValType::I64)?,
 
-                Instruction::F32Neg => self.validate_unop(ValType::F32)?,
-                Instruction::F32Floor => self.validate_unop(ValType::F32)?,
-                Instruction::F32Add => self.validate_binop(ValType::F32)?,
+                Instruction::F32Abs
+                | Instruction::F32Neg
+                | Instruction::F32Ceil
+                | Instruction::F32Floor
+                | Instruction::F32Trunc
+                | Instruction::F32Nearest
+                | Instruction::F32Sqrt => self.validate_unop(ValType::F32)?,
+
+                Instruction::F32Add
+                | Instruction::F32Sub
+                | Instruction::F32Mul
+                | Instruction::F32Div
+                | Instruction::F32Min
+                | Instruction::F32Max
+                | Instruction::F32Copysign => self.validate_binop(ValType::F32)?,
 
                 Instruction::F64Neg => self.validate_unop(ValType::F64)?,
                 Instruction::F64Floor => self.validate_unop(ValType::F64)?,

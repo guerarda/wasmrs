@@ -1,5 +1,5 @@
 use std::{
-    ops::{BitAnd, BitOr, BitXor},
+    ops::{BitAnd, BitOr, BitXor, Neg},
     result,
 };
 
@@ -697,15 +697,25 @@ impl<'a> ExecutionContext<'a> {
                         binary_op!(self, I64, |a: i64, b| a.rotate_right(b as u32))
                     }
 
-                    Instruction::F32Neg => {
-                        unary_op!(self, F32, |a: f32| -a);
+                    Instruction::F32Abs => unary_op!(self, F32, |a: f32| a.abs()),
+                    Instruction::F32Neg => unary_op!(self, F32, |a: f32| a.neg()),
+
+                    Instruction::F32Ceil => unary_op!(self, F32, |a: f32| a.ceil()),
+                    Instruction::F32Floor => unary_op!(self, F32, |a: f32| a.floor()),
+
+                    Instruction::F32Trunc => unary_op!(self, F32, |a: f32| a.trunc()),
+                    Instruction::F32Nearest => unary_op!(self, F32, |a: f32| a.round_ties_even()),
+                    Instruction::F32Sqrt => unary_op!(self, F32, |a: f32| a.sqrt()),
+                    Instruction::F32Add => binary_op!(self, F32, |a: f32, b: f32| a + b),
+                    Instruction::F32Sub => binary_op!(self, F32, |a: f32, b: f32| a - b),
+                    Instruction::F32Mul => binary_op!(self, F32, |a: f32, b: f32| a * b),
+                    Instruction::F32Div => binary_op!(self, F32, |a: f32, b: f32| a / b),
+                    Instruction::F32Min => binary_op!(self, F32, |a: f32, b: f32| a.min(b)),
+                    Instruction::F32Max => binary_op!(self, F32, |a: f32, b: f32| a.max(b)),
+                    Instruction::F32Copysign => {
+                        binary_op!(self, F32, |a: f32, b: f32| a.copysign(b))
                     }
-                    Instruction::F32Floor => {
-                        unary_op!(self, F32, |a: f32| a.floor());
-                    }
-                    Instruction::F32Add => {
-                        binary_op!(self, F32, |a: f32, b: f32| a + b);
-                    }
+
                     Instruction::F64Neg => {
                         unary_op!(self, F64, |a: f64| -a);
                     }
