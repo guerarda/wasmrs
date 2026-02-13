@@ -469,7 +469,7 @@ impl Validator {
                 }
                 Instruction::BrIf(n) => {
                     let n = *n as usize;
-                    if self.ctrls.len() < n {
+                    if self.ctrls.len() <= n {
                         return Err(ValidationError::ControlStackUnderflow);
                     }
                     self.pop_val_expect(ValueType::I32)?;
@@ -999,6 +999,29 @@ mod tests {
             b"\x01\x04\x01\x60\x00\x00",
             b"\x03\x02\x01\x00",
             b"\x0a\x07\x01\x05\x00\x45\x0f\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_br_if_unbound_label() -> anyhow::Result<()> {
+        // (module (func $unbound-label (br_if 1 (i32.const 1))))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> ()
+            b"\x01\x04\x01\x60\x00\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // code section: i32.const 1, br_if 1, end
+            b"\x0a\x08\x01\x06\x00\x41\x01\x0d\x01\x0b",
         ]
         .concat();
         let m = decode_bytes(bytes)?;
