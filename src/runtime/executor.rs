@@ -383,18 +383,8 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::Drop => {
                         self.value_stack.pop();
                     }
-                    Instruction::Select => {
-                        let cond = self.value_stack.pop().unwrap();
-                        let val2 = self.value_stack.pop().unwrap();
-                        let val1 = self.value_stack.pop().unwrap();
 
-                        match cond {
-                            Value::I32(0) => self.value_stack.push(val2),
-                            Value::I32(_) => self.value_stack.push(val1),
-                            _ => unreachable!(),
-                        }
-                    }
-                    Instruction::SelectT(_vt) => {
+                    Instruction::Select | Instruction::SelectT(_) => {
                         let cond = Self::pop_bool(self.value_stack)?;
                         let val2 = self.value_stack.pop().unwrap();
                         let val1 = self.value_stack.pop().unwrap();
@@ -725,9 +715,15 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F64Add => {
                         binary_op!(self, F64, |a: f64, b: f64| a + b);
                     }
-                    Instruction::I32WrapI64 => todo!(),
-
                     // Conversion ops
+                    Instruction::I32WrapI64 => {
+                        let val = self.value_stack.pop().unwrap();
+                        let result = match val {
+                            Value::I64(a) => Value::I32(a as i32),
+                            _ => unreachable!(),
+                        };
+                        self.value_stack.push(result);
+                    }
                     Instruction::I64ExtendI32S => {
                         let val = self.value_stack.pop().unwrap();
                         let result = match val {
