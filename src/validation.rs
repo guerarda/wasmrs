@@ -336,7 +336,7 @@ impl Validator {
         }
     }
 
-    fn validate_bin_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+    fn validate_binop(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
         // [t t] -> [t]
         let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
@@ -345,7 +345,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_unary_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+    fn validate_unop(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
         // [t] -> [t]
         let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
@@ -353,7 +353,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_conversion_op(
+    fn validate_convop(
         &mut self,
         from_valtype: ValType,
         to_valtype: ValType,
@@ -366,7 +366,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_comp_op(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+    fn validate_compop(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
         // [t t] -> [i32]
         let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
@@ -696,7 +696,7 @@ impl Validator {
                 | Instruction::I32GtS
                 | Instruction::I32GtU
                 | Instruction::I32GeS
-                | Instruction::I32GeU => self.validate_comp_op(ValType::I32)?,
+                | Instruction::I32GeU => self.validate_compop(ValType::I32)?,
 
                 Instruction::I64Eqz => {
                     // [i64] -> [i32]
@@ -713,19 +713,19 @@ impl Validator {
                 | Instruction::I64LeS
                 | Instruction::I64LeU
                 | Instruction::I64GeS
-                | Instruction::I64GeU => self.validate_comp_op(ValType::I64)?,
+                | Instruction::I64GeU => self.validate_compop(ValType::I64)?,
 
                 Instruction::F32Eq
                 | Instruction::F32Ne
                 | Instruction::F32Lt
                 | Instruction::F32Gt
                 | Instruction::F32Le
-                | Instruction::F32Ge => self.validate_comp_op(ValType::F32)?,
+                | Instruction::F32Ge => self.validate_compop(ValType::F32)?,
 
-                Instruction::F64Le => self.validate_comp_op(ValType::F64)?,
+                Instruction::F64Le => self.validate_compop(ValType::F64)?,
 
                 Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => {
-                    self.validate_unary_op(ValType::I32)?
+                    self.validate_unop(ValType::I32)?
                 }
                 Instruction::I32Add
                 | Instruction::I32Sub
@@ -741,10 +741,10 @@ impl Validator {
                 | Instruction::I32ShrS
                 | Instruction::I32ShrU
                 | Instruction::I32Rotl
-                | Instruction::I32Rotr => self.validate_bin_op(ValType::I32)?,
+                | Instruction::I32Rotr => self.validate_binop(ValType::I32)?,
 
                 Instruction::I64Clz | Instruction::I64Ctz | Instruction::I64Popcnt => {
-                    self.validate_unary_op(ValType::I64)?
+                    self.validate_unop(ValType::I64)?
                 }
 
                 Instruction::I64Add
@@ -761,40 +761,36 @@ impl Validator {
                 | Instruction::I64ShrS
                 | Instruction::I64ShrU
                 | Instruction::I64Rotl
-                | Instruction::I64Rotr => self.validate_bin_op(ValType::I64)?,
+                | Instruction::I64Rotr => self.validate_binop(ValType::I64)?,
 
-                Instruction::F32Neg => self.validate_unary_op(ValType::F32)?,
-                Instruction::F32Floor => self.validate_unary_op(ValType::F32)?,
-                Instruction::F32Add => self.validate_bin_op(ValType::F32)?,
+                Instruction::F32Neg => self.validate_unop(ValType::F32)?,
+                Instruction::F32Floor => self.validate_unop(ValType::F32)?,
+                Instruction::F32Add => self.validate_binop(ValType::F32)?,
 
-                Instruction::F64Neg => self.validate_unary_op(ValType::F64)?,
-                Instruction::F64Floor => self.validate_unary_op(ValType::F64)?,
-                Instruction::F64Add => self.validate_bin_op(ValType::F64)?,
-                Instruction::I32WrapI64 => {
-                    self.validate_conversion_op(ValType::I64, ValType::I32)?
-                }
+                Instruction::F64Neg => self.validate_unop(ValType::F64)?,
+                Instruction::F64Floor => self.validate_unop(ValType::F64)?,
+                Instruction::F64Add => self.validate_binop(ValType::F64)?,
+                Instruction::I32WrapI64 => self.validate_convop(ValType::I64, ValType::I32)?,
 
                 Instruction::I32Extend8S | Instruction::I32Extend16S => {
-                    self.validate_conversion_op(ValType::I32, ValType::I32)?
+                    self.validate_convop(ValType::I32, ValType::I32)?
                 }
                 Instruction::I64Extend8S
                 | Instruction::I64Extend16S
-                | Instruction::I64Extend32S => {
-                    self.validate_conversion_op(ValType::I64, ValType::I64)?
-                }
+                | Instruction::I64Extend32S => self.validate_convop(ValType::I64, ValType::I64)?,
 
                 Instruction::RefNull(rt) => self.push_val(ValueType::Ref(*rt)),
                 Instruction::RefFunc(_) => self.push_val(ValueType::Ref(RefType::Func)),
 
                 Instruction::I32TruncSatF32S | Instruction::I32TruncSatF32U => {
-                    self.validate_conversion_op(ValType::F32, ValType::I32)?
+                    self.validate_convop(ValType::F32, ValType::I32)?
                 }
                 Instruction::I64TruncSatF64S | Instruction::I64TruncSatF64U => {
-                    self.validate_conversion_op(ValType::F64, ValType::I64)?
+                    self.validate_convop(ValType::F64, ValType::I64)?
                 }
 
                 Instruction::I64ExtendI32S | Instruction::I64ExtendI32U => {
-                    self.validate_conversion_op(ValType::I32, ValType::I64)?
+                    self.validate_convop(ValType::I32, ValType::I64)?
                 }
             }
         }
