@@ -532,7 +532,9 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F64Store(_) => todo!(),
                     Instruction::I32Store8(_) => todo!(),
                     Instruction::I32Store16(_) => todo!(),
+                    Instruction::I64Store8(_) => todo!(),
                     Instruction::I64Store16(_) => todo!(),
+                    Instruction::I64Store32(_) => todo!(),
                     Instruction::MemorySize(idx) => {
                         let sz = Runtime::memory_size(self.memories, *idx)?;
                         self.value_stack.push(Value::I32(sz as i32));
@@ -698,19 +700,21 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F32Neg => {
                         unary_op!(self, F32, |a: f32| -a);
                     }
-
+                    Instruction::F32Floor => {
+                        unary_op!(self, F32, |a: f32| a.floor());
+                    }
                     Instruction::F32Add => {
                         binary_op!(self, F32, |a: f32, b: f32| a + b);
                     }
-
                     Instruction::F64Neg => {
                         unary_op!(self, F64, |a: f64| -a);
                     }
-
+                    Instruction::F64Floor => {
+                        unary_op!(self, F64, |a: f64| a.floor());
+                    }
                     Instruction::F64Add => {
                         binary_op!(self, F64, |a: f64, b: f64| a + b);
                     }
-
                     Instruction::I32WrapI64 => todo!(),
 
                     // Conversion ops

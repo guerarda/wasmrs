@@ -131,7 +131,9 @@ instructions! {
     F64Store(MemArg) : 0x39 : "f64.store",
     I32Store8(MemArg) : 0x3a : "i32.store8",
     I32Store16(MemArg) : 0x3b : "i32.store16",
+    I64Store8(MemArg) : 0x3c : "i64.store8",
     I64Store16(MemArg) : 0x3d : "i64.store16",
+    I64Store32(MemArg) : 0x3e : "i64.store32",
 
     MemorySize(MemIndex) :0x3f : "memory.size",
     MemoryGrow(MemIndex) :0x40 : "memory.grow",
@@ -218,8 +220,10 @@ instructions! {
     I64Rotr : 0x8a : "i64.rotr",
 
     F32Neg : 0x8c : "f32.neg",
+    F32Floor: 0x8e : "f32.floor",
     F32Add : 0x92 : "f32.add",
     F64Neg: 0x9a : "f64.neg",
+    F64Floor: 0x9c : "f64.floor",
     F64Add : 0xa0 : "f64.add",
     I32WrapI64 : 0xa7 : "i32.wrap_i64",
 

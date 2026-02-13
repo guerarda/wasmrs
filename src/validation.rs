@@ -653,8 +653,14 @@ impl Validator {
                 Instruction::I32Store16(memarg) => {
                     self.validate_mem_store(module, memarg, 2, ValType::I32)?;
                 }
+                Instruction::I64Store8(memarg) => {
+                    self.validate_mem_store(module, memarg, 1, ValType::I64)?;
+                }
                 Instruction::I64Store16(memarg) => {
                     self.validate_mem_store(module, memarg, 2, ValType::I64)?;
+                }
+                Instruction::I64Store32(memarg) => {
+                    self.validate_mem_store(module, memarg, 4, ValType::I64)?;
                 }
                 Instruction::MemorySize(idx) => {
                     // mems[0] is defined in the context
@@ -758,11 +764,11 @@ impl Validator {
                 | Instruction::I64Rotr => self.validate_bin_op(ValType::I64)?,
 
                 Instruction::F32Neg => self.validate_unary_op(ValType::F32)?,
-
+                Instruction::F32Floor => self.validate_unary_op(ValType::F32)?,
                 Instruction::F32Add => self.validate_bin_op(ValType::F32)?,
 
                 Instruction::F64Neg => self.validate_unary_op(ValType::F64)?,
-
+                Instruction::F64Floor => self.validate_unary_op(ValType::F64)?,
                 Instruction::F64Add => self.validate_bin_op(ValType::F64)?,
                 Instruction::I32WrapI64 => {
                     self.validate_conversion_op(ValType::I64, ValType::I32)?
