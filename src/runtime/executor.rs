@@ -751,7 +751,7 @@ impl<'a> ExecutionContext<'a> {
                         conv_op!(self, I64, I32, |a| a as i32);
                     }
                     Instruction::I64ExtendI32S => {
-                        conv_op!(self, I32, I64, |a| i64::from(a));
+                        conv_op!(self, I32, I64, i64::from)
                     }
                     Instruction::I64ExtendI32U => {
                         conv_op!(self, I32, I64, |a| a as u32 as i64);

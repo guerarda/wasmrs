@@ -58,13 +58,13 @@ impl From<&ValType> for ValueType {
 
 impl From<ValType> for ValueType {
     fn from(value: ValType) -> Self {
-        (&value).into()
+        Self::from(&value)
     }
 }
 
 impl From<&GlobalType> for ValueType {
     fn from(value: &GlobalType) -> Self {
-        (&(value.type_)).into()
+        Self::from(value.type_)
     }
 }
 
