@@ -7,18 +7,16 @@ use crate::{
         sections::{
             element::{ElementSegmentItems, ElementSegmentMode},
             global::GlobalType,
-            memory::MemType,
             table::TableType,
         },
-        types::{ConstExpression, GlobalIdx, MemArg, MemIndex},
+        types::{ConstExpression, GlobalIdx},
     },
     instructions::Instruction,
-    limits::MAX_WASM_32BIT_MEMORY_PAGES,
     runtime::{
         executor::ExecutionContext,
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
-        store::{Func, FuncInstance, Store},
+        store::{Func, FuncInstance, MemoryInstance, Store},
         value::{ExternVal, Ref, Value},
     },
 };
@@ -39,12 +37,6 @@ pub struct GlobalInstance {
 }
 
 #[derive(Debug)]
-pub struct MemoryInstance {
-    memtype: MemType,
-    data: Vec<u8>,
-}
-
-#[derive(Debug)]
 pub struct TableInstance {
     #[allow(dead_code)]
     tabletype: TableType,
@@ -55,7 +47,6 @@ pub struct TableInstance {
 pub struct Runtime {
     store: Store,
     globals: Vec<GlobalInstance>,
-    memories: Vec<MemoryInstance>,
     tables: Vec<TableInstance>,
     module_registry: ModuleRegistry,
 }
@@ -127,7 +118,7 @@ impl Runtime {
             if let Some(memtype) = memsec.first() {
                 let memsize = (memtype.0.min as usize) * WASM_MEM_PAGE_BYTE_SIZE;
                 let mem = vec![0u8; memsize];
-                self.memories.push(MemoryInstance {
+                self.store.memories.push(MemoryInstance {
                     memtype: memtype.clone(),
                     data: mem,
                 });
@@ -219,98 +210,6 @@ impl Runtime {
         Ok(())
     }
 
-    pub(super) fn memory_grow(
-        mem_instances: &mut [MemoryInstance],
-        idx: MemIndex,
-        n_pages: u32,
-    ) -> result::Result<Option<u32>, RuntimeError> {
-        let sz = Self::memory_size(mem_instances, idx)?;
-        let new_sz = match sz.checked_add(n_pages) {
-            Some(n) => n,
-            _ => return Ok(None),
-        };
-
-        if new_sz > MAX_WASM_32BIT_MEMORY_PAGES {
-            return Ok(None);
-        }
-
-        if let Some(max_sz) = mem_instances[0].memtype.0.max
-            && new_sz > max_sz
-        {
-            return Ok(None);
-        }
-
-        let len = new_sz as usize * WASM_MEM_PAGE_BYTE_SIZE;
-        mem_instances[0].data.resize(len, 0);
-
-        Ok(Some(sz))
-    }
-
-    pub(super) fn memory_size(
-        mem_instances: &[MemoryInstance],
-        idx: MemIndex,
-    ) -> result::Result<u32, RuntimeError> {
-        debug_assert!(idx == MemIndex::ZERO);
-
-        mem_instances
-            .first()
-            .map(|mem| (mem.data.len() / WASM_MEM_PAGE_BYTE_SIZE) as u32)
-            .ok_or_else(|| RuntimeError::internal("assert: mems[0] does not exist"))
-    }
-
-    pub(super) fn memory_slice<'a>(
-        mem_instances: &'a [MemoryInstance],
-        idx: MemIndex,
-        base: i32,
-        memarg: &'a MemArg,
-        len: usize,
-    ) -> result::Result<&'a [u8], RuntimeError> {
-        debug_assert!(idx == MemIndex::ZERO);
-
-        let ea = (base as u32)
-            .checked_add(memarg.offset)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-            as usize;
-
-        let mem_inst = &mem_instances[0];
-        let end = ea
-            .checked_add(len)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?;
-
-        if end > mem_inst.data.len() {
-            return Err(RuntimeError::trap("out-of-bound memory access"));
-        }
-
-        Ok(&mem_inst.data[ea..end])
-    }
-
-    pub(super) fn memory_slice_mut<'a>(
-        mem_instances: &'a mut [MemoryInstance],
-        idx: MemIndex,
-        base: i32,
-        memarg: &MemArg,
-        len: usize,
-    ) -> result::Result<&'a mut [u8], RuntimeError> {
-        debug_assert!(idx == MemIndex::ZERO);
-
-        // Calculate effective address
-        let ea = (base as u32)
-            .checked_add(memarg.offset)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-            as usize;
-
-        let mem_inst = &mut mem_instances[0];
-        let end = ea
-            .checked_add(len)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?;
-
-        if end > mem_inst.data.len() {
-            return Err(RuntimeError::trap("out-of-bound memory access"));
-        }
-
-        Ok(&mut mem_inst.data[ea..end])
-    }
-
     /// Evaluate a constant expression (e.g. element or data segment)
     fn eval_expression(&self, expr: &ConstExpression) -> result::Result<Value, RuntimeError> {
         let mut value_stack = vec![];
@@ -342,7 +241,7 @@ impl Runtime {
     ) -> result::Result<Vec<Value>, Error> {
         let mi = self.module_registry.get_instance(module);
         let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
-        let arity = self.store.get_func(funcaddr).ftype.results.len();
+        let arity = Store::func(&self.store.funcs, funcaddr).ftype.results.len();
 
         let mut value_stack = Vec::from(fn_args);
         let mut call_stack = vec![];
@@ -354,7 +253,6 @@ impl Runtime {
                 &mut self.store,
                 &self.module_registry,
                 &mut self.globals,
-                &mut self.memories,
                 &mut self.tables,
             );
 
@@ -383,11 +281,13 @@ impl Runtime {
 #[cfg(test)]
 impl Runtime {
     pub fn memory_pages(&self, idx: usize) -> usize {
-        self.memories[idx].data.len() / WASM_MEM_PAGE_BYTE_SIZE
+        debug_assert!(idx == 0);
+        self.store.memories.0[0].data.len() / WASM_MEM_PAGE_BYTE_SIZE
     }
 
     pub fn memory_data(&self, idx: usize) -> &[u8] {
-        &self.memories[idx].data
+        debug_assert!(idx == 0);
+        &self.store.memories.0[0].data
     }
 }
 

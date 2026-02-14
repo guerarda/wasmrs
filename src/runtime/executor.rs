@@ -7,7 +7,7 @@ use crate::{
     binary::types::{BlockType, MemIndex},
     instructions::Instruction,
     runtime::{
-        GlobalInstance, MemoryInstance, Runtime, RuntimeError, TableInstance,
+        GlobalInstance, Runtime, RuntimeError, TableInstance,
         instance::{ModuleInstance, ModuleRegistry},
         stack::{Frame, Label},
         store::{FuncAddr, Store},
@@ -109,10 +109,9 @@ macro_rules! try_binary_op {
 pub(super) struct ExecutionContext<'a> {
     value_stack: &'a mut Vec<Value>,
     call_stack: &'a mut Vec<Frame>,
-    store: &'a Store,
+    store: &'a mut Store,
     module_registry: &'a ModuleRegistry,
     globals: &'a mut Vec<GlobalInstance>,
-    memories: &'a mut Vec<MemoryInstance>,
     tables: &'a mut Vec<TableInstance>,
 }
 
@@ -123,7 +122,6 @@ impl<'a> ExecutionContext<'a> {
         store: &'a mut Store,
         module_registry: &'a ModuleRegistry,
         globals: &'a mut Vec<GlobalInstance>,
-        memories: &'a mut Vec<MemoryInstance>,
         tables: &'a mut Vec<TableInstance>,
     ) -> Self {
         Self {
@@ -132,7 +130,6 @@ impl<'a> ExecutionContext<'a> {
             store,
             module_registry,
             globals,
-            memories,
             tables,
         }
     }
@@ -267,7 +264,7 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub(super) fn call(&mut self, funcaddr: FuncAddr) {
-        let func_instance = self.store.get_func(funcaddr);
+        let func_instance = Store::func(&self.store.funcs, funcaddr);
         let n_args = func_instance.ftype.params.len();
         let arity = func_instance.ftype.results.len() as u32;
         let sp = self.value_stack.len() - n_args;
@@ -287,7 +284,7 @@ impl<'a> ExecutionContext<'a> {
 
     pub(super) fn execute(&mut self) -> result::Result<(), RuntimeError> {
         while let Some(frame) = self.call_stack.last_mut() {
-            let func_inst = self.store.get_func(frame.funcaddr);
+            let func_inst = Store::func(&self.store.funcs, frame.funcaddr);
             let module_inst = self.module_registry.get_instance(func_inst.module);
             let instrs = &func_inst.func.body;
 
@@ -386,7 +383,7 @@ impl<'a> ExecutionContext<'a> {
                         let func_addr = r
                             .as_funcref()
                             .ok_or(RuntimeError::internal("assert: expected func ref"))?;
-                        if self.store.get_func(func_addr).ftype != *ft {
+                        if Store::func(&self.store.funcs, func_addr).ftype != *ft {
                             return Err(RuntimeError::trap("function type mismatch"));
                         }
                         self.call(func_addr);
@@ -451,7 +448,10 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = i32::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 4)?
+                            self.store
+                                .memories
+                                .get(MemIndex::ZERO)
+                                .slice(i, memarg, 4)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -465,7 +465,10 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = f32::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 4)?
+                            self.store
+                                .memories
+                                .get(MemIndex::ZERO)
+                                .slice(i, memarg, 4)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -479,7 +482,10 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = f64::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 8)?
+                            self.store
+                                .memories
+                                .get(MemIndex::ZERO)
+                                .slice(i, memarg, 8)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -493,7 +499,10 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = i8::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 1)?
+                            self.store
+                                .memories
+                                .get(MemIndex::ZERO)
+                                .slice(i, memarg, 1)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -507,7 +516,10 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = i8::from_le_bytes(
-                            Runtime::memory_slice(self.memories, MemIndex::ZERO, i, memarg, 1)?
+                            self.store
+                                .memories
+                                .get(MemIndex::ZERO)
+                                .slice(i, memarg, 1)?
                                 .try_into()
                                 .unwrap(),
                         );
@@ -523,8 +535,12 @@ impl<'a> ExecutionContext<'a> {
                         let i = Self::pop_i32(self.value_stack)?;
 
                         // Get memory
-                        let slice =
-                            Runtime::memory_slice_mut(self.memories, MemIndex::ZERO, i, memarg, 4)?;
+                        let slice = self
+                            .store
+                            .memories
+                            .get(MemIndex::ZERO)
+                            .slice_mut(i, memarg, 4)?;
+
                         // Store
                         slice.copy_from_slice(&v.to_le_bytes());
                     }
@@ -537,7 +553,7 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I64Store16(_) => todo!(),
                     Instruction::I64Store32(_) => todo!(),
                     Instruction::MemorySize(idx) => {
-                        let sz = Runtime::memory_size(self.memories, *idx)?;
+                        let sz = self.store.memories.get(*idx).size();
                         self.value_stack.push(Value::I32(sz as i32));
                     }
                     Instruction::MemoryGrow(idx) => {
@@ -545,7 +561,11 @@ impl<'a> ExecutionContext<'a> {
                             self.value_stack.pop().and_then(Value::as_i32).ok_or(
                                 RuntimeError::internal("memory.grow, invalid argument type"),
                             )?;
-                        let res = Runtime::memory_grow(self.memories, *idx, inc as u32)?
+                        let res = self
+                            .store
+                            .memories
+                            .get(*idx)
+                            .grow(inc as u32)?
                             .map(|v| v as i32)
                             .unwrap_or(-1);
                         self.value_stack.push(Value::I32(res));
