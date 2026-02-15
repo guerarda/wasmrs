@@ -127,11 +127,11 @@ impl Runtime {
 
         // Allocate table instances
         if let Some(tablesec) = &module.tables {
-            for tabletype in tablesec {
+            for table in tablesec {
                 mi.tableaddrs.push(self.tables.len().into());
                 self.tables.push(TableInstance {
-                    tabletype: tabletype.clone(),
-                    elem: vec![tabletype.elemtype.into(); tabletype.limit.min as usize],
+                    tabletype: table.tabletype.clone(),
+                    elem: vec![table.tabletype.elemtype.into(); table.tabletype.limit.min as usize],
                 })
             }
         }

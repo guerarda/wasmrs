@@ -38,7 +38,7 @@ pub mod start;
 pub use start::{StartSection, decode_start_section};
 
 pub mod table;
-pub use table::{TableSection, TableTypeReadError};
+pub use table::{TableReadError, TableSection};
 
 pub mod type_;
 pub use type_::TypeSection;
@@ -185,7 +185,7 @@ pub enum SectionErrorKind {
     TypeSection(TypeSectionReadError),
     ImportSection(ImportSectionReadError),
     FunctionSection(ReadError),
-    TableSection(TableTypeReadError),
+    TableSection(TableReadError),
     MemorySection(MemTypeReadError),
     GlobalSection(GlobalSectionReadError),
     ExportSection(ExportSectionReadError),

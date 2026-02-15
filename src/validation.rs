@@ -261,6 +261,7 @@ impl Validator {
             .tables
             .as_ref()
             .and_then(|tables| tables.get(table_idx as usize))
+            .and_then(|table| Some(&table.tabletype))
             .ok_or(ValidationError::UnknownTable)
     }
 

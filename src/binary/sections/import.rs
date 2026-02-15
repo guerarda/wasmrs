@@ -3,7 +3,7 @@ use core::{error, fmt};
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
     sections::{
-        GlobalTypeReadError, MemTypeReadError, SectionEntry, SectionErrorKind, TableTypeReadError,
+        GlobalTypeReadError, MemTypeReadError, SectionEntry, SectionErrorKind, TableReadError,
         global::GlobalType, memory::MemType, table::TableType,
     },
     types::TypeIdx,
@@ -116,7 +116,7 @@ pub enum ImportSectionReadError {
     EntityName(ReadError),
     DescType(ReadError),
     DescFunc(ReadError),
-    DescTable(TableTypeReadError),
+    DescTable(TableReadError),
     DescMem(MemTypeReadError),
     DescGlobal(GlobalTypeReadError),
 }
