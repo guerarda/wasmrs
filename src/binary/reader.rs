@@ -87,6 +87,18 @@ impl<'a> Reader<'a> {
 
     pub fn peek(&mut self) -> Result<u8> {
         let offset = self.cursor.position() as usize;
+
+        let rem = (self.range.end - self.position()) as usize;
+        if rem == 0 {
+            return Err(ReadError {
+                offset,
+                kind: ReadErrorKind::OutOfRange {
+                    size: 1,
+                    remaining: 0,
+                },
+            });
+        }
+
         Ok(self.cursor.fill_buf().map_err(|e| ReadError {
             offset,
             kind: ReadErrorKind::Read(e),
