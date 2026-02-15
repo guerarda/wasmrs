@@ -106,7 +106,7 @@ impl Runtime {
             for global in globalsec {
                 self.globals.push(GlobalInstance {
                     globaltype: global.gt.clone(),
-                    value: self.eval_expression(&global.body).unwrap(),
+                    value: Self::eval_expression(&global.body).unwrap(),
                 })
             }
         }
@@ -145,7 +145,7 @@ impl Runtime {
                         offset,
                     } => {
                         let idx = table_index.unwrap_or(0);
-                        let offset = self.eval_expression(offset).unwrap();
+                        let offset = Self::eval_expression(offset).unwrap();
                         Some((idx as usize, offset.as_i32().unwrap() as usize))
                     }
                     _ => None,
@@ -162,8 +162,7 @@ impl Runtime {
                     }
                     ElementSegmentItems::Expressions(rt, expressions) => {
                         for (i, expr) in expressions.iter().enumerate() {
-                            let vref: Ref = self
-                                .eval_expression(expr)
+                            let vref: Ref = Self::eval_expression(expr)
                                 .and_then(|v| v.try_into())
                                 .and_then(|r: Ref| {
                                     if r.is_ref_type(rt) {
@@ -211,7 +210,7 @@ impl Runtime {
     }
 
     /// Evaluate a constant expression (e.g. element or data segment)
-    fn eval_expression(&self, expr: &ConstExpression) -> result::Result<Value, RuntimeError> {
+    fn eval_expression(expr: &ConstExpression) -> result::Result<Value, RuntimeError> {
         let mut value_stack = vec![];
 
         for inst in &expr.0 {
