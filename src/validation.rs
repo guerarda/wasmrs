@@ -805,6 +805,11 @@ impl Validator {
                 Instruction::I64ExtendI32S | Instruction::I64ExtendI32U => {
                     self.validate_convop(ValType::I32, ValType::I64)?
                 }
+
+                Instruction::MemoryInit(_) => todo!(),
+                Instruction::DataDrop(_) => todo!(),
+                Instruction::TableInit(_) => todo!(),
+                Instruction::ElemDrop(_) => todo!(),
             }
         }
         self.pop_ctrl()?;

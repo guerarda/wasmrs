@@ -773,6 +773,11 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I32TruncSatF32U => todo!(),
                     Instruction::I64TruncSatF64S => todo!(),
                     Instruction::I64TruncSatF64U => todo!(),
+
+                    Instruction::MemoryInit(_) => todo!(),
+                    Instruction::DataDrop(_) => todo!(),
+                    Instruction::TableInit(_) => todo!(),
+                    Instruction::ElemDrop(_) => todo!(),
                 }
             }
         }

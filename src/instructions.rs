@@ -1,8 +1,8 @@
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
     types::{
-        BlockType, BranchTableIdx, BranchTableIdxReadError, FuncIdx, GlobalIdx, LabelIdx, MemArg,
-        MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx, ValType,
+        BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIdx, GlobalIdx,
+        LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx, ValType,
     },
 };
 
@@ -253,10 +253,14 @@ instructions! {
     RefFunc(FuncIdx) : 0xd2 : "ref.func",
 
     @prefix 0xfc {
-        I32TruncSatF32S : 0 : "i32_trunc_sat_f32_s",
-        I32TruncSatF32U : 1 : "i32_trunc_sat_f32_u",
-        I64TruncSatF64S : 6 : "i64_trunc_sat_f64_s",
-        I64TruncSatF64U : 7 : "i64_trunc_sat_f64_u",
+        I32TruncSatF32S : 0x00 : "i32_trunc_sat_f32_s",
+        I32TruncSatF32U : 0x01 : "i32_trunc_sat_f32_u",
+        I64TruncSatF64S : 0x06 : "i64_trunc_sat_f64_s",
+        I64TruncSatF64U : 0x07 : "i64_trunc_sat_f64_u",
+        MemoryInit((MemIndex, DataIdx)) : 0x08 : "memory.init",
+        DataDrop(DataIdx) : 0x09 : "data.drop",
+        TableInit((TableIdx, ElemIdx)) : 0x0c : "table.init",
+        ElemDrop(ElemIdx) : 0x0d : "elem.drop",
     }
 }
 
