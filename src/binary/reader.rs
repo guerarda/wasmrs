@@ -277,7 +277,7 @@ impl<'a> FromReader<'a> for String {
     }
 }
 
-impl<'a, T: FromReader<'a>> FromReader<'a> for (T, T) {
+impl<'a, T: FromReader<'a>, U: FromReader<'a, Error = T::Error>> FromReader<'a> for (T, U) {
     type Error = T::Error;
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
