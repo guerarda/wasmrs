@@ -1,3 +1,5 @@
+use crate::instructions::Instruction;
+
 use super::reader::{ReadError, ReadErrorKind, Reader};
 use super::sections::custom::decode_custom_section;
 use super::sections::{
@@ -24,6 +26,9 @@ pub enum MalformedError {
         other: SectionInfo,
     },
     Section(SectionError),
+    SectionRequired {
+        section: SectionId,
+    },
     InconsistentLength {
         section: SectionId,
         other: SectionId,
@@ -55,6 +60,7 @@ impl std::fmt::Display for MalformedError {
                 )
             }
             Self::Section(_) => write!(f, "malformed section"),
+            Self::SectionRequired { section } => write!(f, "section required: {section}"),
             Self::InconsistentLength { section, other } => {
                 write!(f, "inconsistent section lenght, {section} and {other}")
             }
@@ -325,6 +331,19 @@ pub fn decode_bytes(bytes: Vec<u8>) -> std::result::Result<Module, MalformedErro
                 other: SectionId::DataCount,
             });
         }
+    }
+
+    // Verify that data count is present if memory.init or data.drop
+    // is present
+    if m.codes.as_ref().is_some_and(|codes| {
+        codes
+            .iter()
+            .flat_map(|c| &c.body)
+            .any(|x| matches!(x, Instruction::MemoryInit(_) | Instruction::DataDrop(_)))
+    }) {
+        return Err(MalformedError::SectionRequired {
+            section: SectionId::DataCount,
+        });
     }
 
     Ok(m)
