@@ -47,7 +47,6 @@ pub struct TableInstance {
 #[derive(Debug, Default)]
 pub struct Runtime {
     store: Store,
-    globals: Vec<GlobalInstance>,
     tables: Vec<TableInstance>,
     module_registry: ModuleRegistry,
 }
@@ -76,7 +75,7 @@ struct ElemInit<'a> {
 }
 
 impl Runtime {
-    fn _instantiate_module(&mut self, module: &Module, _externaddr: &[ExternAddr]) -> ModuleHandle {
+    fn instantiate_module(&mut self, module: &Module, _externaddr: &[ExternAddr]) -> ModuleHandle {
         if let Some(_imports) = &module.imports {
             // validate import type matches externaddr supplied
             todo!()
@@ -256,7 +255,7 @@ impl Runtime {
         h
     }
 
-    fn instantiate_module(&mut self, module: &Module) -> ModuleHandle {
+    fn instantiate_module_(&mut self, module: &Module) -> ModuleHandle {
         let h = self.module_registry.reserve();
         let mut mi = ModuleInstance::default();
 
@@ -456,7 +455,6 @@ impl Runtime {
                 &mut call_stack,
                 &mut self.store,
                 &self.module_registry,
-                &mut self.globals,
                 &mut self.tables,
             );
 
@@ -477,7 +475,7 @@ impl Runtime {
     pub fn load_module(&mut self, bytes: &[u8]) -> std::result::Result<ModuleHandle, Error> {
         let module = module::decode_bytes(bytes.to_vec())?;
         //validation::validate_module(&module)?;
-        let handle = self.instantiate_module(&module);
+        let handle = self.instantiate_module(&module, &vec![]);
         Ok(handle)
     }
 }

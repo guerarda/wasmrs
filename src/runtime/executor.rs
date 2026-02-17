@@ -111,7 +111,6 @@ pub(super) struct ExecutionContext<'a> {
     call_stack: &'a mut Vec<Frame>,
     store: &'a mut Store,
     module_registry: &'a ModuleRegistry,
-    globals: &'a mut Vec<GlobalInstance>,
     tables: &'a mut Vec<TableInstance>,
 }
 
@@ -121,7 +120,6 @@ impl<'a> ExecutionContext<'a> {
         call_stack: &'a mut Vec<Frame>,
         store: &'a mut Store,
         module_registry: &'a ModuleRegistry,
-        globals: &'a mut Vec<GlobalInstance>,
         tables: &'a mut Vec<TableInstance>,
     ) -> Self {
         Self {
@@ -129,7 +127,6 @@ impl<'a> ExecutionContext<'a> {
             call_stack,
             store,
             module_registry,
-            globals,
             tables,
         }
     }
