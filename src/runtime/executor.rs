@@ -434,12 +434,12 @@ impl<'a> ExecutionContext<'a> {
                             *v;
                     }
                     Instruction::GlobalGet(idx) => {
-                        let v = Runtime::global_get(self.globals, *idx)?;
+                        let v = Runtime::global_get(self.store, module_inst, *idx)?;
                         self.value_stack.push(v);
                     }
                     Instruction::GlobalSet(idx) => {
                         let v = self.value_stack.pop().unwrap();
-                        Runtime::global_set(self.globals, *idx, v)?;
+                        Runtime::global_set(self.store, module_inst, *idx, v)?;
                     }
 
                     Instruction::I32Load(memarg) => {

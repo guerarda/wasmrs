@@ -389,25 +389,26 @@ impl Runtime {
     }
 
     pub(super) fn global_get(
-        globals: &[GlobalInstance],
+        store: &Store,
+        module_inst: &ModuleInstance,
         idx: GlobalIdx,
     ) -> result::Result<Value, RuntimeError> {
-        globals
-            .get(idx as usize)
-            .map(|g| g.value)
-            .ok_or_else(|| RuntimeError::internal("global index out of bounds"))
+        let a = module_inst.globals.get(idx as usize).unwrap();
+        let g = store.globals.get(*a);
+
+        Ok(g.value)
     }
 
     pub(super) fn global_set(
-        globals: &mut [GlobalInstance],
+        store: &mut Store,
+        module_inst: &ModuleInstance,
         idx: GlobalIdx,
         val: Value,
     ) -> result::Result<(), RuntimeError> {
-        let g = globals
-            .get_mut(idx as usize)
-            .ok_or_else(|| RuntimeError::internal("global index out of bounds"))?;
+        let a = module_inst.globals.get(idx as usize).unwrap();
+        let g = store.globals.get_mut(*a);
 
-        // TODO assert on value type
+        // TODO Assert on type
         g.value = val;
 
         Ok(())

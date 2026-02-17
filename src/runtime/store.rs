@@ -206,13 +206,16 @@ pub struct Globals(pub Vec<GlobalInstance>);
 
 #[derive(Debug)]
 pub struct GlobalInstance {
-    type_: GlobalType,
-    value: Value,
+    pub globaltype: GlobalType,
+    pub value: Value,
 }
 
 impl GlobalInstance {
     pub fn new(t: GlobalType, value: Value) -> Self {
-        Self { type_: t, value }
+        Self {
+            globaltype: t,
+            value,
+        }
     }
 }
 
@@ -220,6 +223,16 @@ impl Globals {
     pub fn alloc(&mut self, t: GlobalType, v: Value) -> GlobalAddr {
         self.0.push(GlobalInstance::new(t, v));
         GlobalAddr(self.0.len() - 1)
+    }
+
+    pub fn get(&self, addr: GlobalAddr) -> &GlobalInstance {
+        let global = self.0.get(addr.0).unwrap();
+        global
+    }
+
+    pub fn get_mut(&mut self, addr: GlobalAddr) -> &mut GlobalInstance {
+        let global = self.0.get_mut(addr.0).unwrap();
+        global
     }
 }
 
