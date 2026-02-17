@@ -7,7 +7,7 @@ use crate::{
             code::CodeEntry, data::DataSegment, global::GlobalType, memory::MemType,
             table::TableType,
         },
-        types::{FuncType, MemArg, MemIndex, RefType, TypeIdx, ValType},
+        types::{FuncType, MemArg, RefType, TypeIdx, ValType},
     },
     instructions::Instruction,
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
@@ -186,14 +186,12 @@ impl Memories {
         MemAddr(self.0.len() - 1)
     }
 
-    pub(super) fn push(&mut self, mem: MemoryInstance) {
-        self.0.push(mem)
+    pub(super) fn get(&self, idx: MemAddr) -> &MemoryInstance {
+        self.0.get(idx.0).unwrap()
     }
 
-    pub(super) fn get(&mut self, idx: MemIndex) -> &mut MemoryInstance {
-        debug_assert!(idx == MemIndex::ZERO);
-        debug_assert!(self.0.len() == 1);
-        &mut self.0[0]
+    pub(super) fn get_mut(&mut self, idx: MemAddr) -> &mut MemoryInstance {
+        self.0.get_mut(idx.0).unwrap()
     }
 }
 
@@ -226,13 +224,11 @@ impl Globals {
     }
 
     pub fn get(&self, addr: GlobalAddr) -> &GlobalInstance {
-        let global = self.0.get(addr.0).unwrap();
-        global
+        self.0.get(addr.0).unwrap()
     }
 
     pub fn get_mut(&mut self, addr: GlobalAddr) -> &mut GlobalInstance {
-        let global = self.0.get_mut(addr.0).unwrap();
-        global
+        self.0.get_mut(addr.0).unwrap()
     }
 }
 
@@ -257,8 +253,9 @@ pub struct Tables(pub Vec<TableInstance>);
 
 #[derive(Debug)]
 pub struct TableInstance {
+    #[allow(dead_code)]
     tabletype: TableType,
-    refs: Vec<Ref>,
+    pub refs: Vec<Ref>,
 }
 
 impl TableInstance {
@@ -295,7 +292,12 @@ impl Tables {
         self.0.push(TableInstance::new(t, refs));
         TableAddr(self.0.len() - 1)
     }
-    pub fn get(&mut self, addr: TableAddr) -> &mut TableInstance {
+
+    pub fn get(&self, addr: TableAddr) -> &TableInstance {
+        self.0.get(addr.0).unwrap()
+    }
+
+    pub fn get_mut(&mut self, addr: TableAddr) -> &mut TableInstance {
         self.0.get_mut(addr.0).unwrap()
     }
 }
@@ -309,6 +311,7 @@ pub struct Elements(pub Vec<ElemInstance>);
 
 #[derive(Debug)]
 pub struct ElemInstance {
+    #[allow(dead_code)]
     elemtype: RefType,
     refs: Vec<Ref>,
     dropped: bool,
@@ -332,7 +335,7 @@ impl Elements {
 
     pub fn get(&mut self, addr: ElemAddr) -> &mut ElemInstance {
         let elem = self.0.get_mut(addr.0).unwrap();
-        assert!(elem.dropped == false);
+        assert!(!elem.dropped);
         elem
     }
 
@@ -371,7 +374,7 @@ impl Data {
 
     pub fn get(&mut self, addr: DataAddr) -> &mut DataInstance {
         let data = self.0.get_mut(addr.0).unwrap();
-        assert!(data.dropped == false);
+        assert!(!data.dropped);
         data
     }
 
@@ -414,23 +417,19 @@ impl Functions {
         self.0.push(funcinst);
         FuncAddr(self.0.len() - 1)
     }
+
+    pub fn get(&mut self, addr: FuncAddr) -> &FuncInstance {
+        self.0.get(addr.0).unwrap()
+    }
 }
 
 // Store
 #[derive(Debug, Default)]
 pub struct Store {
-    pub funcs: Vec<FuncInstance>,
     pub functions: Functions,
     pub globals: Globals,
     pub tables: Tables,
     pub elements: Elements,
     pub memories: Memories,
     pub data: Data,
-    //  pub exports: Exports,
-}
-
-impl Store {
-    pub fn func(funcs: &[FuncInstance], addr: FuncAddr) -> &FuncInstance {
-        &funcs[addr.0]
-    }
 }

@@ -7,7 +7,7 @@ use crate::{
     binary::types::{BlockType, MemIndex},
     instructions::Instruction,
     runtime::{
-        GlobalInstance, Runtime, RuntimeError, TableInstance,
+        Runtime, RuntimeError,
         instance::{ModuleInstance, ModuleRegistry},
         stack::{Frame, Label},
         store::{FuncAddr, Store},
@@ -111,7 +111,6 @@ pub(super) struct ExecutionContext<'a> {
     call_stack: &'a mut Vec<Frame>,
     store: &'a mut Store,
     module_registry: &'a ModuleRegistry,
-    tables: &'a mut Vec<TableInstance>,
 }
 
 impl<'a> ExecutionContext<'a> {
@@ -120,14 +119,12 @@ impl<'a> ExecutionContext<'a> {
         call_stack: &'a mut Vec<Frame>,
         store: &'a mut Store,
         module_registry: &'a ModuleRegistry,
-        tables: &'a mut Vec<TableInstance>,
     ) -> Self {
         Self {
             value_stack,
             call_stack,
             store,
             module_registry,
-            tables,
         }
     }
     /// Find the index of the 'end' instruction for the block at idx
@@ -261,7 +258,7 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub(super) fn call(&mut self, funcaddr: FuncAddr) {
-        let func_instance = Store::func(&self.store.funcs, funcaddr);
+        let func_instance = &self.store.functions.get(funcaddr);
         let n_args = func_instance.ftype.params.len();
         let arity = func_instance.ftype.results.len() as u32;
         let sp = self.value_stack.len() - n_args;
@@ -281,7 +278,7 @@ impl<'a> ExecutionContext<'a> {
 
     pub(super) fn execute(&mut self) -> result::Result<(), RuntimeError> {
         while let Some(frame) = self.call_stack.last_mut() {
-            let func_inst = Store::func(&self.store.funcs, frame.funcaddr);
+            let func_inst = self.store.functions.get(frame.funcaddr);
             let module_inst = self.module_registry.get_instance(func_inst.module);
             let instrs = &func_inst.func.body;
 
@@ -358,18 +355,18 @@ impl<'a> ExecutionContext<'a> {
                         self.call_stack.pop();
                     }
                     Instruction::Call(idx) => {
-                        let funcaddr = module_inst.funcaddrs[*idx as usize];
+                        let funcaddr = module_inst.funcs[*idx as usize];
                         self.call(funcaddr);
                     }
                     Instruction::CallIndirect((table_idx, type_idx)) => {
-                        let tab_addr = module_inst.lookup_table(table_idx);
-                        let tab_inst = &self.tables[tab_addr.0];
+                        let tab_inst =
+                            Runtime::table_get(&self.store.tables, module_inst, *table_idx)?;
                         let ft = &module_inst.types[*type_idx as usize];
 
                         let i = Self::pop_i32(self.value_stack)?;
 
                         let r = tab_inst
-                            .elem
+                            .refs
                             .get(i as usize)
                             .ok_or(RuntimeError::trap("tab index out of bounds"))?;
 
@@ -380,7 +377,7 @@ impl<'a> ExecutionContext<'a> {
                         let func_addr = r
                             .as_funcref()
                             .ok_or(RuntimeError::internal("assert: expected func ref"))?;
-                        if Store::func(&self.store.funcs, func_addr).ftype != *ft {
+                        if self.store.functions.get(func_addr).ftype != *ft {
                             return Err(RuntimeError::trap("function type mismatch"));
                         }
                         self.call(func_addr);
@@ -431,12 +428,12 @@ impl<'a> ExecutionContext<'a> {
                             *v;
                     }
                     Instruction::GlobalGet(idx) => {
-                        let v = Runtime::global_get(self.store, module_inst, *idx)?;
+                        let v = Runtime::global_get(&self.store.globals, module_inst, *idx)?;
                         self.value_stack.push(v);
                     }
                     Instruction::GlobalSet(idx) => {
                         let v = self.value_stack.pop().unwrap();
-                        Runtime::global_set(self.store, module_inst, *idx, v)?;
+                        Runtime::global_set(&mut self.store.globals, module_inst, *idx, v)?;
                     }
 
                     Instruction::I32Load(memarg) => {
@@ -444,14 +441,10 @@ impl<'a> ExecutionContext<'a> {
                         let i = Self::pop_i32(self.value_stack)?;
 
                         // Read memory
-                        let v = i32::from_le_bytes(
-                            self.store
-                                .memories
-                                .get(MemIndex::ZERO)
-                                .slice(i, memarg, 4)?
-                                .try_into()
-                                .unwrap(),
-                        );
+                        let mem =
+                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
+                                .unwrap();
+                        let v = i32::from_le_bytes(mem.slice(i, memarg, 4)?.try_into().unwrap());
 
                         // Push value
                         self.value_stack.push(Value::I32(v));
@@ -462,9 +455,8 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = f32::from_le_bytes(
-                            self.store
-                                .memories
-                                .get(MemIndex::ZERO)
+                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
+                                .unwrap()
                                 .slice(i, memarg, 4)?
                                 .try_into()
                                 .unwrap(),
@@ -479,9 +471,8 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = f64::from_le_bytes(
-                            self.store
-                                .memories
-                                .get(MemIndex::ZERO)
+                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
+                                .unwrap()
                                 .slice(i, memarg, 8)?
                                 .try_into()
                                 .unwrap(),
@@ -496,9 +487,8 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = i8::from_le_bytes(
-                            self.store
-                                .memories
-                                .get(MemIndex::ZERO)
+                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
+                                .unwrap()
                                 .slice(i, memarg, 1)?
                                 .try_into()
                                 .unwrap(),
@@ -513,9 +503,8 @@ impl<'a> ExecutionContext<'a> {
 
                         // Read memory
                         let v = i8::from_le_bytes(
-                            self.store
-                                .memories
-                                .get(MemIndex::ZERO)
+                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
+                                .unwrap()
                                 .slice(i, memarg, 1)?
                                 .try_into()
                                 .unwrap(),
@@ -532,11 +521,14 @@ impl<'a> ExecutionContext<'a> {
                         let i = Self::pop_i32(self.value_stack)?;
 
                         // Get memory
-                        let slice = self
-                            .store
-                            .memories
-                            .get(MemIndex::ZERO)
-                            .slice_mut(i, memarg, 4)?;
+
+                        let slice = Runtime::memory_get_mut(
+                            &mut self.store.memories,
+                            module_inst,
+                            MemIndex::ZERO,
+                        )
+                        .unwrap()
+                        .slice_mut(i, memarg, 4)?;
 
                         // Store
                         slice.copy_from_slice(&v.to_le_bytes());
@@ -550,7 +542,9 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I64Store16(_) => todo!(),
                     Instruction::I64Store32(_) => todo!(),
                     Instruction::MemorySize(idx) => {
-                        let sz = self.store.memories.get(*idx).size();
+                        let mem =
+                            Runtime::memory_get(&self.store.memories, module_inst, *idx).unwrap();
+                        let sz = mem.size();
                         self.value_stack.push(Value::I32(sz as i32));
                     }
                     Instruction::MemoryGrow(idx) => {
@@ -558,13 +552,12 @@ impl<'a> ExecutionContext<'a> {
                             self.value_stack.pop().and_then(Value::as_i32).ok_or(
                                 RuntimeError::internal("memory.grow, invalid argument type"),
                             )?;
-                        let res = self
-                            .store
-                            .memories
-                            .get(*idx)
-                            .grow(inc as u32)?
-                            .map(|v| v as i32)
-                            .unwrap_or(-1);
+                        let res =
+                            Runtime::memory_get_mut(&mut self.store.memories, module_inst, *idx)
+                                .unwrap()
+                                .grow(inc as u32)?
+                                .map(|v| v as i32)
+                                .unwrap_or(-1);
                         self.value_stack.push(Value::I32(res));
                     }
 

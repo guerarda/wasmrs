@@ -260,8 +260,7 @@ impl Validator {
         module
             .tables
             .as_ref()
-            .and_then(|tables| tables.get(table_idx as usize))
-            .and_then(|table| Some(&table.tabletype))
+            .and_then(|tables| tables.get(table_idx as usize)).map(|table| &table.tabletype)
             .ok_or(ValidationError::UnknownTable)
     }
 

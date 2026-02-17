@@ -1,4 +1,4 @@
-use std::{error, fmt, iter::repeat_n, result};
+use std::{error, fmt, result};
 
 use crate::{
     Error, Module,
@@ -7,8 +7,6 @@ use crate::{
         sections::{
             data::DataSegmentMode,
             element::{ElementSegmentItems, ElementSegmentMode},
-            global::GlobalType,
-            table::TableType,
         },
         types::{ConstExpression, GlobalIdx, MemIndex, RefType, TableIdx},
     },
@@ -17,7 +15,9 @@ use crate::{
         executor::ExecutionContext,
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
-        store::{Func, FuncAddr, FuncInstance, MemoryInstance, Store, TableAddr},
+        store::{
+            FuncAddr, Globals, Memories, MemoryInstance, Store, TableAddr, TableInstance, Tables,
+        },
         value::{ExternVal, Ref, Value},
     },
 };
@@ -30,24 +30,9 @@ pub mod value;
 
 const WASM_MEM_PAGE_BYTE_SIZE: usize = 1 << 16;
 
-#[derive(Debug)]
-pub struct GlobalInstance {
-    #[allow(dead_code)]
-    globaltype: GlobalType,
-    value: Value,
-}
-
-#[derive(Debug)]
-pub struct TableInstance {
-    #[allow(dead_code)]
-    tabletype: TableType,
-    elem: Vec<Ref>,
-}
-
 #[derive(Debug, Default)]
 pub struct Runtime {
     store: Store,
-    tables: Vec<TableInstance>,
     module_registry: ModuleRegistry,
 }
 
@@ -142,7 +127,7 @@ impl Runtime {
         }
 
         // Alloc and init types
-        mi.types = module.types.clone().unwrap_or(vec![]);
+        mi.types = module.types.clone().unwrap_or_default();
 
         // Init Globals
         if let Some(globalsec) = &module.globals {
@@ -211,7 +196,7 @@ impl Runtime {
         // Allocate exports
         if let Some(exports) = &module.exports {
             for export in exports {
-                let funcaddr = mi.funcaddrs[export.index as usize];
+                let funcaddr = mi.funcs[export.index as usize];
                 mi.exports
                     .insert(export.name.clone(), ExternVal::Func(funcaddr));
             }
@@ -233,8 +218,8 @@ impl Runtime {
 
             self.store
                 .tables
-                .get(ta)
-                .init(src as usize, 0, ei.len, &elem)
+                .get_mut(ta)
+                .init(src as usize, 0, ei.len, elem)
                 .unwrap();
         }
 
@@ -242,11 +227,12 @@ impl Runtime {
         for di in instr_d {
             let src = Self::eval_expression(di.offset).unwrap().as_i32().unwrap();
             let data = self.store.data.get(mi.datas[di.dataidx]);
+            let ma = mi.mems[di.memidx.0 as usize];
 
             self.store
                 .memories
-                .get(di.memidx)
-                .init(src as usize, 0, di.len, &data)
+                .get_mut(ma)
+                .init(src as usize, 0, di.len, data)
                 .unwrap();
         }
 
@@ -255,162 +241,57 @@ impl Runtime {
         h
     }
 
-    fn instantiate_module_(&mut self, module: &Module) -> ModuleHandle {
-        let h = self.module_registry.reserve();
-        let mut mi = ModuleInstance::default();
-
-        // Handle optional sections - minimal modules may have none
-        if let Some(typesec) = &module.types {
-            mi.types = typesec.clone();
-        }
-
-        // Only process functions if we have both function and code sections
-        if let (Some(funcsec), Some(codesec), Some(typesec)) =
-            (&module.functions, &module.codes, &module.types)
-        {
-            for (idx, typeidx) in funcsec.iter().enumerate() {
-                let typeidx = *typeidx;
-
-                let locals = {
-                    let mut v = vec![];
-                    for l in codesec[idx].locals.as_slice() {
-                        v.extend(repeat_n(l.valtype, l.count as usize));
-                    }
-                    v
-                };
-                let func = Func {
-                    typeidx,
-                    locals,
-                    body: codesec[idx].body.clone(),
-                };
-
-                let funcinst = FuncInstance {
-                    ftype: typesec[typeidx as usize].clone(),
-                    module: h,
-                    func,
-                };
-
-                mi.funcaddrs.push(self.store.funcs.len().into());
-                self.store.funcs.push(funcinst);
-            }
-        }
-
-        // Only process exports if we have them
-        if let Some(exports) = &module.exports {
-            for export in exports {
-                let funcaddr = mi.funcaddrs[export.index as usize];
-                mi.exports
-                    .insert(export.name.clone(), ExternVal::Func(funcaddr));
-            }
-        }
-
-        // Instantiate Globals
-        if let Some(globalsec) = &module.globals {
-            for global in globalsec {
-                self.globals.push(GlobalInstance {
-                    globaltype: global.gt.clone(),
-                    value: Self::eval_expression(&global.body).unwrap(),
-                })
-            }
-        }
-
-        // Instantiate memory instance
-        if let Some(memsec) = &module.memories {
-            assert!(memsec.len() <= 1);
-
-            if let Some(memtype) = memsec.first() {
-                let memsize = (memtype.0.min as usize) * WASM_MEM_PAGE_BYTE_SIZE;
-                let mem = vec![0u8; memsize];
-                self.store.memories.push(MemoryInstance {
-                    memtype: memtype.clone(),
-                    data: mem,
-                });
-            }
-        }
-
-        // Allocate table instances
-        if let Some(tablesec) = &module.tables {
-            for table in tablesec {
-                mi.tableaddrs.push(self.tables.len().into());
-                self.tables.push(TableInstance {
-                    tabletype: table.tabletype.clone(),
-                    elem: vec![table.tabletype.elemtype.into(); table.tabletype.limit.min as usize],
-                })
-            }
-        }
-
-        // Init table instance
-        if let Some(elemsec) = &module.elements {
-            for elem in elemsec {
-                let Some((idx, offset)) = (match &elem.mode {
-                    ElementSegmentMode::Active {
-                        table_index,
-                        offset,
-                    } => {
-                        let idx = table_index.unwrap_or(0);
-                        let offset = Self::eval_expression(offset).unwrap();
-                        Some((idx as usize, offset.as_i32().unwrap() as usize))
-                    }
-                    _ => None,
-                }) else {
-                    continue;
-                };
-
-                match &elem.items {
-                    ElementSegmentItems::Functions(items) => {
-                        for (i, item) in items.iter().enumerate() {
-                            let func_ref = Ref::Func(mi.lookup_func(item));
-                            self.tables[idx].elem[offset + i] = func_ref;
-                        }
-                    }
-                    ElementSegmentItems::Expressions(rt, expressions) => {
-                        for (i, expr) in expressions.iter().enumerate() {
-                            let vref: Ref = Self::eval_expression(expr)
-                                .and_then(|v| v.try_into())
-                                .and_then(|r: Ref| {
-                                    if r.is_ref_type(rt) {
-                                        Ok(r)
-                                    } else {
-                                        Err(RuntimeError::internal("non matching ref type"))
-                                    }
-                                })
-                                .unwrap();
-
-                            self.tables[idx].elem[offset + i] = vref;
-                        }
-                    }
-                }
-            }
-        }
-
-        self.module_registry.register(h, mi);
-        h
-    }
-
     pub(super) fn global_get(
-        store: &Store,
+        globals: &Globals,
         module_inst: &ModuleInstance,
         idx: GlobalIdx,
     ) -> result::Result<Value, RuntimeError> {
         let a = module_inst.globals.get(idx as usize).unwrap();
-        let g = store.globals.get(*a);
+        let g = globals.get(*a);
 
         Ok(g.value)
     }
 
     pub(super) fn global_set(
-        store: &mut Store,
+        globals: &mut Globals,
         module_inst: &ModuleInstance,
         idx: GlobalIdx,
         val: Value,
     ) -> result::Result<(), RuntimeError> {
         let a = module_inst.globals.get(idx as usize).unwrap();
-        let g = store.globals.get_mut(*a);
+        let g = globals.get_mut(*a);
 
         // TODO Assert on type
         g.value = val;
 
         Ok(())
+    }
+
+    pub(super) fn table_get<'a>(
+        tables: &'a Tables,
+        module_inst: &ModuleInstance,
+        idx: TableIdx,
+    ) -> result::Result<&'a TableInstance, RuntimeError> {
+        let a = module_inst.tables.get(idx as usize).unwrap();
+        Ok(tables.get(*a))
+    }
+
+    pub(super) fn memory_get<'a>(
+        memories: &'a Memories,
+        module_inst: &ModuleInstance,
+        idx: MemIndex,
+    ) -> result::Result<&'a MemoryInstance, RuntimeError> {
+        let a = module_inst.mems.get(idx.0 as usize).unwrap();
+        Ok(memories.get(*a))
+    }
+
+    pub(super) fn memory_get_mut<'a>(
+        memories: &'a mut Memories,
+        module_inst: &ModuleInstance,
+        idx: MemIndex,
+    ) -> result::Result<&'a mut MemoryInstance, RuntimeError> {
+        let a = module_inst.mems.get(idx.0 as usize).unwrap();
+        Ok(memories.get_mut(*a))
     }
 
     /// Evaluate a constant expression (e.g. element or data segment)
@@ -444,7 +325,7 @@ impl Runtime {
     ) -> result::Result<Vec<Value>, Error> {
         let mi = self.module_registry.get_instance(module);
         let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
-        let arity = Store::func(&self.store.funcs, funcaddr).ftype.results.len();
+        let arity = self.store.functions.get(funcaddr).ftype.results.len();
 
         let mut value_stack = Vec::from(fn_args);
         let mut call_stack = vec![];
@@ -455,7 +336,6 @@ impl Runtime {
                 &mut call_stack,
                 &mut self.store,
                 &self.module_registry,
-                &mut self.tables,
             );
 
             ctx.call(funcaddr);
@@ -475,7 +355,7 @@ impl Runtime {
     pub fn load_module(&mut self, bytes: &[u8]) -> std::result::Result<ModuleHandle, Error> {
         let module = module::decode_bytes(bytes.to_vec())?;
         //validation::validate_module(&module)?;
-        let handle = self.instantiate_module(&module, &vec![]);
+        let handle = self.instantiate_module(&module, &[]);
         Ok(handle)
     }
 }

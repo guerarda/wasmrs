@@ -1,7 +1,7 @@
 use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
-    binary::types::{FuncIndex, FuncType, TableIdx},
+    binary::types::FuncType,
     runtime::{
         store::{DataAddr, ElemAddr, FuncAddr, GlobalAddr, MemAddr, TableAddr},
         value::ExternVal,
@@ -11,8 +11,6 @@ use crate::{
 #[derive(Debug, Default)]
 pub struct ModuleInstance {
     pub types: Vec<FuncType>,
-    pub funcaddrs: Vec<FuncAddr>,
-    pub tableaddrs: Vec<TableAddr>,
     pub exports: HashMap<String, ExternVal>,
 
     pub globals: Vec<GlobalAddr>,
@@ -21,16 +19,6 @@ pub struct ModuleInstance {
     pub funcs: Vec<FuncAddr>,
     pub datas: Vec<DataAddr>,
     pub elems: Vec<ElemAddr>,
-}
-
-impl ModuleInstance {
-    pub fn lookup_func(&self, func_index: &FuncIndex) -> FuncAddr {
-        self.funcaddrs[func_index.0 as usize]
-    }
-
-    pub fn lookup_table(&self, table_index: &TableIdx) -> TableAddr {
-        self.tableaddrs[*table_index as usize]
-    }
 }
 
 #[repr(transparent)]
