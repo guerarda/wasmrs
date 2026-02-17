@@ -1,14 +1,21 @@
 use core::fmt;
-use std::result;
+use std::{iter::repeat_n, result};
 
 use crate::{
     binary::{
-        sections::memory::MemType,
-        types::{FuncType, MemArg, MemIndex, TypeIdx, ValType},
+        sections::{
+            code::CodeEntry, data::DataSegment, global::GlobalType, memory::MemType,
+            table::TableType,
+        },
+        types::{FuncType, MemArg, MemIndex, RefType, TypeIdx, ValType},
     },
     instructions::Instruction,
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
-    runtime::{RuntimeError, WASM_MEM_PAGE_BYTE_SIZE, instance::ModuleHandle, value::ExternVal},
+    runtime::{
+        RuntimeError, WASM_MEM_PAGE_BYTE_SIZE,
+        instance::ModuleHandle,
+        value::{ExternVal, Ref, Value},
+    },
 };
 
 /// Func Addr
@@ -44,24 +51,8 @@ impl fmt::Display for FuncAddr {
     }
 }
 
-/// Table Addr
-#[derive(Debug, Clone, Copy)]
-pub struct TableAddr(pub usize);
-
-impl From<usize> for TableAddr {
-    fn from(value: usize) -> Self {
-        TableAddr(value)
-    }
-}
-
-impl From<u32> for TableAddr {
-    fn from(value: u32) -> Self {
-        TableAddr(value as usize)
-    }
-}
-
 /// Func Instance
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Func {
     #[allow(dead_code)]
     pub typeidx: TypeIdx,
@@ -69,7 +60,7 @@ pub struct Func {
     pub body: Vec<Instruction>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FuncInstance {
     pub ftype: FuncType,
     pub module: ModuleHandle,
@@ -82,6 +73,29 @@ pub struct MemoryInstance {
     pub data: Vec<u8>,
 }
 impl MemoryInstance {
+    pub(super) fn init(
+        &mut self,
+        dst: usize,
+        src: usize,
+        len: usize,
+        data_inst: &DataInstance,
+    ) -> result::Result<(), RuntimeError> {
+        if dst + len > self.data.len() {
+            return Err(RuntimeError::trap("out of bounds memory access"));
+        }
+
+        if src + len > data_inst.data.len() {
+            return Err(RuntimeError::trap("out of bounds memory access"));
+        }
+
+        if len == 0 {
+            return Ok(());
+        }
+
+        self.data[dst..dst + len].copy_from_slice(&data_inst.data[src..src + len]);
+        Ok(())
+    }
+
     pub(super) fn size(&self) -> u32 {
         (self.data.len() / WASM_MEM_PAGE_BYTE_SIZE) as u32
     }
@@ -155,24 +169,251 @@ impl MemoryInstance {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MemAddr(usize);
+
 #[derive(Debug, Default)]
 pub struct Memories(pub(crate) Vec<MemoryInstance>);
 
 impl Memories {
+    pub(super) fn alloc(&mut self, memtype: &MemType) -> MemAddr {
+        let memsize = (memtype.0.min as usize) * WASM_MEM_PAGE_BYTE_SIZE;
+        let mem = vec![0u8; memsize];
+        self.0.push(MemoryInstance {
+            memtype: memtype.clone(),
+            data: mem,
+        });
+        MemAddr(self.0.len() - 1)
+    }
+
     pub(super) fn push(&mut self, mem: MemoryInstance) {
         self.0.push(mem)
     }
 
     pub(super) fn get(&mut self, idx: MemIndex) -> &mut MemoryInstance {
         debug_assert!(idx == MemIndex::ZERO);
+        debug_assert!(self.0.len() == 1);
         &mut self.0[0]
     }
 }
 
+/// Globals
+#[derive(Debug, Clone, Copy)]
+pub struct GlobalAddr(pub usize);
+
+#[derive(Debug, Default)]
+pub struct Globals(pub Vec<GlobalInstance>);
+
+#[derive(Debug)]
+pub struct GlobalInstance {
+    type_: GlobalType,
+    value: Value,
+}
+
+impl GlobalInstance {
+    pub fn new(t: GlobalType, value: Value) -> Self {
+        Self { type_: t, value }
+    }
+}
+
+impl Globals {
+    pub fn alloc(&mut self, t: GlobalType, v: Value) -> GlobalAddr {
+        self.0.push(GlobalInstance::new(t, v));
+        GlobalAddr(self.0.len() - 1)
+    }
+}
+
+/// Tables
+#[derive(Debug, Clone, Copy)]
+pub struct TableAddr(pub usize);
+
+impl From<usize> for TableAddr {
+    fn from(value: usize) -> Self {
+        TableAddr(value)
+    }
+}
+
+impl From<u32> for TableAddr {
+    fn from(value: u32) -> Self {
+        TableAddr(value as usize)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Tables(pub Vec<TableInstance>);
+
+#[derive(Debug)]
+pub struct TableInstance {
+    tabletype: TableType,
+    refs: Vec<Ref>,
+}
+
+impl TableInstance {
+    pub fn new(tabletype: TableType, refs: Vec<Ref>) -> Self {
+        Self { tabletype, refs }
+    }
+
+    pub fn init(
+        &mut self,
+        dst: usize,
+        src: usize,
+        len: usize,
+        elem_inst: &ElemInstance,
+    ) -> result::Result<(), RuntimeError> {
+        if dst + len > self.refs.len() {
+            return Err(RuntimeError::trap("out of bounds table access"));
+        }
+
+        if src + len > elem_inst.refs.len() {
+            return Err(RuntimeError::trap("out of bounds table access"));
+        }
+
+        if len == 0 {
+            return Ok(());
+        }
+
+        self.refs[dst..dst + len].copy_from_slice(&elem_inst.refs[src..src + len]);
+        Ok(())
+    }
+}
+
+impl Tables {
+    pub fn alloc(&mut self, t: TableType, refs: Vec<Ref>) -> TableAddr {
+        self.0.push(TableInstance::new(t, refs));
+        TableAddr(self.0.len() - 1)
+    }
+    pub fn get(&mut self, addr: TableAddr) -> &mut TableInstance {
+        self.0.get_mut(addr.0).unwrap()
+    }
+}
+
+/// Elements
+#[derive(Debug, Clone, Copy)]
+pub struct ElemAddr(pub usize);
+
+#[derive(Debug, Default)]
+pub struct Elements(pub Vec<ElemInstance>);
+
+#[derive(Debug)]
+pub struct ElemInstance {
+    elemtype: RefType,
+    refs: Vec<Ref>,
+    dropped: bool,
+}
+
+impl ElemInstance {
+    pub fn new(elemtype: RefType, refs: Vec<Ref>) -> Self {
+        Self {
+            elemtype,
+            refs,
+            dropped: false,
+        }
+    }
+}
+
+impl Elements {
+    pub fn alloc(&mut self, t: RefType, refs: Vec<Ref>) -> ElemAddr {
+        self.0.push(ElemInstance::new(t, refs));
+        ElemAddr(self.0.len() - 1)
+    }
+
+    pub fn get(&mut self, addr: ElemAddr) -> &mut ElemInstance {
+        let elem = self.0.get_mut(addr.0).unwrap();
+        assert!(elem.dropped == false);
+        elem
+    }
+
+    pub fn drop(&mut self, addr: ElemAddr) {
+        self.0[addr.0].dropped = true;
+    }
+}
+
+// Data
+#[derive(Debug, Clone, Copy)]
+pub struct DataAddr(pub usize);
+
+#[derive(Debug, Default)]
+pub struct Data(pub Vec<DataInstance>);
+
+#[derive(Debug)]
+pub struct DataInstance {
+    data: Vec<u8>,
+    dropped: bool,
+}
+
+impl DataInstance {
+    pub fn new(data: Vec<u8>) -> Self {
+        Self {
+            data,
+            dropped: false,
+        }
+    }
+}
+
+impl Data {
+    pub fn alloc(&mut self, ds: &DataSegment) -> DataAddr {
+        self.0.push(DataInstance::new(ds.data.clone()));
+        DataAddr(self.0.len() - 1)
+    }
+
+    pub fn get(&mut self, addr: DataAddr) -> &mut DataInstance {
+        let data = self.0.get_mut(addr.0).unwrap();
+        assert!(data.dropped == false);
+        data
+    }
+
+    pub fn drop(&mut self, addr: DataAddr) {
+        self.0[addr.0].dropped = true;
+    }
+}
+
+// Functions
+#[derive(Debug, Default)]
+pub struct Functions(Vec<FuncInstance>);
+
+impl Functions {
+    pub fn alloc(
+        &mut self,
+        module: ModuleHandle,
+        code: &CodeEntry,
+        typeidx: TypeIdx,
+        ftype: FuncType,
+    ) -> FuncAddr {
+        let locals = {
+            let mut v = vec![];
+            for l in code.locals.as_slice() {
+                v.extend(repeat_n(l.valtype, l.count as usize));
+            }
+            v
+        };
+        let func = Func {
+            typeidx,
+            locals,
+            body: code.body.clone(),
+        };
+
+        let funcinst = FuncInstance {
+            ftype,
+            module,
+            func,
+        };
+
+        self.0.push(funcinst);
+        FuncAddr(self.0.len() - 1)
+    }
+}
+
+// Store
 #[derive(Debug, Default)]
 pub struct Store {
     pub funcs: Vec<FuncInstance>,
+    pub functions: Functions,
+    pub globals: Globals,
+    pub tables: Tables,
+    pub elements: Elements,
     pub memories: Memories,
+    pub data: Data,
+    //  pub exports: Exports,
 }
 
 impl Store {

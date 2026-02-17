@@ -3,7 +3,7 @@ use std::{error, fmt, result};
 use crate::binary::{
     reader::{FromReader, ReadError, ReadErrorKind, Reader, VecReadError},
     sections::{SectionEntry, SectionErrorKind},
-    types::{ConstExpression, ConstExpressionReadError, RefType},
+    types::{ConstExpression, ConstExpressionReadError, FuncIndex, RefType},
 };
 
 /// Element Section
@@ -105,10 +105,6 @@ impl<'a> FromReader<'a> for ElementKindMarker {
     }
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct FuncIndex(pub u32);
-
 impl<'a> FromReader<'a> for FuncIndex {
     type Error = ReadError;
 
@@ -119,17 +115,13 @@ impl<'a> FromReader<'a> for FuncIndex {
 
 #[derive(Debug)]
 pub enum ElementSegmentItems {
-    #[allow(dead_code)]
     Functions(Vec<FuncIndex>),
-    #[allow(dead_code)]
     Expressions(RefType, Vec<ConstExpression>),
 }
 
 #[derive(Debug)]
 pub struct ElementSegment {
-    #[allow(dead_code)]
     pub mode: ElementSegmentMode,
-    #[allow(dead_code)]
     pub items: ElementSegmentItems,
 }
 

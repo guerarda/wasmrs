@@ -5,18 +5,19 @@ use crate::{
     binary::{
         module,
         sections::{
+            data::DataSegmentMode,
             element::{ElementSegmentItems, ElementSegmentMode},
             global::GlobalType,
             table::TableType,
         },
-        types::{ConstExpression, GlobalIdx},
+        types::{ConstExpression, GlobalIdx, MemIndex, RefType, TableIdx},
     },
     instructions::Instruction,
     runtime::{
         executor::ExecutionContext,
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
-        store::{Func, FuncInstance, MemoryInstance, Store},
+        store::{Func, FuncAddr, FuncInstance, MemoryInstance, Store, TableAddr},
         value::{ExternVal, Ref, Value},
     },
 };
@@ -51,7 +52,210 @@ pub struct Runtime {
     module_registry: ModuleRegistry,
 }
 
+#[derive(Debug)]
+pub enum ExternAddr {
+    Tag,
+    Global,
+    Mem,
+    Table(TableAddr),
+    Func(FuncAddr),
+}
+
+struct DataInit<'a> {
+    offset: &'a ConstExpression,
+    len: usize,
+    dataidx: usize,
+    memidx: MemIndex,
+}
+
+struct ElemInit<'a> {
+    offset: &'a ConstExpression,
+    len: usize,
+    elemidx: usize,
+    tableidx: TableIdx,
+}
+
 impl Runtime {
+    fn _instantiate_module(&mut self, module: &Module, _externaddr: &[ExternAddr]) -> ModuleHandle {
+        if let Some(_imports) = &module.imports {
+            // validate import type matches externaddr supplied
+            todo!()
+        }
+
+        // Prepare Data and Element init
+        let instr_d = module.data.as_ref().map_or(vec![], |datasec| {
+            datasec
+                .iter()
+                .enumerate()
+                .filter_map(|(i, d)| match &d.mode {
+                    DataSegmentMode::Active { mem_index, offset } => Some(DataInit {
+                        offset,
+                        len: d.data.len(),
+                        dataidx: i,
+                        memidx: MemIndex(*mem_index),
+                    }),
+                    DataSegmentMode::Passive => None,
+                })
+                .collect()
+        });
+
+        let instr_e = module.elements.as_ref().map_or(vec![], |elemsec| {
+            elemsec
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| match &e.mode {
+                    ElementSegmentMode::Active {
+                        table_index,
+                        offset,
+                    } => {
+                        let n = match &e.items {
+                            ElementSegmentItems::Functions(items) => items.len(),
+                            ElementSegmentItems::Expressions(.., const_expressions) => {
+                                const_expressions.len()
+                            }
+                        };
+                        Some(ElemInit {
+                            offset,
+                            len: n,
+                            elemidx: i,
+                            tableidx: table_index.unwrap_or(0),
+                        })
+                    }
+
+                    _ => None,
+                })
+                .collect()
+        });
+
+        // Preliminary module instance
+        let h = self.module_registry.reserve();
+        let mut mi = ModuleInstance::default();
+
+        // Register functions
+        if let (Some(funcsec), Some(codesec), Some(typesec)) =
+            (&module.functions, &module.codes, &module.types)
+        {
+            for (code, typeidx) in codesec.iter().zip(funcsec) {
+                let ftype = typesec[*typeidx as usize].clone();
+                let a = self.store.functions.alloc(h, code, *typeidx, ftype);
+                mi.funcs.push(a);
+            }
+        }
+
+        // Alloc and init types
+        mi.types = module.types.clone().unwrap_or(vec![]);
+
+        // Init Globals
+        if let Some(globalsec) = &module.globals {
+            for g in globalsec {
+                let val = Self::eval_expression(&g.body).unwrap();
+                let a = self.store.globals.alloc(g.gt.clone(), val);
+                mi.globals.push(a);
+            }
+        };
+
+        // Init Tables
+        if let Some(tablesec) = &module.tables {
+            for t in tablesec {
+                let init = match &t.expr {
+                    Some(expr) => Self::eval_expression(expr).unwrap().as_ref().unwrap(),
+                    None => Ref::Null(t.tabletype.elemtype),
+                };
+                let size = t.tabletype.limit.min as usize;
+                let entries = vec![init; size];
+                let a = self.store.tables.alloc(t.tabletype.clone(), entries);
+
+                mi.tables.push(a);
+            }
+        };
+
+        // Init Elements
+        if let Some(elementsec) = &module.elements {
+            for e in elementsec {
+                match &e.items {
+                    ElementSegmentItems::Functions(items) => {
+                        let refs = items
+                            .iter()
+                            .map(|it| Ref::Func(it.0.into()))
+                            .collect::<Vec<_>>();
+                        let a = self.store.elements.alloc(RefType::Func, refs);
+
+                        mi.elems.push(a);
+                    }
+                    ElementSegmentItems::Expressions(rt, exprs) => {
+                        let refs = exprs
+                            .iter()
+                            .map(|e| {
+                                Self::eval_expression(e)
+                                    .unwrap()
+                                    .as_ref_checked(rt)
+                                    .unwrap()
+                            })
+                            .collect::<Vec<_>>();
+                        let a = self.store.elements.alloc(*rt, refs);
+                        mi.elems.push(a);
+                    }
+                }
+            }
+        };
+
+        // Allocate memories
+        if let Some(memsec) = &module.memories {
+            assert!(memsec.len() <= 1);
+
+            if let Some(memtype) = memsec.first() {
+                let a = self.store.memories.alloc(memtype);
+                mi.mems.push(a);
+            }
+        }
+
+        // Allocate exports
+        if let Some(exports) = &module.exports {
+            for export in exports {
+                let funcaddr = mi.funcaddrs[export.index as usize];
+                mi.exports
+                    .insert(export.name.clone(), ExternVal::Func(funcaddr));
+            }
+        }
+
+        // Allocate data
+        if let Some(datasec) = &module.data {
+            for ds in datasec {
+                let a = self.store.data.alloc(ds);
+                mi.datas.push(a);
+            }
+        }
+
+        // Execute element initialization
+        for ei in instr_e {
+            let src = Self::eval_expression(ei.offset).unwrap().as_i32().unwrap();
+            let elem = self.store.elements.get(mi.elems[ei.elemidx]);
+            let ta = mi.tables[ei.tableidx as usize];
+
+            self.store
+                .tables
+                .get(ta)
+                .init(src as usize, 0, ei.len, &elem)
+                .unwrap();
+        }
+
+        // Execute data initialization
+        for di in instr_d {
+            let src = Self::eval_expression(di.offset).unwrap().as_i32().unwrap();
+            let data = self.store.data.get(mi.datas[di.dataidx]);
+
+            self.store
+                .memories
+                .get(di.memidx)
+                .init(src as usize, 0, di.len, &data)
+                .unwrap();
+        }
+
+        // Register module
+        self.module_registry.register(h, mi);
+        h
+    }
+
     fn instantiate_module(&mut self, module: &Module) -> ModuleHandle {
         let h = self.module_registry.reserve();
         let mut mi = ModuleInstance::default();

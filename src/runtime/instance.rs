@@ -1,12 +1,9 @@
 use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
-    binary::{
-        sections::element::FuncIndex,
-        types::{FuncType, TableIdx},
-    },
+    binary::types::{FuncIndex, FuncType, TableIdx},
     runtime::{
-        store::{FuncAddr, TableAddr},
+        store::{DataAddr, ElemAddr, FuncAddr, GlobalAddr, MemAddr, TableAddr},
         value::ExternVal,
     },
 };
@@ -17,6 +14,13 @@ pub struct ModuleInstance {
     pub funcaddrs: Vec<FuncAddr>,
     pub tableaddrs: Vec<TableAddr>,
     pub exports: HashMap<String, ExternVal>,
+
+    pub globals: Vec<GlobalAddr>,
+    pub mems: Vec<MemAddr>,
+    pub tables: Vec<TableAddr>,
+    pub funcs: Vec<FuncAddr>,
+    pub datas: Vec<DataAddr>,
+    pub elems: Vec<ElemAddr>,
 }
 
 impl ModuleInstance {
