@@ -5,6 +5,7 @@ use crate::{
         module::Module,
         sections::{
             code::{CodeEntry, FuncLocal},
+            element::ElementSegmentItems,
             global::{GlobalType, MutabilityFlag},
             memory::MemType,
             table::TableType,
@@ -97,6 +98,8 @@ pub enum ValidationError {
     UnknownTable,
     UnknownFunction,
     UnknownMemory,
+    UnknownData,
+    UnknownElement,
     ImmutableGlobal,
     MissingGlobalSection,
     InvalidSelectTypes,
@@ -123,6 +126,8 @@ impl fmt::Display for ValidationError {
             Self::UnknownTable => write!(f, "unknown table"),
             Self::UnknownFunction => write!(f, "unknown function"),
             Self::UnknownMemory => write!(f, "unknown memory"),
+            Self::UnknownData => write!(f, "unknown data"),
+            Self::UnknownElement => write!(f, "unknown element"),
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::MissingGlobalSection => write!(f, "missing global section"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
@@ -260,7 +265,8 @@ impl Validator {
         module
             .tables
             .as_ref()
-            .and_then(|tables| tables.get(table_idx as usize)).map(|table| &table.tabletype)
+            .and_then(|tables| tables.get(table_idx as usize))
+            .map(|table| &table.tabletype)
             .ok_or(ValidationError::UnknownTable)
     }
 
@@ -805,10 +811,77 @@ impl Validator {
                     self.validate_convop(ValType::I32, ValType::I64)?
                 }
 
-                Instruction::MemoryInit(_) => todo!(),
-                Instruction::DataDrop(_) => todo!(),
-                Instruction::TableInit(_) => todo!(),
-                Instruction::ElemDrop(_) => todo!(),
+                Instruction::MemoryInit((memidx, dataidx)) => {
+                    // [at, i32, i32] -> []
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+
+                    // memory exists
+                    if module
+                        .memories
+                        .as_ref()
+                        .is_none_or(|mems| (memidx.0 as usize) >= mems.len())
+                    {
+                        return Err(ValidationError::UnknownMemory);
+                    }
+
+                    // data exists
+                    if module
+                        .data
+                        .as_ref()
+                        .is_none_or(|data| (*dataidx as usize) >= data.len())
+                    {
+                        return Err(ValidationError::UnknownData);
+                    }
+                }
+                Instruction::DataDrop(idx) => {
+                    if module
+                        .data
+                        .as_ref()
+                        .is_none_or(|data| (*idx as usize) >= data.len())
+                    {
+                        return Err(ValidationError::UnknownData);
+                    }
+                }
+                Instruction::TableInit((tableidx, elemidx)) => {
+                    // [at, i32, i32] -> []
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+
+                    // table exists
+                    let table = module
+                        .tables
+                        .as_ref()
+                        .and_then(|tables| tables.get(*tableidx as usize))
+                        .ok_or(ValidationError::UnknownTable)?;
+
+                    // element exists
+                    let elem = module
+                        .elements
+                        .as_ref()
+                        .and_then(|elems| elems.get(*elemidx as usize))
+                        .ok_or(ValidationError::UnknownElement)?;
+
+                    let elemtype = match elem.items {
+                        ElementSegmentItems::Functions(_) => RefType::Func,
+                        ElementSegmentItems::Expressions(rt, ..) => rt,
+                    };
+
+                    if elemtype != table.tabletype.elemtype {
+                        return Err(ValidationError::TypeMismatch);
+                    }
+                }
+                Instruction::ElemDrop(idx) => {
+                    if module
+                        .elements
+                        .as_ref()
+                        .is_none_or(|elems| (*idx as usize) >= elems.len())
+                    {
+                        return Err(ValidationError::UnknownElement);
+                    }
+                }
             }
         }
         self.pop_ctrl()?;
