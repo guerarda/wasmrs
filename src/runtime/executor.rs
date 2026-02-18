@@ -124,6 +124,28 @@ macro_rules! load {
     }};
 }
 
+macro_rules! store {
+    ($self: expr, $module_inst: ident, $memarg: ident, $variant: ident, $ty:ty) => {{
+        // Get the value
+        let v = match $self.value_stack.pop().unwrap() {
+            Value::$variant(val) => val as $ty,
+            _ => unreachable!(),
+        };
+
+        // Get the base address
+        let i = Self::pop_i32($self.value_stack)?;
+
+        // Get memory
+        let slice =
+            Runtime::memory_get_mut(&mut $self.store.memories, $module_inst, MemIndex::ZERO)
+                .unwrap()
+                .slice_mut(i, $memarg, std::mem::size_of::<$ty>())?;
+
+        // Store
+        slice.copy_from_slice(&v.to_le_bytes());
+    }};
+}
+
 pub(super) struct ExecutionContext<'a> {
     value_stack: &'a mut Vec<Value>,
     call_stack: &'a mut Vec<Frame>,
@@ -470,33 +492,32 @@ impl<'a> ExecutionContext<'a> {
                         load!(self, module_inst, memarg, i8, I64);
                     }
                     Instruction::I32Store(memarg) => {
-                        // Get the value
-                        let v = Self::pop_i32(self.value_stack)?;
-
-                        // Get the base address
-                        let i = Self::pop_i32(self.value_stack)?;
-
-                        // Get memory
-
-                        let slice = Runtime::memory_get_mut(
-                            &mut self.store.memories,
-                            module_inst,
-                            MemIndex::ZERO,
-                        )
-                        .unwrap()
-                        .slice_mut(i, memarg, 4)?;
-
-                        // Store
-                        slice.copy_from_slice(&v.to_le_bytes());
+                        store!(self, module_inst, memarg, I32, i32);
                     }
-                    Instruction::I64Store(_) => todo!(),
-                    Instruction::F32Store(_) => todo!(),
-                    Instruction::F64Store(_) => todo!(),
-                    Instruction::I32Store8(_) => todo!(),
-                    Instruction::I32Store16(_) => todo!(),
-                    Instruction::I64Store8(_) => todo!(),
-                    Instruction::I64Store16(_) => todo!(),
-                    Instruction::I64Store32(_) => todo!(),
+                    Instruction::I64Store(memarg) => {
+                        store!(self, module_inst, memarg, I64, i64);
+                    }
+                    Instruction::F32Store(memarg) => {
+                        store!(self, module_inst, memarg, F32, f32);
+                    }
+                    Instruction::F64Store(memarg) => {
+                        store!(self, module_inst, memarg, F64, f64);
+                    }
+                    Instruction::I32Store8(memarg) => {
+                        store!(self, module_inst, memarg, I32, u8);
+                    }
+                    Instruction::I32Store16(memarg) => {
+                        store!(self, module_inst, memarg, I32, u16);
+                    }
+                    Instruction::I64Store8(memarg) => {
+                        store!(self, module_inst, memarg, I64, u8);
+                    }
+                    Instruction::I64Store16(memarg) => {
+                        store!(self, module_inst, memarg, I64, u16);
+                    }
+                    Instruction::I64Store32(memarg) => {
+                        store!(self, module_inst, memarg, I64, u32);
+                    }
                     Instruction::MemorySize(idx) => {
                         let mem =
                             Runtime::memory_get(&self.store.memories, module_inst, *idx).unwrap();
