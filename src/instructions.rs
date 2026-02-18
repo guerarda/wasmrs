@@ -245,7 +245,7 @@ instructions! {
     I32Extend8S : 0xc0 : "i32.extend8_s",
     I32Extend16S : 0xc1 : "i32.extend16_s",
     I64Extend8S: 0xc2 : "i64.extend8_s",
-    I64Extend16S: 0xc3 : "i64.extend12_s",
+    I64Extend16S: 0xc3 : "i64.extend16_s",
     I64Extend32S: 0xc4 : "i64.extend32_s",
 
     // Reference
