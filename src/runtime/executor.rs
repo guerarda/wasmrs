@@ -747,6 +747,66 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I64ExtendI32U => {
                         conv_op!(self, I32, I64, |a| a as u32 as i64);
                     }
+                    Instruction::I64TruncF32S => {
+                        conv_op!(self, F32, I64, |a: f32| {
+                            if a.is_nan() {
+                                RuntimeError::trap("");
+                            }
+                            if a >= (i64::MAX as f32) || a < (i64::MIN as f32) {
+                                RuntimeError::trap("");
+                            }
+                            a as i64
+                        });
+                    }
+                    Instruction::I64TruncF32U => {
+                        conv_op!(self, F32, I64, |a: f32| {
+                            if a.is_nan() {
+                                RuntimeError::trap("");
+                            }
+                            if a >= (u64::MAX as f32) || a < 0.0 {
+                                RuntimeError::trap("");
+                            }
+                            a as u64 as i64
+                        });
+                    }
+                    Instruction::I64TruncF64S => {
+                        conv_op!(self, F64, I64, |a: f64| {
+                            if a.is_nan() {
+                                RuntimeError::trap("");
+                            }
+                            if a >= (i64::MAX as f64) || a < (i64::MIN as f64) {
+                                RuntimeError::trap("");
+                            }
+                            a as i64
+                        });
+                    }
+                    Instruction::I64TruncF64U => {
+                        conv_op!(self, F64, I64, |a: f64| {
+                            if a.is_nan() {
+                                RuntimeError::trap("");
+                            }
+                            if a >= (u64::MAX as f64) || a < 0.0 {
+                                RuntimeError::trap("");
+                            }
+                            a as u64 as i64
+                        });
+                    }
+
+                    Instruction::F64ConvertI32S => {
+                        conv_op!(self, I32, F64, |a| a as f64);
+                    }
+                    Instruction::F64ConvertI32U => {
+                        conv_op!(self, I32, F64, |a| a as u32 as f64);
+                    }
+                    Instruction::F64ConvertI64S => {
+                        conv_op!(self, I64, F64, |a| a as f64);
+                    }
+                    Instruction::F64ConvertI64U => {
+                        conv_op!(self, I64, F64, |a| a as u64 as f64);
+                    }
+                    Instruction::F64PromoteF32 => {
+                        conv_op!(self, F32, F64, |a| a as f64);
+                    }
 
                     // Sign extension ops
                     Instruction::I32Extend8S => conv_op!(self, I32, I32, |a| a as i8 as i32),

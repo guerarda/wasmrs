@@ -801,7 +801,22 @@ impl Validator {
                 Instruction::F64Floor => self.validate_unop(ValType::F64)?,
                 Instruction::F64Add => self.validate_binop(ValType::F64)?,
                 Instruction::I32WrapI64 => self.validate_convop(ValType::I64, ValType::I32)?,
-
+                Instruction::I64ExtendI32S | Instruction::I64ExtendI32U => {
+                    self.validate_convop(ValType::I32, ValType::I64)?
+                }
+                Instruction::I64TruncF32S | Instruction::I64TruncF32U => {
+                    self.validate_convop(ValType::F32, ValType::I64)?
+                }
+                Instruction::I64TruncF64S | Instruction::I64TruncF64U => {
+                    self.validate_convop(ValType::F64, ValType::I64)?
+                }
+                Instruction::F64ConvertI32S | Instruction::F64ConvertI32U => {
+                    self.validate_convop(ValType::I32, ValType::F64)?;
+                }
+                Instruction::F64ConvertI64S | Instruction::F64ConvertI64U => {
+                    self.validate_convop(ValType::I64, ValType::F64)?
+                }
+                Instruction::F64PromoteF32 => self.validate_convop(ValType::F32, ValType::F64)?,
                 Instruction::I32Extend8S | Instruction::I32Extend16S => {
                     self.validate_convop(ValType::I32, ValType::I32)?
                 }
@@ -818,11 +833,6 @@ impl Validator {
                 Instruction::I64TruncSatF64S | Instruction::I64TruncSatF64U => {
                     self.validate_convop(ValType::F64, ValType::I64)?
                 }
-
-                Instruction::I64ExtendI32S | Instruction::I64ExtendI32U => {
-                    self.validate_convop(ValType::I32, ValType::I64)?
-                }
-
                 Instruction::MemoryInit((memidx, dataidx)) => {
                     // [at, i32, i32] -> []
                     self.pop_val_expect(ValueType::I32)?;

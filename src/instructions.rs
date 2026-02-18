@@ -253,6 +253,16 @@ instructions! {
 
     I64ExtendI32S : 0xac : "i64.extend_i32_s",
     I64ExtendI32U : 0xad : "i64.extend_i32_u",
+    I64TruncF32S : 0xae : "i64.trunc_f32_s",
+    I64TruncF32U : 0xaf : "i64.trunc_f32_u",
+    I64TruncF64S : 0xb0 : "i64.trunc_f64_s",
+    I64TruncF64U : 0xb1 : "i64.trunc_f64_u",
+
+    F64ConvertI32S : 0xb7 : "f64.convert_i32_s",
+    F64ConvertI32U : 0xb8 : "f64.convert_i32_u",
+    F64ConvertI64S : 0xb9 : "f64.convert_i32_s",
+    F64ConvertI64U : 0xba : "f64.convert_i32_u",
+    F64PromoteF32 : 0xbb : "f64.promot_f32",
 
     I32Extend8S : 0xc0 : "i32.extend8_s",
     I32Extend16S : 0xc1 : "i32.extend16_s",
