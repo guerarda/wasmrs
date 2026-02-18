@@ -106,6 +106,24 @@ macro_rules! try_binary_op {
     }};
 }
 
+macro_rules! load {
+    ($self: expr, $module_inst: ident, $memarg: ident, $ty:ty, $variant: ident) => {{
+        // Get the base address
+        let i = Self::pop_i32($self.value_stack)?;
+
+        // Read memory
+        let mem = Runtime::memory_get(&$self.store.memories, $module_inst, MemIndex::ZERO).unwrap();
+        let v = <$ty>::from_le_bytes(
+            mem.slice(i, $memarg, std::mem::size_of::<$ty>())?
+                .try_into()
+                .unwrap(),
+        );
+
+        // Push value
+        $self.value_stack.push(Value::$variant(v as _));
+    }};
+}
+
 pub(super) struct ExecutionContext<'a> {
     value_stack: &'a mut Vec<Value>,
     call_stack: &'a mut Vec<Frame>,
@@ -437,81 +455,19 @@ impl<'a> ExecutionContext<'a> {
                     }
 
                     Instruction::I32Load(memarg) => {
-                        // Get the base address
-                        let i = Self::pop_i32(self.value_stack)?;
-
-                        // Read memory
-                        let mem =
-                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
-                                .unwrap();
-                        let v = i32::from_le_bytes(mem.slice(i, memarg, 4)?.try_into().unwrap());
-
-                        // Push value
-                        self.value_stack.push(Value::I32(v));
+                        load!(self, module_inst, memarg, i32, I32);
                     }
                     Instruction::F32Load(memarg) => {
-                        // Get the base address
-                        let i = Self::pop_i32(self.value_stack)?;
-
-                        // Read memory
-                        let v = f32::from_le_bytes(
-                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
-                                .unwrap()
-                                .slice(i, memarg, 4)?
-                                .try_into()
-                                .unwrap(),
-                        );
-
-                        // Push value
-                        self.value_stack.push(Value::F32(v));
+                        load!(self, module_inst, memarg, f32, F32);
                     }
                     Instruction::F64Load(memarg) => {
-                        // Get the base address
-                        let i = Self::pop_i32(self.value_stack)?;
-
-                        // Read memory
-                        let v = f64::from_le_bytes(
-                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
-                                .unwrap()
-                                .slice(i, memarg, 8)?
-                                .try_into()
-                                .unwrap(),
-                        );
-
-                        // Push value
-                        self.value_stack.push(Value::F64(v));
+                        load!(self, module_inst, memarg, f64, F64);
                     }
                     Instruction::I32Load8S(memarg) => {
-                        // Get the base address
-                        let i = Self::pop_i32(self.value_stack)?;
-
-                        // Read memory
-                        let v = i8::from_le_bytes(
-                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
-                                .unwrap()
-                                .slice(i, memarg, 1)?
-                                .try_into()
-                                .unwrap(),
-                        );
-
-                        // Push value
-                        self.value_stack.push(Value::I32(v as i32));
+                        load!(self, module_inst, memarg, i8, I32);
                     }
                     Instruction::I64Load8S(memarg) => {
-                        // Get the base address
-                        let i = Self::pop_i32(self.value_stack)?;
-
-                        // Read memory
-                        let v = i8::from_le_bytes(
-                            Runtime::memory_get(&self.store.memories, module_inst, MemIndex::ZERO)
-                                .unwrap()
-                                .slice(i, memarg, 1)?
-                                .try_into()
-                                .unwrap(),
-                        );
-
-                        // Push value
-                        self.value_stack.push(Value::I64(v as i64));
+                        load!(self, module_inst, memarg, i8, I64);
                     }
                     Instruction::I32Store(memarg) => {
                         // Get the value
