@@ -15,7 +15,6 @@ use wasmrs::{parse_module, validate_module};
 
 /// Wast files to skip by default. Use --all to include them.
 const EXCLUDED: &[&str] = &[
-    "address.wast",
     "align.wast",
     "bulk.wast",
     "call_indirect.wast",
@@ -25,7 +24,6 @@ const EXCLUDED: &[&str] = &[
     "endianness.wast",
     "exports.wast",
     "f32.wast",
-    "f32_bitwise.wast",
     "f64.wast",
     "f64_bitwise.wast",
     "f64_cmp.wast",
@@ -48,12 +46,10 @@ const EXCLUDED: &[&str] = &[
     "memory_fill.wast",
     "memory_init.wast",
     "memory_redundancy.wast",
-    "memory_trap.wast",
     "names.wast",
     "ref_func.wast",
     "ref_is_null.wast",
     "select.wast",
-    "skip-stack-guard-page.wast",
     "start.wast",
     "table.wast",
     "table-sub.wast",
