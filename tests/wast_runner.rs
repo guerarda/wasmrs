@@ -29,7 +29,6 @@ const EXCLUDED: &[&str] = &[
     "f64.wast",
     "f64_bitwise.wast",
     "f64_cmp.wast",
-    "fac.wast",
     "float_exprs.wast",
     "float_literals.wast",
     "float_memory.wast",
@@ -38,7 +37,6 @@ const EXCLUDED: &[&str] = &[
     "func_ptrs.wast",
     "global.wast",
     "imports.wast",
-    "int_exprs.wast",
     "left-to-right.wast",
     "linking.wast",
     "load.wast",
@@ -57,7 +55,6 @@ const EXCLUDED: &[&str] = &[
     "ref_is_null.wast",
     "select.wast",
     "skip-stack-guard-page.wast",
-    "stack.wast",
     "start.wast",
     "table.wast",
     "table-sub.wast",
@@ -70,8 +67,6 @@ const EXCLUDED: &[&str] = &[
     "table_size.wast",
     "traps.wast",
     "unreached-valid.wast",
-    "switch.wast",
-    "unwind.wast",
 ];
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
