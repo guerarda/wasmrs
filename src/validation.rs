@@ -629,17 +629,29 @@ impl Validator {
                 Instruction::I32Load(memarg) => {
                     self.validate_mem_load(module, memarg, 4, ValType::I32)?;
                 }
+                Instruction::I64Load(memarg) => {
+                    self.validate_mem_load(module, memarg, 8, ValType::I64)?;
+                }
                 Instruction::F32Load(memarg) => {
                     self.validate_mem_load(module, memarg, 4, ValType::F32)?;
                 }
                 Instruction::F64Load(memarg) => {
                     self.validate_mem_load(module, memarg, 8, ValType::F64)?;
                 }
-                Instruction::I32Load8S(memarg) => {
+                Instruction::I32Load8S(memarg) | Instruction::I32Load8U(memarg) => {
                     self.validate_mem_load(module, memarg, 1, ValType::I32)?;
                 }
-                Instruction::I64Load8S(memarg) => {
+                Instruction::I32Load16S(memarg) | Instruction::I32Load16U(memarg) => {
+                    self.validate_mem_load(module, memarg, 2, ValType::I32)?;
+                }
+                Instruction::I64Load8S(memarg) | Instruction::I64Load8U(memarg) => {
                     self.validate_mem_load(module, memarg, 1, ValType::I64)?;
+                }
+                Instruction::I64Load16S(memarg) | Instruction::I64Load16U(memarg) => {
+                    self.validate_mem_load(module, memarg, 2, ValType::I64)?;
+                }
+                Instruction::I64Load32S(memarg) | Instruction::I64Load32U(memarg) => {
+                    self.validate_mem_load(module, memarg, 4, ValType::I64)?;
                 }
                 Instruction::I32Store(memarg) => {
                     self.validate_mem_store(module, memarg, 4, ValType::I32)?;

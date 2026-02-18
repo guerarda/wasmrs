@@ -39,7 +39,6 @@ const EXCLUDED: &[&str] = &[
     "imports.wast",
     "left-to-right.wast",
     "linking.wast",
-    "load.wast",
     "local_get.wast",
     "local_set.wast",
     "local_tee.wast",

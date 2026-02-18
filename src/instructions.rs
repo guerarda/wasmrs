@@ -120,11 +120,23 @@ instructions! {
     GlobalSet(GlobalIdx) : 0x24 : "global.set",
 
     // Memory
+    // Load
     I32Load(MemArg) : 0x28 : "i32.load",
+    I64Load(MemArg) : 0x29 : "i64.load",
     F32Load(MemArg) : 0x2a : "f32.load",
     F64Load(MemArg) : 0x2b : "f64.load",
     I32Load8S(MemArg) : 0x2c :  "i32.load8_s",
+    I32Load8U(MemArg) : 0x2d :  "i32.load8_u",
+    I32Load16S(MemArg) : 0x2e :  "i32.load16_s",
+    I32Load16U(MemArg) : 0x2f :  "i32.load16_u",
     I64Load8S(MemArg) : 0x30 :  "i64.load8_s",
+    I64Load8U(MemArg) : 0x31 :  "i64.load8_u",
+    I64Load16S(MemArg) : 0x32 :  "i64.load16_s",
+    I64Load16U(MemArg) : 0x33 :  "i64.load16_u",
+    I64Load32S(MemArg) : 0x34 :  "i64.load32_s",
+    I64Load32U(MemArg) : 0x35 :  "i64.load32_u",
+
+    // Store
     I32Store(MemArg) : 0x36 : "i32.store",
     I64Store(MemArg) : 0x37 : "i64.store",
     F32Store(MemArg) : 0x38 : "f32.store",

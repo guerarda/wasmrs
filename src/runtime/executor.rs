@@ -475,9 +475,9 @@ impl<'a> ExecutionContext<'a> {
                         let v = self.value_stack.pop().unwrap();
                         Runtime::global_set(&mut self.store.globals, module_inst, *idx, v)?;
                     }
-
-                    Instruction::I32Load(memarg) => {
-                        load!(self, module_inst, memarg, i32, I32);
+                    Instruction::I32Load(memarg) => load!(self, module_inst, memarg, i32, I32),
+                    Instruction::I64Load(memarg) => {
+                        load!(self, module_inst, memarg, i64, I64);
                     }
                     Instruction::F32Load(memarg) => {
                         load!(self, module_inst, memarg, f32, F32);
@@ -488,8 +488,32 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I32Load8S(memarg) => {
                         load!(self, module_inst, memarg, i8, I32);
                     }
+                    Instruction::I32Load8U(memarg) => {
+                        load!(self, module_inst, memarg, u8, I32);
+                    }
+                    Instruction::I32Load16S(memarg) => {
+                        load!(self, module_inst, memarg, i16, I32);
+                    }
+                    Instruction::I32Load16U(memarg) => {
+                        load!(self, module_inst, memarg, u16, I32);
+                    }
                     Instruction::I64Load8S(memarg) => {
                         load!(self, module_inst, memarg, i8, I64);
+                    }
+                    Instruction::I64Load8U(memarg) => {
+                        load!(self, module_inst, memarg, u8, I64);
+                    }
+                    Instruction::I64Load16S(memarg) => {
+                        load!(self, module_inst, memarg, i16, I64);
+                    }
+                    Instruction::I64Load16U(memarg) => {
+                        load!(self, module_inst, memarg, u16, I64);
+                    }
+                    Instruction::I64Load32S(memarg) => {
+                        load!(self, module_inst, memarg, i32, I64);
+                    }
+                    Instruction::I64Load32U(memarg) => {
+                        load!(self, module_inst, memarg, u32, I64);
                     }
                     Instruction::I32Store(memarg) => {
                         store!(self, module_inst, memarg, I32, i32);
