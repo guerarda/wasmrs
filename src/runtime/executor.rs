@@ -765,9 +765,15 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I64TruncSatF64U => todo!(),
 
                     Instruction::MemoryInit(_) => todo!(),
-                    Instruction::DataDrop(_) => todo!(),
+                    Instruction::DataDrop(idx) => {
+                        let da = module_inst.datas[*idx as usize];
+                        self.store.data.drop(da);
+                    }
                     Instruction::TableInit(_) => todo!(),
-                    Instruction::ElemDrop(_) => todo!(),
+                    Instruction::ElemDrop(idx) => {
+                        let ea = module_inst.elems[*idx as usize];
+                        self.store.elements.drop(ea);
+                    }
                 }
             }
         }

@@ -213,7 +213,8 @@ impl Runtime {
         // Execute element initialization
         for ei in instr_e {
             let src = Self::eval_expression(ei.offset).unwrap().as_i32().unwrap();
-            let elem = self.store.elements.get(mi.elems[ei.elemidx]);
+            let ea = mi.elems[ei.elemidx];
+            let elem = self.store.elements.get(ea);
             let ta = mi.tables[ei.tableidx as usize];
 
             self.store
@@ -221,12 +222,15 @@ impl Runtime {
                 .get_mut(ta)
                 .init(src as usize, 0, ei.len, elem)
                 .unwrap();
+
+            self.store.elements.drop(ea);
         }
 
         // Execute data initialization
         for di in instr_d {
             let src = Self::eval_expression(di.offset).unwrap().as_i32().unwrap();
-            let data = self.store.data.get(mi.datas[di.dataidx]);
+            let da = mi.datas[di.dataidx];
+            let data = self.store.data.get(da);
             let ma = mi.mems[di.memidx.0 as usize];
 
             self.store
@@ -234,6 +238,8 @@ impl Runtime {
                 .get_mut(ma)
                 .init(src as usize, 0, di.len, data)
                 .unwrap();
+
+            self.store.data.drop(da);
         }
 
         // Register module
