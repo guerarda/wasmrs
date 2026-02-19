@@ -848,6 +848,20 @@ impl<'a> ExecutionContext<'a> {
                         conv_op!(self, F32, F64, |a| a as f64);
                     }
 
+                    // Reinterpret
+                    Instruction::I32ReinterpretF32 => {
+                        conv_op!(self, F32, I32, |a: f32| a.to_bits() as i32);
+                    }
+                    Instruction::I64ReinterpretF64 => {
+                        conv_op!(self, F64, I64, |a: f64| a.to_bits() as i64);
+                    }
+                    Instruction::F32ReinterpretI32 => {
+                        conv_op!(self, I32, F32, |a: i32| f32::from_bits(a as u32));
+                    }
+                    Instruction::F64ReinterpretI64 => {
+                        conv_op!(self, I64, F64, |a: i64| f64::from_bits(a as u64));
+                    }
+
                     // Sign extension ops
                     Instruction::I32Extend8S => conv_op!(self, I32, I32, |a| a as i8 as i32),
                     Instruction::I32Extend16S => conv_op!(self, I32, I32, |a| a as i16 as i32),

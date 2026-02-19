@@ -851,6 +851,19 @@ impl Validator {
                     self.validate_convop(ValType::I64, ValType::F64)?
                 }
                 Instruction::F64PromoteF32 => self.validate_convop(ValType::F32, ValType::F64)?,
+
+                Instruction::I32ReinterpretF32 => {
+                    self.validate_convop(ValType::F32, ValType::I32)?
+                }
+                Instruction::I64ReinterpretF64 => {
+                    self.validate_convop(ValType::F64, ValType::I64)?
+                }
+                Instruction::F32ReinterpretI32 => {
+                    self.validate_convop(ValType::I32, ValType::F32)?
+                }
+                Instruction::F64ReinterpretI64 => {
+                    self.validate_convop(ValType::I64, ValType::F64)?
+                }
                 Instruction::I32Extend8S | Instruction::I32Extend16S => {
                     self.validate_convop(ValType::I32, ValType::I32)?
                 }

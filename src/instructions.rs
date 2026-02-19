@@ -289,6 +289,11 @@ instructions! {
     F64ConvertI64U : 0xba : "f64.convert_i64_u",
     F64PromoteF32 : 0xbb : "f64.promot_f32",
 
+    I32ReinterpretF32 : 0xbc : "i32.reinterpret_f32",
+    I64ReinterpretF64 : 0xbd : "i64.reinterpret_f64",
+    F32ReinterpretI32 : 0xbe : "f32.reinterpret_i32",
+    F64ReinterpretI64 : 0xbf : "f64.reinterpret_i64",
+
     I32Extend8S : 0xc0 : "i32.extend8_s",
     I32Extend16S : 0xc1 : "i32.extend16_s",
     I64Extend8S: 0xc2 : "i64.extend8_s",
