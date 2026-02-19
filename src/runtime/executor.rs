@@ -582,6 +582,7 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F64Const(v) => self.value_stack.push(Value::F64(*v)),
 
                     // Comparison ops
+                    // i32
                     Instruction::I32Eqz => unary_op!(self, I32, |a| a == 0),
                     Instruction::I32Eq => comp_op!(self, I32, |a, b| a == b),
                     Instruction::I32Ne => comp_op!(self, I32, |a, b| a != b),
@@ -602,6 +603,8 @@ impl<'a> ExecutionContext<'a> {
                         };
                         self.value_stack.push(result);
                     }
+
+                    // i64
                     Instruction::I64Eq => comp_op!(self, I64, |a, b| a == b),
                     Instruction::I64Ne => comp_op!(self, I64, |a, b| a != b),
                     Instruction::I64LtS => comp_op!(self, I64, |a, b| a < b),
@@ -613,6 +616,7 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I64GeS => comp_op!(self, I64, |a, b| a >= b),
                     Instruction::I64GeU => comp_op!(self, u64, I64, |a, b| a >= b),
 
+                    // f32
                     Instruction::F32Eq => comp_op!(self, F32, |a, b| a == b),
                     Instruction::F32Ne => comp_op!(self, F32, |a, b| a != b),
                     Instruction::F32Lt => comp_op!(self, F32, |a, b| a < b),
@@ -620,7 +624,13 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F32Le => comp_op!(self, F32, |a, b| a <= b),
                     Instruction::F32Ge => comp_op!(self, F32, |a, b| a >= b),
 
+                    // f64
+                    Instruction::F64Eq => comp_op!(self, F64, |a, b| a == b),
+                    Instruction::F64Ne => comp_op!(self, F64, |a, b| a != b),
+                    Instruction::F64Lt => comp_op!(self, F64, |a, b| a < b),
+                    Instruction::F64Gt => comp_op!(self, F64, |a, b| a > b),
                     Instruction::F64Le => comp_op!(self, F64, |a, b| a <= b),
+                    Instruction::F64Ge => comp_op!(self, F64, |a, b| a >= b),
 
                     // Unary ops
                     Instruction::I32Clz => unary_op!(self, I32, |a: i32| a.leading_zeros() as i32),
@@ -723,6 +733,7 @@ impl<'a> ExecutionContext<'a> {
                         binary_op!(self, I64, |a: i64, b| a.rotate_right(b as u32))
                     }
 
+                    // Float 32
                     Instruction::F32Abs => unary_op!(self, F32, |a: f32| a.abs()),
                     Instruction::F32Neg => unary_op!(self, F32, |a: f32| a.neg()),
 
@@ -741,14 +752,35 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F32Copysign => {
                         binary_op!(self, F32, |a: f32, b: f32| a.copysign(b))
                     }
-                    Instruction::F64Neg => {
-                        unary_op!(self, F64, |a: f64| -a);
-                    }
-                    Instruction::F64Floor => {
-                        unary_op!(self, F64, |a: f64| a.floor());
-                    }
+
+                    // Float 64
+                    Instruction::F64Abs => unary_op!(self, F64, |a: f64| a.abs()),
+                    Instruction::F64Neg => unary_op!(self, F64, |a: f64| -a),
+                    Instruction::F64Ceil => unary_op!(self, F64, |a: f64| a.ceil()),
+                    Instruction::F64Floor => unary_op!(self, F64, |a: f64| a.floor()),
+                    Instruction::F64Trunc => unary_op!(self, F64, |a: f64| a.trunc()),
+                    Instruction::F64Nearest => unary_op!(self, F64, |a: f64| a.round_ties_even()),
+                    Instruction::F64Sqrt => unary_op!(self, F64, |a: f64| a.sqrt()),
                     Instruction::F64Add => {
                         binary_op!(self, F64, |a: f64, b: f64| a + b);
+                    }
+                    Instruction::F64Sub => {
+                        binary_op!(self, F64, |a: f64, b: f64| a - b);
+                    }
+                    Instruction::F64Mul => {
+                        binary_op!(self, F64, |a: f64, b: f64| a * b);
+                    }
+                    Instruction::F64Div => {
+                        binary_op!(self, F64, |a: f64, b: f64| a / b);
+                    }
+                    Instruction::F64Min => {
+                        binary_op!(self, F64, |a: f64, b: f64| a.min(b));
+                    }
+                    Instruction::F64Max => {
+                        binary_op!(self, F64, |a: f64, b: f64| a.max(b));
+                    }
+                    Instruction::F64Copysign => {
+                        binary_op!(self, F64, |a: f64, b: f64| a.copysign(b));
                     }
 
                     // Conversion ops

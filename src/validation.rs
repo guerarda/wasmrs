@@ -740,7 +740,12 @@ impl Validator {
                 | Instruction::F32Le
                 | Instruction::F32Ge => self.validate_compop(ValType::F32)?,
 
-                Instruction::F64Le => self.validate_compop(ValType::F64)?,
+                Instruction::F64Eq
+                | Instruction::F64Ne
+                | Instruction::F64Lt
+                | Instruction::F64Gt
+                | Instruction::F64Le
+                | Instruction::F64Ge => self.validate_compop(ValType::F64)?,
 
                 Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => {
                     self.validate_unop(ValType::I32)?
@@ -797,9 +802,22 @@ impl Validator {
                 | Instruction::F32Max
                 | Instruction::F32Copysign => self.validate_binop(ValType::F32)?,
 
-                Instruction::F64Neg => self.validate_unop(ValType::F64)?,
-                Instruction::F64Floor => self.validate_unop(ValType::F64)?,
-                Instruction::F64Add => self.validate_binop(ValType::F64)?,
+                Instruction::F64Abs
+                | Instruction::F64Neg
+                | Instruction::F64Ceil
+                | Instruction::F64Floor
+                | Instruction::F64Trunc
+                | Instruction::F64Nearest
+                | Instruction::F64Sqrt => self.validate_unop(ValType::F64)?,
+
+                Instruction::F64Add
+                | Instruction::F64Sub
+                | Instruction::F64Mul
+                | Instruction::F64Div
+                | Instruction::F64Min
+                | Instruction::F64Max
+                | Instruction::F64Copysign => self.validate_binop(ValType::F64)?,
+
                 Instruction::I32WrapI64 => self.validate_convop(ValType::I64, ValType::I32)?,
                 Instruction::I32TruncF32S | Instruction::I32TruncF32U => {
                     self.validate_convop(ValType::F32, ValType::I32)?;

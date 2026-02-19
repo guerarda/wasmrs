@@ -25,8 +25,6 @@ const EXCLUDED: &[&str] = &[
     "exports.wast",
     "f32.wast",
     "f64.wast",
-    "f64_bitwise.wast",
-    "f64_cmp.wast",
     "float_exprs.wast",
     "float_literals.wast",
     "float_memory.wast",

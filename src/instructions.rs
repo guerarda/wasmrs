@@ -188,7 +188,12 @@ instructions! {
     F32Le : 0x5f : "f32.le",
     F32Ge : 0x60 : "f32.ge",
 
+    F64Eq : 0x61 : "f64.eq",
+    F64Ne : 0x62 : "f64.ne",
+    F64Lt : 0x63 : "f64.lt",
+    F64Gt : 0x64 : "f64.gt",
     F64Le : 0x65 : "f64.le",
+    F64Ge : 0x66 : "f64.ge",
 
     // Unary ops
     I32Clz : 0x67 : "i32.clz",
@@ -246,9 +251,21 @@ instructions! {
     F32Max : 0x97 : "f32.max",
     F32Copysign : 0x98 : "f32.copysign",
 
-    F64Neg: 0x9a : "f64.neg",
-    F64Floor: 0x9c : "f64.floor",
+    F64Abs : 0x99 : "f64.abs",
+    F64Neg : 0x9a : "f64.neg",
+    F64Ceil : 0x9b : "f64.ceil",
+    F64Floor : 0x9c : "f64.floor",
+    F64Trunc : 0x9d : "f64.trunc",
+    F64Nearest : 0x9e : "f64.nearest",
+    F64Sqrt : 0x9f : "f64.sqrt",
     F64Add : 0xa0 : "f64.add",
+    F64Sub : 0xa1 : "f64.sub",
+    F64Mul : 0xa2 : "f64.mul",
+    F64Div : 0xa3 : "f64.div",
+    F64Min : 0xa4 : "f64.min",
+    F64Max : 0xa5 : "f64.max",
+    F64Copysign : 0xa6 : "f64.copysign",
+
     I32WrapI64 : 0xa7 : "i32.wrap_i64",
 
     I32TruncF32S : 0xa8 : "i32.trunc_f32_s",
