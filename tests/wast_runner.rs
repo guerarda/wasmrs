@@ -36,7 +36,6 @@ const EXCLUDED: &[&str] = &[
     "memory_grow.wast",
     "memory_fill.wast",
     "memory_init.wast",
-    "memory_redundancy.wast",
     "names.wast",
     "ref_func.wast",
     "ref_is_null.wast",
@@ -52,7 +51,6 @@ const EXCLUDED: &[&str] = &[
     "table_set.wast",
     "table_size.wast",
     "traps.wast",
-    "unreached-valid.wast",
 ];
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
