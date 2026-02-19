@@ -63,6 +63,12 @@ impl From<ValType> for ValueType {
     }
 }
 
+impl From<RefType> for ValueType {
+    fn from(value: RefType) -> Self {
+        Self::from(ValType::Ref(value))
+    }
+}
+
 impl From<&GlobalType> for ValueType {
     fn from(value: &GlobalType) -> Self {
         Self::from(value.type_)
@@ -626,6 +632,18 @@ impl Validator {
                     }
                     self.pop_val_expect(gt.into())?;
                 }
+                Instruction::TableGet(idx) => {
+                    // [at] -> [t]
+                    self.pop_val_expect(ValueType::I32)?;
+                    let t = Self::table_type(module, *idx)?;
+                    self.push_val(t.elemtype.into());
+                }
+                Instruction::TableSet(idx) => {
+                    // [at t] -> []
+                    let t = Self::table_type(module, *idx)?;
+                    self.pop_val_expect(t.elemtype.into())?;
+                    self.pop_val_expect(ValueType::I32)?;
+                }
                 Instruction::I32Load(memarg) => {
                     self.validate_mem_load(module, memarg, 4, ValType::I32)?;
                 }
@@ -872,6 +890,13 @@ impl Validator {
                 | Instruction::I64Extend32S => self.validate_convop(ValType::I64, ValType::I64)?,
 
                 Instruction::RefNull(rt) => self.push_val(ValueType::Ref(*rt)),
+                Instruction::RefIsNull => {
+                    let v = self.pop_val()?;
+                    if !matches!(v, ValueType::Ref(_)) {
+                        return Err(ValidationError::TypeMismatch);
+                    }
+                    self.push_val(ValueType::I32);
+                }
                 Instruction::RefFunc(_) => self.push_val(ValueType::Ref(RefType::Func)),
 
                 Instruction::I32TruncSatF32S | Instruction::I32TruncSatF32U => {

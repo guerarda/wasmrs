@@ -118,6 +118,8 @@ instructions! {
     LocalTee(u32) : 0x22 : "local.tee",
     GlobalGet(GlobalIdx) : 0x23 : "global.get",
     GlobalSet(GlobalIdx) : 0x24 : "global.set",
+    TableGet(TableIdx) : 0x25 : "table.get",
+    TableSet(TableIdx) : 0x26 : "table.set",
 
     // Memory
     // Load
@@ -302,6 +304,7 @@ instructions! {
 
     // Reference
     RefNull(RefType) : 0xd0 : "ref.null",
+    RefIsNull : 0xd1 : "ref.is_null",
     RefFunc(FuncIdx) : 0xd2 : "ref.func",
 
     @prefix 0xfc {

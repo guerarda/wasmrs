@@ -498,6 +498,9 @@ impl<'a> ExecutionContext<'a> {
                         let v = self.value_stack.pop().unwrap();
                         Runtime::global_set(&mut self.store.globals, module_inst, *idx, v)?;
                     }
+                    Instruction::TableGet(_) => todo!(),
+                    Instruction::TableSet(_) => todo!(),
+
                     Instruction::I32Load(memarg) => load!(self, module_inst, memarg, i32, I32),
                     Instruction::I64Load(memarg) => {
                         load!(self, module_inst, memarg, i64, I64);
@@ -880,6 +883,13 @@ impl<'a> ExecutionContext<'a> {
 
                     // Ref
                     Instruction::RefNull(rt) => self.value_stack.push(Value::Ref(Ref::Null(*rt))),
+                    Instruction::RefIsNull => {
+                        let v = self.value_stack.pop().unwrap();
+                        match v {
+                            Value::Ref(r) => self.value_stack.push(Value::I32(r.is_null() as i32)),
+                            _ => unreachable!(),
+                        }
+                    }
                     Instruction::RefFunc(fi) => {
                         self.value_stack.push(Value::Ref(Ref::Func((*fi).into())))
                     }
