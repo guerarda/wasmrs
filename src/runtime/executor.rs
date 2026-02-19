@@ -6,6 +6,7 @@ use std::{
 use crate::{
     binary::types::{BlockType, MemIndex},
     instructions::Instruction,
+    limits::MAX_STACK_DEPTH,
     runtime::{
         Runtime, RuntimeError,
         instance::{ModuleInstance, ModuleRegistry},
@@ -331,7 +332,15 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub(super) fn execute(&mut self) -> result::Result<(), RuntimeError> {
-        while let Some(frame) = self.call_stack.last_mut() {
+        loop {
+            if self.call_stack.len() > MAX_STACK_DEPTH {
+                return Err(RuntimeError::trap("max stack depth"));
+            }
+
+            let Some(frame) = self.call_stack.last_mut() else {
+                break;
+            };
+
             let func_inst = self.store.functions.get(frame.funcaddr);
             let module_inst = self.module_registry.get_instance(func_inst.module);
             let instrs = &func_inst.func.body;
