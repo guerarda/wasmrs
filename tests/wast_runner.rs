@@ -25,7 +25,6 @@ const EXCLUDED: &[&str] = &[
     "f32.wast",
     "f64.wast",
     "float_exprs.wast",
-    "float_memory.wast",
     "func.wast",
     "func_ptrs.wast",
     "global.wast",
@@ -171,10 +170,18 @@ struct TrapAssertion {
     message: String,
 }
 
+/// A bare invoke (side-effecting, no assertion on return value)
+struct InvokeAction {
+    line: usize,
+    func_name: String,
+    args: Vec<TestArg>,
+}
+
 /// Union of assertion types
 enum Assertion {
     Return(ReturnAssertion),
     Trap(TrapAssertion),
+    Invoke(InvokeAction),
 }
 
 /// Represents a test case extracted from a WAST directive
@@ -468,13 +475,23 @@ fn collect_file_test_cases(
                     }
                 }
 
+                WastDirective::Invoke(invoke) => {
+                    let args: Option<Vec<_>> = invoke.args.iter().map(convert_wast_arg).collect();
+                    if let Some(args) = args {
+                        pending_assertions.push(Assertion::Invoke(InvokeAction {
+                            line,
+                            func_name: invoke.name.to_string(),
+                            args,
+                        }));
+                    }
+                }
+
                 other => {
                     let kind = match other {
                         WastDirective::AssertExhaustion { .. } => "AssertExhaustion",
                         WastDirective::AssertUnlinkable { .. } => "AssertUnlinkable",
                         WastDirective::AssertException { .. } => "AssertException",
                         WastDirective::AssertSuspension { .. } => "AssertSuspension",
-                        WastDirective::Invoke(_) => "Invoke",
                         WastDirective::Register { .. } => "Register",
                         WastDirective::Wait { .. } => "Wait",
                         WastDirective::Thread(_) => "Thread",
@@ -748,6 +765,33 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                                     panic_message(p)
                                 ));
                                 break; // runtime state is corrupted after panic
+                            }
+                        }
+                    }
+                    Assertion::Invoke(a) => {
+                        let runtime_args: Vec<_> = a.args.iter().map(test_arg_to_value).collect();
+
+                        let result = catch_unwind(AssertUnwindSafe(|| {
+                            runtime.invoke(mh, &a.func_name, &runtime_args)
+                        }));
+
+                        match result {
+                            Ok(Ok(_)) => {}
+                            Ok(Err(e)) => {
+                                failures.push(format!(
+                                    "[{}]line {}: invoke '{}' trapped: {}",
+                                    idx, a.line, a.func_name, e
+                                ));
+                            }
+                            Err(p) => {
+                                failures.push(format!(
+                                    "[{}]line {}: invoke '{}' panicked: {}",
+                                    idx,
+                                    a.line,
+                                    a.func_name,
+                                    panic_message(p)
+                                ));
+                                break;
                             }
                         }
                     }
