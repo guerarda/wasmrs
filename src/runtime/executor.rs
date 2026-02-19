@@ -69,17 +69,6 @@ macro_rules! comp_op {
     }};
 }
 
-macro_rules! conv_op {
-    ($self:expr, $from_variant:ident, $to_variant:ident, $op:expr) => {{
-        let val = $self.value_stack.pop().unwrap();
-        let res = match (val) {
-            Value::$from_variant(a) => $op(a),
-            _ => unreachable!(),
-        };
-        $self.value_stack.push(Value::$to_variant(res));
-    }};
-}
-
 macro_rules! try_binary_op {
     ($self:expr, $variant:ident, $op:expr) => {{
         let rhs = $self.value_stack.pop().unwrap();
@@ -104,6 +93,31 @@ macro_rules! try_binary_op {
         $self.value_stack.push(Value::$variant(res as _));
         Ok::<(), RuntimeError>(())
     }};
+}
+
+macro_rules! conv_op {
+    ($self:expr, $from_variant:ident, $to_variant:ident, $op:expr) => {{
+        let val = $self.value_stack.pop().unwrap();
+        let res = match (val) {
+            Value::$from_variant(a) => $op(a),
+            _ => unreachable!(),
+        };
+        $self.value_stack.push(Value::$to_variant(res));
+    }};
+}
+
+macro_rules! trunc {
+    ($from:ty, $to:ty, $val: ty) => {
+        |a: $from| -> $val {
+            if a.is_nan() {
+                RuntimeError::trap("");
+            }
+            if a >= (<$to>::MAX as $from) || a < (<$to>::MIN as $from) {
+                RuntimeError::trap("");
+            }
+            a as $to as $val
+        }
+    };
 }
 
 macro_rules! load {
@@ -748,50 +762,17 @@ impl<'a> ExecutionContext<'a> {
                         conv_op!(self, I32, I64, |a| a as u32 as i64);
                     }
                     Instruction::I64TruncF32S => {
-                        conv_op!(self, F32, I64, |a: f32| {
-                            if a.is_nan() {
-                                RuntimeError::trap("");
-                            }
-                            if a >= (i64::MAX as f32) || a < (i64::MIN as f32) {
-                                RuntimeError::trap("");
-                            }
-                            a as i64
-                        });
+                        conv_op!(self, F32, I64, trunc!(f32, i64, i64));
                     }
                     Instruction::I64TruncF32U => {
-                        conv_op!(self, F32, I64, |a: f32| {
-                            if a.is_nan() {
-                                RuntimeError::trap("");
-                            }
-                            if a >= (u64::MAX as f32) || a < 0.0 {
-                                RuntimeError::trap("");
-                            }
-                            a as u64 as i64
-                        });
+                        conv_op!(self, F32, I64, trunc!(f32, u64, i64));
                     }
                     Instruction::I64TruncF64S => {
-                        conv_op!(self, F64, I64, |a: f64| {
-                            if a.is_nan() {
-                                RuntimeError::trap("");
-                            }
-                            if a >= (i64::MAX as f64) || a < (i64::MIN as f64) {
-                                RuntimeError::trap("");
-                            }
-                            a as i64
-                        });
+                        conv_op!(self, F64, I64, trunc!(f64, i64, i64));
                     }
                     Instruction::I64TruncF64U => {
-                        conv_op!(self, F64, I64, |a: f64| {
-                            if a.is_nan() {
-                                RuntimeError::trap("");
-                            }
-                            if a >= (u64::MAX as f64) || a < 0.0 {
-                                RuntimeError::trap("");
-                            }
-                            a as u64 as i64
-                        });
+                        conv_op!(self, F64, I64, trunc!(f64, u64, i64));
                     }
-
                     Instruction::F64ConvertI32S => {
                         conv_op!(self, I32, F64, |a| a as f64);
                     }
