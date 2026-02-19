@@ -492,8 +492,7 @@ fn collect_file_test_cases(
                 }
 
                 WastDirective::AssertExhaustion { call, message, .. } => {
-                    let args: Option<Vec<_>> =
-                        call.args.iter().map(convert_wast_arg).collect();
+                    let args: Option<Vec<_>> = call.args.iter().map(convert_wast_arg).collect();
                     if let Some(args) = args {
                         pending_assertions.push(Assertion::Exhaustion(TrapAssertion {
                             line,
