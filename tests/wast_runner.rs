@@ -181,6 +181,7 @@ struct InvokeAction {
 enum Assertion {
     Return(ReturnAssertion),
     Trap(TrapAssertion),
+    Exhaustion(TrapAssertion),
     Invoke(InvokeAction),
 }
 
@@ -292,9 +293,13 @@ fn collect_file_test_cases(
                         .iter()
                         .filter(|a| matches!(a, Assertion::Trap(_)))
                         .count();
+                    let exhaustion_count = assertions
+                        .iter()
+                        .filter(|a| matches!(a, Assertion::Exhaustion(_)))
+                        .count();
                     let test_name = format!(
-                        "{}::[{}]line_{}::ModuleWithAssertions({} return, {} trap)",
-                        file_name, idx, line, return_count, trap_count
+                        "{}::[{}]line_{}::ModuleWithAssertions({} return, {} trap, {} exhaustion)",
+                        file_name, idx, line, return_count, trap_count, exhaustion_count
                     );
                     let tc = TestCase::ModuleWithAssertions {
                         idx,
@@ -486,9 +491,21 @@ fn collect_file_test_cases(
                     }
                 }
 
+                WastDirective::AssertExhaustion { call, message, .. } => {
+                    let args: Option<Vec<_>> =
+                        call.args.iter().map(convert_wast_arg).collect();
+                    if let Some(args) = args {
+                        pending_assertions.push(Assertion::Exhaustion(TrapAssertion {
+                            line,
+                            func_name: call.name.to_string(),
+                            args,
+                            message: message.to_string(),
+                        }));
+                    }
+                }
+
                 other => {
                     let kind = match other {
-                        WastDirective::AssertExhaustion { .. } => "AssertExhaustion",
                         WastDirective::AssertUnlinkable { .. } => "AssertUnlinkable",
                         WastDirective::AssertException { .. } => "AssertException",
                         WastDirective::AssertSuspension { .. } => "AssertSuspension",
@@ -765,6 +782,34 @@ fn run_test_case(test_case: TestCase) -> Result<(), Failed> {
                                     panic_message(p)
                                 ));
                                 break; // runtime state is corrupted after panic
+                            }
+                        }
+                    }
+                    Assertion::Exhaustion(a) => {
+                        let runtime_args: Vec<_> = a.args.iter().map(test_arg_to_value).collect();
+
+                        let result = catch_unwind(AssertUnwindSafe(|| {
+                            runtime.invoke(mh, &a.func_name, &runtime_args)
+                        }));
+
+                        match result {
+                            Ok(Ok(_)) => {
+                                failures.push(format!(
+                                    "[{}]line {}: '{}' expected exhaustion '{}', got success",
+                                    idx, a.line, a.func_name, a.message
+                                ));
+                            }
+                            Ok(Err(_)) => {} // Expected exhaustion - success
+                            Err(p) => {
+                                failures.push(format!(
+                                    "[{}]line {}: '{}' expected exhaustion '{}', got panic: {}",
+                                    idx,
+                                    a.line,
+                                    a.func_name,
+                                    a.message,
+                                    panic_message(p)
+                                ));
+                                break;
                             }
                         }
                     }
