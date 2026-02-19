@@ -801,6 +801,12 @@ impl Validator {
                 Instruction::F64Floor => self.validate_unop(ValType::F64)?,
                 Instruction::F64Add => self.validate_binop(ValType::F64)?,
                 Instruction::I32WrapI64 => self.validate_convop(ValType::I64, ValType::I32)?,
+                Instruction::I32TruncF32S | Instruction::I32TruncF32U => {
+                    self.validate_convop(ValType::F32, ValType::I32)?;
+                }
+                Instruction::I32TruncF64S | Instruction::I32TruncF64U => {
+                    self.validate_convop(ValType::F64, ValType::I32)?
+                }
                 Instruction::I64ExtendI32S | Instruction::I64ExtendI32U => {
                     self.validate_convop(ValType::I32, ValType::I64)?
                 }
@@ -810,6 +816,16 @@ impl Validator {
                 Instruction::I64TruncF64S | Instruction::I64TruncF64U => {
                     self.validate_convop(ValType::F64, ValType::I64)?
                 }
+                Instruction::F32ConvertI32S | Instruction::F32ConvertI32U => {
+                    self.validate_convop(ValType::I32, ValType::F32)?;
+                }
+                Instruction::F32ConvertI64S | Instruction::F32ConvertI64U => {
+                    self.validate_convop(ValType::I64, ValType::F32)?;
+                }
+                Instruction::F32DemoteF64 => {
+                    self.validate_convop(ValType::F64, ValType::F32)?;
+                }
+
                 Instruction::F64ConvertI32S | Instruction::F64ConvertI32U => {
                     self.validate_convop(ValType::I32, ValType::F64)?;
                 }

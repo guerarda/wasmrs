@@ -741,7 +741,6 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F32Copysign => {
                         binary_op!(self, F32, |a: f32, b: f32| a.copysign(b))
                     }
-
                     Instruction::F64Neg => {
                         unary_op!(self, F64, |a: f64| -a);
                     }
@@ -751,9 +750,22 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F64Add => {
                         binary_op!(self, F64, |a: f64, b: f64| a + b);
                     }
+
                     // Conversion ops
                     Instruction::I32WrapI64 => {
                         conv_op!(self, I64, I32, |a| a as i32);
+                    }
+                    Instruction::I32TruncF32S => {
+                        conv_op!(self, F32, I32, trunc!(f32, i32, i32));
+                    }
+                    Instruction::I32TruncF32U => {
+                        conv_op!(self, F32, I32, trunc!(f32, u32, i32));
+                    }
+                    Instruction::I32TruncF64S => {
+                        conv_op!(self, F32, I32, trunc!(f32, i32, i32));
+                    }
+                    Instruction::I32TruncF64U => {
+                        conv_op!(self, F32, I32, trunc!(f32, u32, i32));
                     }
                     Instruction::I64ExtendI32S => {
                         conv_op!(self, I32, I64, i64::from)
@@ -772,6 +784,21 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::I64TruncF64U => {
                         conv_op!(self, F64, I64, trunc!(f64, u64, i64));
+                    }
+                    Instruction::F32ConvertI32S => {
+                        conv_op!(self, I32, F32, |a: i32| a as f32);
+                    }
+                    Instruction::F32ConvertI32U => {
+                        conv_op!(self, I32, F32, |a: i32| a as u32 as f32);
+                    }
+                    Instruction::F32ConvertI64S => {
+                        conv_op!(self, I64, F32, |a: i64| a as f32);
+                    }
+                    Instruction::F32ConvertI64U => {
+                        conv_op!(self, I64, F32, |a: i64| a as u64 as f32);
+                    }
+                    Instruction::F32DemoteF64 => {
+                        conv_op!(self, F64, F32, |a: f64| a as f32);
                     }
                     Instruction::F64ConvertI32S => {
                         conv_op!(self, I32, F64, |a| a as f64);
