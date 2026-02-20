@@ -310,6 +310,10 @@ instructions! {
     @prefix 0xfc {
         I32TruncSatF32S : 0x00 : "i32_trunc_sat_f32_s",
         I32TruncSatF32U : 0x01 : "i32_trunc_sat_f32_u",
+        I32TruncSatF64S : 0x02 : "i32_trunc_sat_f64_s",
+        I32TruncSatF64U : 0x03 : "i32_trunc_sat_f64_u",
+        I64TruncSatF32S : 0x04 : "i64_trunc_sat_f32_s",
+        I64TruncSatF32U : 0x05 : "i64_trunc_sat_f32_u",
         I64TruncSatF64S : 0x06 : "i64_trunc_sat_f64_s",
         I64TruncSatF64U : 0x07 : "i64_trunc_sat_f64_u",
         MemoryInit((MemIndex, DataIdx)) : 0x08 : "memory.init",

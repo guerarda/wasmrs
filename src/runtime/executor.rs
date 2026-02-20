@@ -107,16 +107,28 @@ macro_rules! conv_op {
     }};
 }
 
+macro_rules! try_conv_op {
+    ($self:expr, $from_variant:ident, $to_variant:ident, $op:expr) => {{
+        let val = $self.value_stack.pop().unwrap();
+        let res = match (val) {
+            Value::$from_variant(a) => $op(a).ok_or(RuntimeError::trap(""))?,
+            _ => unreachable!(),
+        };
+        $self.value_stack.push(Value::$to_variant(res));
+    }};
+}
+
 macro_rules! trunc {
     ($from:ty, $to:ty, $val: ty) => {
-        |a: $from| -> $val {
+        |a: $from| -> Option<$val> {
             if a.is_nan() {
-                RuntimeError::trap("");
+                return None;
             }
-            if a >= (<$to>::MAX as $from) || a < (<$to>::MIN as $from) {
-                RuntimeError::trap("");
+            let a = a.trunc();
+            if a >= (<$to>::MAX as $from) + 1.0 || a < (<$to>::MIN as $from) {
+                return None;
             }
-            a as $to as $val
+            Some(a as $to as $val)
         }
     };
 }
@@ -800,16 +812,16 @@ impl<'a> ExecutionContext<'a> {
                         conv_op!(self, I64, I32, |a| a as i32);
                     }
                     Instruction::I32TruncF32S => {
-                        conv_op!(self, F32, I32, trunc!(f32, i32, i32));
+                        try_conv_op!(self, F32, I32, trunc!(f32, i32, i32));
                     }
                     Instruction::I32TruncF32U => {
-                        conv_op!(self, F32, I32, trunc!(f32, u32, i32));
+                        try_conv_op!(self, F32, I32, trunc!(f32, u32, i32));
                     }
                     Instruction::I32TruncF64S => {
-                        conv_op!(self, F32, I32, trunc!(f32, i32, i32));
+                        try_conv_op!(self, F64, I32, trunc!(f64, i32, i32));
                     }
                     Instruction::I32TruncF64U => {
-                        conv_op!(self, F32, I32, trunc!(f32, u32, i32));
+                        try_conv_op!(self, F64, I32, trunc!(f64, u32, i32));
                     }
                     Instruction::I64ExtendI32S => {
                         conv_op!(self, I32, I64, i64::from)
@@ -818,16 +830,16 @@ impl<'a> ExecutionContext<'a> {
                         conv_op!(self, I32, I64, |a| a as u32 as i64);
                     }
                     Instruction::I64TruncF32S => {
-                        conv_op!(self, F32, I64, trunc!(f32, i64, i64));
+                        try_conv_op!(self, F32, I64, trunc!(f32, i64, i64));
                     }
                     Instruction::I64TruncF32U => {
-                        conv_op!(self, F32, I64, trunc!(f32, u64, i64));
+                        try_conv_op!(self, F32, I64, trunc!(f32, u64, i64));
                     }
                     Instruction::I64TruncF64S => {
-                        conv_op!(self, F64, I64, trunc!(f64, i64, i64));
+                        try_conv_op!(self, F64, I64, trunc!(f64, i64, i64));
                     }
                     Instruction::I64TruncF64U => {
-                        conv_op!(self, F64, I64, trunc!(f64, u64, i64));
+                        try_conv_op!(self, F64, I64, trunc!(f64, u64, i64));
                     }
                     Instruction::F32ConvertI32S => {
                         conv_op!(self, I32, F32, |a: i32| a as f32);
@@ -893,10 +905,30 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::RefFunc(fi) => {
                         self.value_stack.push(Value::Ref(Ref::Func((*fi).into())))
                     }
-                    Instruction::I32TruncSatF32S => todo!(),
-                    Instruction::I32TruncSatF32U => todo!(),
-                    Instruction::I64TruncSatF64S => todo!(),
-                    Instruction::I64TruncSatF64U => todo!(),
+                    Instruction::I32TruncSatF32S => {
+                        conv_op!(self, F32, I32, |a: f32| a as i32);
+                    }
+                    Instruction::I32TruncSatF32U => {
+                        conv_op!(self, F32, I32, |a: f32| a as u32 as i32);
+                    }
+                    Instruction::I32TruncSatF64S => {
+                        conv_op!(self, F64, I32, |a: f64| a as i32);
+                    }
+                    Instruction::I32TruncSatF64U => {
+                        conv_op!(self, F64, I32, |a: f64| a as u32 as i32);
+                    }
+                    Instruction::I64TruncSatF32S => {
+                        conv_op!(self, F32, I64, |a: f32| a as i64);
+                    }
+                    Instruction::I64TruncSatF32U => {
+                        conv_op!(self, F32, I64, |a: f32| a as u64 as i64);
+                    }
+                    Instruction::I64TruncSatF64S => {
+                        conv_op!(self, F64, I64, |a: f64| a as i64);
+                    }
+                    Instruction::I64TruncSatF64U => {
+                        conv_op!(self, F64, I64, |a: f64| a as u64 as i64);
+                    }
 
                     Instruction::MemoryInit(_) => todo!(),
                     Instruction::DataDrop(idx) => {

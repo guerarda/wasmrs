@@ -18,7 +18,6 @@ const EXCLUDED: &[&str] = &[
     "align.wast",
     "bulk.wast",
     "call_indirect.wast",
-    "conversions.wast",
     "data.wast",
     "elem.wast",
     "exports.wast",

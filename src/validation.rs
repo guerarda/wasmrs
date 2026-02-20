@@ -902,6 +902,12 @@ impl Validator {
                 Instruction::I32TruncSatF32S | Instruction::I32TruncSatF32U => {
                     self.validate_convop(ValType::F32, ValType::I32)?
                 }
+                Instruction::I32TruncSatF64S | Instruction::I32TruncSatF64U => {
+                    self.validate_convop(ValType::F64, ValType::I32)?
+                }
+                Instruction::I64TruncSatF32S | Instruction::I64TruncSatF32U => {
+                    self.validate_convop(ValType::F32, ValType::I64)?
+                }
                 Instruction::I64TruncSatF64S | Instruction::I64TruncSatF64U => {
                     self.validate_convop(ValType::F64, ValType::I64)?
                 }
