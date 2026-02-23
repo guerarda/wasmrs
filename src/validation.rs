@@ -13,6 +13,7 @@ use crate::{
         types::{BlockType, FuncType, GlobalIdx, MemArg, MemIndex, RefType, ValType},
     },
     instructions::Instruction,
+    limits::{MAX_TABLE_SIZE, MAX_WASM_32BIT_MEMORY_PAGES},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -110,6 +111,7 @@ pub enum ValidationError {
     MissingGlobalSection,
     InvalidSelectTypes,
     InvalidMemAlignment,
+    InvalidLimit,
 }
 
 impl error::Error for ValidationError {
@@ -138,6 +140,7 @@ impl fmt::Display for ValidationError {
             Self::MissingGlobalSection => write!(f, "missing global section"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
             Self::InvalidMemAlignment => write!(f, "invalid mem alignment"),
+            Self::InvalidLimit => write!(f, "invalid limit"),
         }
     }
 }
@@ -995,7 +998,38 @@ impl Validator {
         Ok(())
     }
 
+    fn validate_table_section(module: &Module) -> result::Result<(), ValidationError> {
+        let Some(ref tablesec) = module.tables else {
+            return Ok(());
+        };
+        if tablesec.iter().any(|t| {
+            let l = &t.tabletype.limit;
+            l.min > MAX_TABLE_SIZE || l.max.is_some_and(|max| max > MAX_TABLE_SIZE || l.min > max)
+        }) {
+            return Err(ValidationError::InvalidLimit);
+        }
+        Ok(())
+    }
+
+    fn validate_memory_section(module: &Module) -> result::Result<(), ValidationError> {
+        let Some(ref memsec) = module.memories else {
+            return Ok(());
+        };
+        if memsec.iter().any(|m| {
+            let l = &m.0;
+            l.min > MAX_WASM_32BIT_MEMORY_PAGES
+                || l.max
+                    .is_some_and(|max| max > MAX_WASM_32BIT_MEMORY_PAGES || l.min > max)
+        }) {
+            return Err(ValidationError::InvalidLimit);
+        }
+        Ok(())
+    }
+
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
+        Self::validate_table_section(module)?;
+        Self::validate_memory_section(module)?;
+
         // At this point Function and Code section should be consistent
         debug_assert_eq!(module.functions.is_some(), module.codes.is_some());
 
