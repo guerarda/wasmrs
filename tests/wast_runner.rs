@@ -33,16 +33,13 @@ const EXCLUDED: &[&str] = &[
     "memory_init.wast",
     "names.wast",
     "ref_func.wast",
-    "ref_is_null.wast",
     "start.wast",
     "table.wast",
     "table-sub.wast",
     "table_copy.wast",
     "table_fill.wast",
-    "table_get.wast",
     "table_grow.wast",
     "table_init.wast",
-    "table_set.wast",
     "table_size.wast",
 ];
 
