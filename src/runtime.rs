@@ -252,7 +252,10 @@ impl Runtime {
         module_inst: &ModuleInstance,
         idx: GlobalIdx,
     ) -> result::Result<Value, RuntimeError> {
-        let a = module_inst.globals.get(idx as usize).unwrap();
+        let a = module_inst
+            .globals
+            .get(idx as usize)
+            .ok_or(RuntimeError::trap("undefined global"))?;
         let g = globals.get(*a);
 
         Ok(g.value)
@@ -264,7 +267,10 @@ impl Runtime {
         idx: GlobalIdx,
         val: Value,
     ) -> result::Result<(), RuntimeError> {
-        let a = module_inst.globals.get(idx as usize).unwrap();
+        let a = module_inst
+            .globals
+            .get(idx as usize)
+            .ok_or(RuntimeError::trap("undefined global"))?;
         let g = globals.get_mut(*a);
 
         // TODO Assert on type
@@ -278,7 +284,10 @@ impl Runtime {
         module_inst: &ModuleInstance,
         idx: TableIdx,
     ) -> result::Result<&'a TableInstance, RuntimeError> {
-        let a = module_inst.tables.get(idx as usize).unwrap();
+        let a = module_inst
+            .tables
+            .get(idx as usize)
+            .ok_or(RuntimeError::trap("undefined table"))?;
         Ok(tables.get(*a))
     }
 
@@ -287,7 +296,10 @@ impl Runtime {
         module_inst: &ModuleInstance,
         idx: MemIndex,
     ) -> result::Result<&'a MemoryInstance, RuntimeError> {
-        let a = module_inst.mems.get(idx.0 as usize).unwrap();
+        let a = module_inst
+            .mems
+            .get(idx.0 as usize)
+            .ok_or(RuntimeError::trap("undefined memory"))?;
         Ok(memories.get(*a))
     }
 
@@ -296,7 +308,10 @@ impl Runtime {
         module_inst: &ModuleInstance,
         idx: MemIndex,
     ) -> result::Result<&'a mut MemoryInstance, RuntimeError> {
-        let a = module_inst.mems.get(idx.0 as usize).unwrap();
+        let a = module_inst
+            .mems
+            .get(idx.0 as usize)
+            .ok_or(RuntimeError::trap("undefined memory"))?;
         Ok(memories.get_mut(*a))
     }
 
