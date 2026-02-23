@@ -433,7 +433,7 @@ impl<'a> ExecutionContext<'a> {
                         let funcaddr = module_inst.funcs[*idx as usize];
                         self.call(funcaddr);
                     }
-                    Instruction::CallIndirect((table_idx, type_idx)) => {
+                    Instruction::CallIndirect((type_idx, table_idx)) => {
                         let tab_inst =
                             Runtime::table_get(&self.store.tables, module_inst, *table_idx)?;
                         let ft = &module_inst.types[*type_idx as usize];
