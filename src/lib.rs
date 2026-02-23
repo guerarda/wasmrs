@@ -9,6 +9,7 @@ pub mod runtime;
 mod validation;
 
 pub use binary::MalformedError;
+pub use binary::types::RefType;
 
 use validation::ValidationError;
 

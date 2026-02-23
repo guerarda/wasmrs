@@ -9,8 +9,9 @@ use wast::parser::{self, ParseBuffer};
 use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
 use wasmrs::Error;
+use wasmrs::RefType;
 use wasmrs::runtime::Runtime;
-use wasmrs::runtime::value::Value;
+use wasmrs::runtime::value::{Ref, Value};
 use wasmrs::{parse_module, validate_module};
 
 /// Wast files to skip by default. Use --all to include them.
@@ -52,6 +53,8 @@ enum TestArg {
     I64(i64),
     F32(u32), // stored as bits
     F64(u64), // stored as bits
+    RefNull(RefType),
+    RefExtern(u32),
 }
 
 /// Owned expected return value with NaN pattern support
@@ -61,6 +64,9 @@ enum TestRet {
     I64(i64),
     F32(TestF32Pattern),
     F64(TestF64Pattern),
+    RefNull,
+    RefExtern(u32),
+    RefFunc,
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +90,22 @@ fn convert_wast_arg(arg: &WastArg) -> Option<TestArg> {
             WastArgCore::I64(v) => Some(TestArg::I64(*v)),
             WastArgCore::F32(f) => Some(TestArg::F32(f.bits)),
             WastArgCore::F64(f) => Some(TestArg::F64(f.bits)),
-            _ => None, // V128, RefNull, etc. not yet supported
+            WastArgCore::RefNull(heap_type) => {
+                use wast::core::HeapType;
+                match heap_type {
+                    HeapType::Abstract {
+                        ty: wast::core::AbstractHeapType::Func,
+                        ..
+                    } => Some(TestArg::RefNull(RefType::Func)),
+                    HeapType::Abstract {
+                        ty: wast::core::AbstractHeapType::Extern,
+                        ..
+                    } => Some(TestArg::RefNull(RefType::Extern)),
+                    _ => None,
+                }
+            }
+            WastArgCore::RefExtern(v) => Some(TestArg::RefExtern(*v)),
+            _ => None, // V128, etc. not yet supported
         },
         _ => None, // Component model not supported
     }
@@ -105,7 +126,10 @@ fn convert_wast_ret(ret: &WastRet) -> Option<TestRet> {
                 NanPattern::ArithmeticNan => TestF64Pattern::ArithmeticNan,
                 NanPattern::Value(f) => TestF64Pattern::Value(f.bits),
             })),
-            _ => None, // V128, refs, etc. not yet supported
+            WastRetCore::RefNull(_) => Some(TestRet::RefNull),
+            WastRetCore::RefExtern(Some(v)) => Some(TestRet::RefExtern(*v)),
+            WastRetCore::RefFunc(_) => Some(TestRet::RefFunc),
+            _ => None, // V128, etc. not yet supported
         },
         _ => None, // Component model not supported
     }
@@ -117,6 +141,8 @@ fn test_arg_to_value(arg: &TestArg) -> Value {
         TestArg::I64(v) => Value::I64(*v),
         TestArg::F32(bits) => Value::F32(f32::from_bits(*bits)),
         TestArg::F64(bits) => Value::F64(f64::from_bits(*bits)),
+        TestArg::RefNull(rt) => Value::Ref(Ref::Null(*rt)),
+        TestArg::RefExtern(v) => Value::Ref(Ref::Extern(*v)),
     }
 }
 
@@ -140,6 +166,9 @@ fn value_matches(actual: &Value, expected: &TestRet) -> bool {
                 a.is_nan() && (a.to_bits() & 0x0008_0000_0000_0000) != 0
             }
         },
+        (Value::Ref(r), TestRet::RefNull) => r.is_null(),
+        (Value::Ref(Ref::Extern(v)), TestRet::RefExtern(e)) => v == e,
+        (Value::Ref(Ref::Func(_)), TestRet::RefFunc) => true,
         _ => false,
     }
 }
