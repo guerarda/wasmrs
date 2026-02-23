@@ -510,8 +510,43 @@ impl<'a> ExecutionContext<'a> {
                         let v = self.value_stack.pop().unwrap();
                         Runtime::global_set(&mut self.store.globals, module_inst, *idx, v)?;
                     }
-                    Instruction::TableGet(_) => todo!(),
-                    Instruction::TableSet(_) => todo!(),
+                    Instruction::TableGet(table_idx) => {
+                        let i = self
+                            .value_stack
+                            .pop()
+                            .unwrap()
+                            .as_i32()
+                            .ok_or(RuntimeError::trap("table.get, assert i32 on the stack"))?;
+                        let ti = Runtime::table_get(&self.store.tables, module_inst, *table_idx)?;
+                        let r = ti
+                            .refs
+                            .get(i as usize)
+                            .ok_or(RuntimeError::trap("table access out of bounds"))?;
+
+                        self.value_stack.push(Value::Ref(*r));
+                    }
+                    Instruction::TableSet(table_idx) => {
+                        let rv = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_ref())
+                            .ok_or(RuntimeError::trap("table.set, assert ref on the stack"))?;
+                        let i = self
+                            .value_stack
+                            .pop()
+                            .unwrap()
+                            .as_i32()
+                            .ok_or(RuntimeError::trap("table.get, assert i32 on the stack"))?;
+                        let ti = Runtime::table_get_mut(
+                            &mut self.store.tables,
+                            module_inst,
+                            *table_idx,
+                        )?;
+
+                        *ti.refs
+                            .get_mut(i as usize)
+                            .ok_or(RuntimeError::trap("table access out of bounds"))? = rv;
+                    }
 
                     Instruction::I32Load(memarg) => load!(self, module_inst, memarg, i32, I32),
                     Instruction::I64Load(memarg) => {
@@ -956,10 +991,45 @@ impl<'a> ExecutionContext<'a> {
                         let da = module_inst.datas[*idx as usize];
                         self.store.data.drop(da);
                     }
-                    Instruction::TableInit(_) => todo!(),
+                    Instruction::TableInit((elem_idx, table_idx)) => {
+                        let n = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_i32())
+                            .ok_or(RuntimeError::trap(""))?
+                            as usize;
+
+                        let j = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_i32())
+                            .ok_or(RuntimeError::trap(""))?
+                            as usize;
+
+                        let i = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_i32())
+                            .ok_or(RuntimeError::trap(""))?
+                            as usize;
+
+                        let ti = Runtime::table_get_mut(
+                            &mut self.store.tables,
+                            module_inst,
+                            *table_idx,
+                        )?;
+                        let ei =
+                            Runtime::element_get(&self.store.elements, module_inst, *elem_idx)?;
+
+                        ti.init(i, j, n, ei)?;
+                    }
                     Instruction::ElemDrop(idx) => {
                         let ea = module_inst.elems[*idx as usize];
                         self.store.elements.drop(ea);
+                    }
+                    Instruction::TableSize(idx) => {
+                        let ti = Runtime::table_get(&self.store.tables, module_inst, *idx)?;
+                        self.value_stack.push(Value::I32(ti.refs.len() as i32));
                     }
                 }
             }

@@ -911,7 +911,7 @@ impl Validator {
                 Instruction::I64TruncSatF64S | Instruction::I64TruncSatF64U => {
                     self.validate_convop(ValType::F64, ValType::I64)?
                 }
-                Instruction::MemoryInit((memidx, dataidx)) => {
+                Instruction::MemoryInit((dataidx, memidx)) => {
                     // [at, i32, i32] -> []
                     self.pop_val_expect(ValueType::I32)?;
                     self.pop_val_expect(ValueType::I32)?;
@@ -944,7 +944,7 @@ impl Validator {
                         return Err(ValidationError::UnknownData);
                     }
                 }
-                Instruction::TableInit((tableidx, elemidx)) => {
+                Instruction::TableInit((elemidx, tableidx)) => {
                     // [at, i32, i32] -> []
                     self.pop_val_expect(ValueType::I32)?;
                     self.pop_val_expect(ValueType::I32)?;
@@ -981,6 +981,13 @@ impl Validator {
                     {
                         return Err(ValidationError::UnknownElement);
                     }
+                }
+                Instruction::TableSize(idx) => {
+                    module
+                        .tables
+                        .as_ref()
+                        .and_then(|tables| tables.get(*idx as usize))
+                        .ok_or(ValidationError::UnknownTable)?;
                 }
             }
         }

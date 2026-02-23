@@ -333,7 +333,13 @@ impl Elements {
         ElemAddr(self.0.len() - 1)
     }
 
-    pub fn get(&mut self, addr: ElemAddr) -> &mut ElemInstance {
+    pub fn get(&self, addr: ElemAddr) -> &ElemInstance {
+        let elem = self.0.get(addr.0).unwrap();
+        assert!(!elem.dropped);
+        elem
+    }
+
+    pub fn get_mut(&mut self, addr: ElemAddr) -> &mut ElemInstance {
         let elem = self.0.get_mut(addr.0).unwrap();
         assert!(!elem.dropped);
         elem

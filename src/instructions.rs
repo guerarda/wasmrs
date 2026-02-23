@@ -316,10 +316,11 @@ instructions! {
         I64TruncSatF32U : 0x05 : "i64_trunc_sat_f32_u",
         I64TruncSatF64S : 0x06 : "i64_trunc_sat_f64_s",
         I64TruncSatF64U : 0x07 : "i64_trunc_sat_f64_u",
-        MemoryInit((MemIndex, DataIdx)) : 0x08 : "memory.init",
+        MemoryInit((DataIdx, MemIndex)) : 0x08 : "memory.init",
         DataDrop(DataIdx) : 0x09 : "data.drop",
-        TableInit((TableIdx, ElemIdx)) : 0x0c : "table.init",
+        TableInit((ElemIdx, TableIdx)) : 0x0c : "table.init",
         ElemDrop(ElemIdx) : 0x0d : "elem.drop",
+        TableSize(TableIdx) : 0x10 : "table.size",
     }
 }
 

@@ -8,7 +8,7 @@ use crate::{
             data::DataSegmentMode,
             element::{ElementSegmentItems, ElementSegmentMode},
         },
-        types::{ConstExpression, GlobalIdx, MemIndex, RefType, TableIdx},
+        types::{ConstExpression, ElemIdx, GlobalIdx, MemIndex, RefType, TableIdx},
     },
     instructions::Instruction,
     runtime::{
@@ -16,7 +16,8 @@ use crate::{
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
         store::{
-            FuncAddr, Globals, Memories, MemoryInstance, Store, TableAddr, TableInstance, Tables,
+            ElemInstance, Elements, FuncAddr, Globals, Memories, MemoryInstance, Store, TableAddr,
+            TableInstance, Tables,
         },
         value::{ExternVal, Ref, Value},
     },
@@ -289,6 +290,30 @@ impl Runtime {
             .get(idx as usize)
             .ok_or(RuntimeError::trap("undefined table"))?;
         Ok(tables.get(*a))
+    }
+
+    pub(super) fn table_get_mut<'a>(
+        tables: &'a mut Tables,
+        module_inst: &ModuleInstance,
+        idx: TableIdx,
+    ) -> result::Result<&'a mut TableInstance, RuntimeError> {
+        let a = module_inst
+            .tables
+            .get(idx as usize)
+            .ok_or(RuntimeError::trap("undefined table"))?;
+        Ok(tables.get_mut(*a))
+    }
+
+    pub(super) fn element_get<'a>(
+        elements: &'a Elements,
+        module_inst: &ModuleInstance,
+        idx: ElemIdx,
+    ) -> result::Result<&'a ElemInstance, RuntimeError> {
+        let a = module_inst
+            .elems
+            .get(idx as usize)
+            .ok_or(RuntimeError::trap("undefined element"))?;
+        Ok(elements.get(*a))
     }
 
     pub(super) fn memory_get<'a>(
