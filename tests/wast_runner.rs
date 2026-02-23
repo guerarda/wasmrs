@@ -23,7 +23,6 @@ const EXCLUDED: &[&str] = &[
     "exports.wast",
     "f32.wast",
     "f64.wast",
-    "float_exprs.wast",
     "func.wast",
     "func_ptrs.wast",
     "global.wast",
@@ -49,7 +48,6 @@ const EXCLUDED: &[&str] = &[
     "table_init.wast",
     "table_set.wast",
     "table_size.wast",
-    "traps.wast",
 ];
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
