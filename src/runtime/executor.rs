@@ -771,8 +771,21 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::F32Sub => binary_op!(self, F32, |a: f32, b: f32| a - b),
                     Instruction::F32Mul => binary_op!(self, F32, |a: f32, b: f32| a * b),
                     Instruction::F32Div => binary_op!(self, F32, |a: f32, b: f32| a / b),
-                    Instruction::F32Min => binary_op!(self, F32, |a: f32, b: f32| a.min(b)),
-                    Instruction::F32Max => binary_op!(self, F32, |a: f32, b: f32| a.max(b)),
+                    Instruction::F32Min => {
+                        binary_op!(self, F32, |a: f32, b: f32| if a.is_nan() || b.is_nan() {
+                            f32::NAN
+                        } else {
+                            a.min(b)
+                        })
+                    }
+
+                    Instruction::F32Max => {
+                        binary_op!(self, F32, |a: f32, b: f32| if a.is_nan() || b.is_nan() {
+                            f32::NAN
+                        } else {
+                            a.max(b)
+                        })
+                    }
                     Instruction::F32Copysign => {
                         binary_op!(self, F32, |a: f32, b: f32| a.copysign(b))
                     }
@@ -798,10 +811,18 @@ impl<'a> ExecutionContext<'a> {
                         binary_op!(self, F64, |a: f64, b: f64| a / b);
                     }
                     Instruction::F64Min => {
-                        binary_op!(self, F64, |a: f64, b: f64| a.min(b));
+                        binary_op!(self, F64, |a: f64, b: f64| if a.is_nan() || b.is_nan() {
+                            f64::NAN
+                        } else {
+                            a.min(b)
+                        });
                     }
                     Instruction::F64Max => {
-                        binary_op!(self, F64, |a: f64, b: f64| a.max(b));
+                        binary_op!(self, F64, |a: f64, b: f64| if a.is_nan() || b.is_nan() {
+                            f64::NAN
+                        } else {
+                            a.max(b)
+                        });
                     }
                     Instruction::F64Copysign => {
                         binary_op!(self, F64, |a: f64, b: f64| a.copysign(b));
