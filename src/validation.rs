@@ -5,7 +5,7 @@ use crate::{
         module::Module,
         sections::{
             code::{CodeEntry, FuncLocal},
-            element::ElementSegmentItems,
+            element::{ElementSegmentItems, ElementSegmentMode},
             global::{GlobalType, MutabilityFlag},
             memory::MemType,
             table::TableType,
@@ -112,6 +112,7 @@ pub enum ValidationError {
     InvalidSelectTypes,
     InvalidMemAlignment,
     InvalidLimit,
+    InvalidElement,
 }
 
 impl error::Error for ValidationError {
@@ -141,6 +142,7 @@ impl fmt::Display for ValidationError {
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
             Self::InvalidMemAlignment => write!(f, "invalid mem alignment"),
             Self::InvalidLimit => write!(f, "invalid limit"),
+            Self::InvalidElement => write!(f, "invalid element"),
         }
     }
 }
@@ -1026,9 +1028,43 @@ impl Validator {
         Ok(())
     }
 
+    fn validate_element_section(module: &Module) -> result::Result<(), ValidationError> {
+        let Some(ref elemsec) = module.elements else {
+            return Ok(());
+        };
+        for e in elemsec {
+            // TODO validate const expression
+
+            let rt = match &e.items {
+                ElementSegmentItems::Functions(funcs) => {
+                    for f in funcs {
+                        Self::func_type_at(module, f.0)?;
+                    }
+                    RefType::Func
+                }
+                ElementSegmentItems::Expressions(rt, ..) => *rt,
+            };
+
+            if let ElementSegmentMode::Active { table_index, .. } = &e.mode {
+                let tableidx = table_index.unwrap_or(0);
+                let table = module
+                    .tables
+                    .as_ref()
+                    .and_then(|tables| tables.get(tableidx as usize))
+                    .ok_or(ValidationError::UnknownTable)?;
+
+                if table.tabletype.elemtype != rt {
+                    return Err(ValidationError::TypeMismatch);
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
         Self::validate_table_section(module)?;
         Self::validate_memory_section(module)?;
+        Self::validate_element_section(module)?;
 
         // At this point Function and Code section should be consistent
         debug_assert_eq!(module.functions.is_some(), module.codes.is_some());
