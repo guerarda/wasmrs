@@ -123,12 +123,12 @@ impl MemoryInstance {
         Ok(Some(sz))
     }
 
-    pub(super) fn slice<'a>(
-        &'a self,
+    pub(super) fn slice(
+        &self,
         base: i32,
         offset: u32,
         len: usize,
-    ) -> result::Result<&'a [u8], RuntimeError> {
+    ) -> result::Result<&[u8], RuntimeError> {
         let ea = (base as u32)
             .checked_add(offset)
             .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
@@ -145,12 +145,12 @@ impl MemoryInstance {
         Ok(&self.data[ea..end])
     }
 
-    pub(super) fn slice_mut<'a>(
-        &'a mut self,
+    pub(super) fn slice_mut(
+        &mut self,
         base: i32,
         offset: u32,
         len: usize,
-    ) -> result::Result<&'a mut [u8], RuntimeError> {
+    ) -> result::Result<&mut [u8], RuntimeError> {
         // Calculate effective address
         let ea = (base as u32)
             .checked_add(offset)
