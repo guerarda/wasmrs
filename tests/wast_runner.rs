@@ -31,12 +31,9 @@ const EXCLUDED: &[&str] = &[
     "names.wast",
     "ref_func.wast",
     "start.wast",
-    "table-sub.wast",
     "table_copy.wast",
-    "table_fill.wast",
     "table_grow.wast",
     "table_init.wast",
-    "table_size.wast",
 ];
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
