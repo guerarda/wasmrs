@@ -10,7 +10,7 @@ use crate::{
         types::{FuncType, RefType, TypeIdx, ValType},
     },
     instructions::Instruction,
-    limits::MAX_WASM_32BIT_MEMORY_PAGES,
+    limits::{MAX_WASM_32BIT_MEMORY_PAGES, MAX_WASM_TABLE_LEN},
     runtime::{
         RuntimeError, WASM_MEM_PAGE_BYTE_SIZE,
         instance::ModuleHandle,
@@ -80,19 +80,21 @@ impl MemoryInstance {
         len: usize,
         data_inst: &DataInstance,
     ) -> result::Result<(), RuntimeError> {
-        if dst + len > self.data.len() {
-            return Err(RuntimeError::trap("out of bounds memory access"));
-        }
+        let dst_end = dst
+            .checked_add(len)
+            .filter(|&end| end <= self.data.len())
+            .ok_or_else(|| RuntimeError::trap("out of bounds memory access"))?;
 
-        if src + len > data_inst.data.len() {
-            return Err(RuntimeError::trap("out of bounds memory access"));
-        }
+        let src_end = src
+            .checked_add(len)
+            .filter(|&end| end <= data_inst.data.len())
+            .ok_or_else(|| RuntimeError::trap("out of bounds memory access"))?;
 
         if len == 0 {
             return Ok(());
         }
 
-        self.data[dst..dst + len].copy_from_slice(&data_inst.data[src..src + len]);
+        self.data[dst..dst_end].copy_from_slice(&data_inst.data[src..src_end]);
         Ok(())
     }
 
@@ -253,7 +255,6 @@ pub struct Tables(pub Vec<TableInstance>);
 
 #[derive(Debug)]
 pub struct TableInstance {
-    #[allow(dead_code)]
     tabletype: TableType,
     pub refs: Vec<Ref>,
 }
@@ -270,20 +271,75 @@ impl TableInstance {
         len: usize,
         elem_inst: &ElemInstance,
     ) -> result::Result<(), RuntimeError> {
-        if dst + len > self.refs.len() {
-            return Err(RuntimeError::trap("out of bounds table access"));
-        }
+        let dst_end = dst
+            .checked_add(len)
+            .filter(|&end| end <= self.refs.len())
+            .ok_or_else(|| RuntimeError::trap("out of bounds table access"))?;
 
-        if src + len > elem_inst.refs.len() {
-            return Err(RuntimeError::trap("out of bounds table access"));
-        }
+        let src_end = src
+            .checked_add(len)
+            .filter(|&end| end <= elem_inst.refs.len())
+            .ok_or_else(|| RuntimeError::trap("out of bounds table access"))?;
 
         if len == 0 {
             return Ok(());
         }
 
-        self.refs[dst..dst + len].copy_from_slice(&elem_inst.refs[src..src + len]);
+        self.refs[dst..dst_end].copy_from_slice(&elem_inst.refs[src..src_end]);
         Ok(())
+    }
+
+    pub(super) fn grow(&mut self, inc: u32, val: Ref) -> result::Result<Option<u32>, RuntimeError> {
+        let len = self.refs.len();
+        let new_len = match len.checked_add(inc as usize) {
+            Some(n) => n,
+            _ => return Ok(None),
+        };
+
+        if new_len > MAX_WASM_TABLE_LEN {
+            return Ok(None);
+        }
+
+        if let Some(max_sz) = self.tabletype.limit.max
+            && new_len > (max_sz as usize)
+        {
+            return Ok(None);
+        }
+
+        self.refs.resize(new_len, val);
+
+        Ok(Some(len as u32))
+    }
+
+    pub(super) fn slice(&self, base: i32, len: usize) -> result::Result<&[Ref], RuntimeError> {
+        let base = base as usize;
+        let end = base
+            .checked_add(len)
+            .ok_or_else(|| RuntimeError::trap("out-of-bound table access"))?;
+
+        if end > self.refs.len() {
+            return Err(RuntimeError::trap("out-of-bound table access"));
+        }
+
+        Ok(&self.refs[base..end])
+    }
+
+    pub(super) fn slice_mut(
+        &mut self,
+        base: i32,
+        len: usize,
+    ) -> result::Result<&mut [Ref], RuntimeError> {
+        let base = base as usize;
+
+        let end = base
+            .checked_add(len)
+            .ok_or_else(|| RuntimeError::trap("out-of-bound table access"))?;
+
+        if end > self.refs.len() {
+            return Err(RuntimeError::trap("out-of-bound table access"));
+        }
+
+        Ok(&mut self.refs[base..end])
     }
 }
 

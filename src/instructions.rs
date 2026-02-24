@@ -269,7 +269,6 @@ instructions! {
     F64Copysign : 0xa6 : "f64.copysign",
 
     I32WrapI64 : 0xa7 : "i32.wrap_i64",
-
     I32TruncF32S : 0xa8 : "i32.trunc_f32_s",
     I32TruncF32U : 0xa9 : "i32.trunc_f32_u",
     I32TruncF64S : 0xaa : "i32.trunc_f64_s",
@@ -322,7 +321,10 @@ instructions! {
         MemoryFill(MemIndex) : 0x0b : "memory.fill",
         TableInit((ElemIdx, TableIdx)) : 0x0c : "table.init",
         ElemDrop(ElemIdx) : 0x0d : "elem.drop",
+        TableCopy((TableIdx, TableIdx)) : 0x0e : "table.copy",
+        TableGrow(TableIdx) : 0x0f : "table.grow",
         TableSize(TableIdx) : 0x10 : "table.size",
+        TableFill(TableIdx) : 0x11 : "table.fill",
     }
 }
 

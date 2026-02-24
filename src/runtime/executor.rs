@@ -985,8 +985,37 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I64TruncSatF64U => {
                         conv_op!(self, F64, I64, |a: f64| a as u64 as i64);
                     }
+                    Instruction::MemoryInit((dataidx, memidx)) => {
+                        let n = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_i32())
+                            .ok_or(RuntimeError::trap(""))?
+                            as usize;
 
-                    Instruction::MemoryInit(_) => todo!(),
+                        let j = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_i32())
+                            .ok_or(RuntimeError::trap(""))?
+                            as usize;
+
+                        let i = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_i32())
+                            .ok_or(RuntimeError::trap(""))?
+                            as usize;
+
+                        let meminst = Runtime::memory_get_mut(
+                            &mut self.store.memories,
+                            module_inst,
+                            *memidx,
+                        )?;
+                        let di = Runtime::data_get(&mut self.store.data, module_inst, *dataidx)?;
+
+                        meminst.init(i, j, n, di)?;
+                    }
                     Instruction::DataDrop(idx) => {
                         let da = module_inst.datas[*idx as usize];
                         self.store.data.drop(da);
@@ -1054,9 +1083,51 @@ impl<'a> ExecutionContext<'a> {
                         let ea = module_inst.elems[*idx as usize];
                         self.store.elements.drop(ea);
                     }
+                    Instruction::TableCopy((dstidx, srcidx)) => {
+                        let n = Self::pop_i32(self.value_stack)? as usize;
+                        let isrc = Self::pop_i32(self.value_stack)?;
+                        let idst = Self::pop_i32(self.value_stack)?;
+
+                        let data = {
+                            let src = Runtime::table_get(&self.store.tables, module_inst, *srcidx)?;
+                            src.slice(isrc, n)?.to_vec()
+                        };
+                        let dst =
+                            Runtime::table_get_mut(&mut self.store.tables, module_inst, *dstidx)?;
+
+                        dst.slice_mut(idst, n)?.copy_from_slice(&data);
+                    }
+                    Instruction::TableGrow(idx) => {
+                        let inc =
+                            self.value_stack.pop().and_then(Value::as_i32).ok_or(
+                                RuntimeError::internal("table.grow, invalid argument type"),
+                            )?;
+                        let val =
+                            self.value_stack.pop().and_then(Value::as_ref).ok_or(
+                                RuntimeError::internal("table.grow, invalid argument type"),
+                            )?;
+                        let res =
+                            Runtime::table_get_mut(&mut self.store.tables, module_inst, *idx)?
+                                .grow(inc as u32, val)?
+                                .map(|v| v as i32)
+                                .unwrap_or(-1);
+                        self.value_stack.push(Value::I32(res));
+                    }
                     Instruction::TableSize(idx) => {
                         let ti = Runtime::table_get(&self.store.tables, module_inst, *idx)?;
                         self.value_stack.push(Value::I32(ti.refs.len() as i32));
+                    }
+                    Instruction::TableFill(idx) => {
+                        let n = Self::pop_i32(self.value_stack)? as usize;
+                        let v = self
+                            .value_stack
+                            .pop()
+                            .and_then(|v| v.as_ref())
+                            .ok_or(RuntimeError::trap("out-of-bounds table access"))?;
+                        let i = Self::pop_i32(self.value_stack)?;
+
+                        let ti = Runtime::table_get_mut(&mut self.store.tables, module_inst, *idx)?;
+                        ti.slice_mut(i, n)?.fill(v);
                     }
                 }
             }

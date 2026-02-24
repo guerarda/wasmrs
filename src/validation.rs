@@ -1006,7 +1006,56 @@ impl Validator {
                         return Err(ValidationError::UnknownElement);
                     }
                 }
+                Instruction::TableCopy((dstidx, srcidx)) => {
+                    // [at at at] -> []
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+
+                    let dst = module
+                        .tables
+                        .as_ref()
+                        .and_then(|tables| tables.get(*dstidx as usize))
+                        .ok_or(ValidationError::UnknownTable)?;
+
+                    let src = module
+                        .tables
+                        .as_ref()
+                        .and_then(|tables| tables.get(*srcidx as usize))
+                        .ok_or(ValidationError::UnknownTable)?;
+
+                    if src.tabletype.elemtype != dst.tabletype.elemtype {
+                        return Err(ValidationError::TypeMismatch);
+                    }
+                }
+                Instruction::TableGrow(idx) => {
+                    // [t at] -> [at]
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+
+                    module
+                        .tables
+                        .as_ref()
+                        .and_then(|tables| tables.get(*idx as usize))
+                        .ok_or(ValidationError::UnknownTable)?;
+
+                    self.push_val(ValueType::I32);
+                }
                 Instruction::TableSize(idx) => {
+                    module
+                        .tables
+                        .as_ref()
+                        .and_then(|tables| tables.get(*idx as usize))
+                        .ok_or(ValidationError::UnknownTable)?;
+
+                    self.push_val(ValueType::I32);
+                }
+                Instruction::TableFill(idx) => {
+                    // [at t at] -> []
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+
                     module
                         .tables
                         .as_ref()
