@@ -7,7 +7,7 @@ use crate::{
             code::CodeEntry, data::DataSegment, global::GlobalType, memory::MemType,
             table::TableType,
         },
-        types::{FuncType, MemArg, RefType, TypeIdx, ValType},
+        types::{FuncType, RefType, TypeIdx, ValType},
     },
     instructions::Instruction,
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
@@ -126,11 +126,11 @@ impl MemoryInstance {
     pub(super) fn slice<'a>(
         &'a self,
         base: i32,
-        memarg: &'a MemArg,
+        offset: u32,
         len: usize,
     ) -> result::Result<&'a [u8], RuntimeError> {
         let ea = (base as u32)
-            .checked_add(memarg.offset)
+            .checked_add(offset)
             .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
             as usize;
 
@@ -148,12 +148,12 @@ impl MemoryInstance {
     pub(super) fn slice_mut<'a>(
         &'a mut self,
         base: i32,
-        memarg: &MemArg,
+        offset: u32,
         len: usize,
     ) -> result::Result<&'a mut [u8], RuntimeError> {
         // Calculate effective address
         let ea = (base as u32)
-            .checked_add(memarg.offset)
+            .checked_add(offset)
             .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
             as usize;
 

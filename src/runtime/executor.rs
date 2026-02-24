@@ -141,7 +141,7 @@ macro_rules! load {
         // Read memory
         let mem = Runtime::memory_get(&$self.store.memories, $module_inst, MemIndex::ZERO).unwrap();
         let v = <$ty>::from_le_bytes(
-            mem.slice(i, $memarg, std::mem::size_of::<$ty>())?
+            mem.slice(i, $memarg.offset, std::mem::size_of::<$ty>())?
                 .try_into()
                 .unwrap(),
         );
@@ -166,7 +166,7 @@ macro_rules! store {
         let slice =
             Runtime::memory_get_mut(&mut $self.store.memories, $module_inst, MemIndex::ZERO)
                 .unwrap()
-                .slice_mut(i, $memarg, std::mem::size_of::<$ty>())?;
+                .slice_mut(i, $memarg.offset, std::mem::size_of::<$ty>())?;
 
         // Store
         slice.copy_from_slice(&v.to_le_bytes());
@@ -990,6 +990,33 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::DataDrop(idx) => {
                         let da = module_inst.datas[*idx as usize];
                         self.store.data.drop(da);
+                    }
+                    Instruction::MemoryCopy((dst_idx, src_idx)) => {
+                        let n = Self::pop_i32(self.value_stack)? as usize;
+                        let isrc = Self::pop_i32(self.value_stack)?;
+                        let idst = Self::pop_i32(self.value_stack)?;
+
+                        let data = {
+                            let src =
+                                Runtime::memory_get(&self.store.memories, module_inst, *src_idx)?;
+                            src.slice(isrc, 0, n)?.to_vec()
+                        };
+                        let dst = Runtime::memory_get_mut(
+                            &mut self.store.memories,
+                            module_inst,
+                            *dst_idx,
+                        )?;
+
+                        dst.slice_mut(idst, 0, n)?.copy_from_slice(&data);
+                    }
+                    Instruction::MemoryFill(idx) => {
+                        let n = Self::pop_i32(self.value_stack)?;
+                        let val = Self::pop_i32(self.value_stack)?;
+                        let i = Self::pop_i32(self.value_stack)?;
+
+                        let mem =
+                            Runtime::memory_get_mut(&mut self.store.memories, module_inst, *idx)?;
+                        mem.slice_mut(i, 0, n as usize)?.fill(val as u8);
                     }
                     Instruction::TableInit((elem_idx, table_idx)) => {
                         let n = self

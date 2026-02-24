@@ -318,6 +318,8 @@ instructions! {
         I64TruncSatF64U : 0x07 : "i64_trunc_sat_f64_u",
         MemoryInit((DataIdx, MemIndex)) : 0x08 : "memory.init",
         DataDrop(DataIdx) : 0x09 : "data.drop",
+        MemoryCopy((MemIndex, MemIndex)) : 0x0a : "memory.copy",
+        MemoryFill(MemIndex) : 0x0b : "memory.fill",
         TableInit((ElemIdx, TableIdx)) : 0x0c : "table.init",
         ElemDrop(ElemIdx) : 0x0d : "elem.drop",
         TableSize(TableIdx) : 0x10 : "table.size",

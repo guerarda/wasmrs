@@ -13,7 +13,7 @@ use crate::{
         types::{BlockType, FuncType, GlobalIdx, MemArg, MemIndex, RefType, ValType},
     },
     instructions::Instruction,
-    limits::{MAX_TABLE_SIZE, MAX_WASM_32BIT_MEMORY_PAGES},
+    limits::MAX_WASM_32BIT_MEMORY_PAGES,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -948,6 +948,25 @@ impl Validator {
                     {
                         return Err(ValidationError::UnknownData);
                     }
+                }
+                Instruction::MemoryCopy((dstidx, srcidx)) => {
+                    // [at at at] -> []
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+
+                    // mems exist
+                    Self::mem_type_at(module, *dstidx)?;
+                    Self::mem_type_at(module, *srcidx)?;
+                }
+                Instruction::MemoryFill(memidx) => {
+                    // [at i32 at] -> []
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(ValueType::I32)?;
+
+                    // mem exist
+                    Self::mem_type_at(module, *memidx)?;
                 }
                 Instruction::TableInit((elemidx, tableidx)) => {
                     // [at, i32, i32] -> []
