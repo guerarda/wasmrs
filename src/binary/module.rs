@@ -335,12 +335,14 @@ pub fn decode_bytes(bytes: Vec<u8>) -> std::result::Result<Module, MalformedErro
 
     // Verify that data count is present if memory.init or data.drop
     // is present
-    if m.codes.as_ref().is_some_and(|codes| {
-        codes
-            .iter()
-            .flat_map(|c| &c.body)
-            .any(|x| matches!(x, Instruction::MemoryInit(_) | Instruction::DataDrop(_)))
-    }) {
+    if m.data_count.is_none()
+        && m.codes.as_ref().is_some_and(|codes| {
+            codes
+                .iter()
+                .flat_map(|c| &c.body)
+                .any(|x| matches!(x, Instruction::MemoryInit(_) | Instruction::DataDrop(_)))
+        })
+    {
         return Err(MalformedError::SectionRequired {
             section: SectionId::DataCount,
         });
