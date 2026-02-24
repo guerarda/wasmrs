@@ -1006,7 +1006,7 @@ impl Validator {
         };
         if tablesec.iter().any(|t| {
             let l = &t.tabletype.limit;
-            l.min > MAX_TABLE_SIZE || l.max.is_some_and(|max| max > MAX_TABLE_SIZE || l.min > max)
+            l.max.is_some_and(|max| l.min > max)
         }) {
             return Err(ValidationError::InvalidLimit);
         }
