@@ -133,7 +133,7 @@ impl Runtime {
         // Init Globals
         if let Some(globalsec) = &module.globals {
             for g in globalsec {
-                let val = Self::eval_expression(&g.body).unwrap();
+                let val = Self::eval_expression(&self.store, &mi, &g.body).unwrap();
                 let a = self.store.globals.alloc(g.gt.clone(), val);
                 mi.globals.push(a);
             }
@@ -143,7 +143,10 @@ impl Runtime {
         if let Some(tablesec) = &module.tables {
             for t in tablesec {
                 let init = match &t.expr {
-                    Some(expr) => Self::eval_expression(expr).unwrap().as_ref().unwrap(),
+                    Some(expr) => Self::eval_expression(&self.store, &mi, expr)
+                        .unwrap()
+                        .as_ref()
+                        .unwrap(),
                     None => Ref::Null(t.tabletype.elemtype),
                 };
                 let size = t.tabletype.limit.min as usize;
@@ -171,7 +174,7 @@ impl Runtime {
                         let refs = exprs
                             .iter()
                             .map(|e| {
-                                Self::eval_expression(e)
+                                Self::eval_expression(&self.store, &mi, e)
                                     .unwrap()
                                     .as_ref_checked(rt)
                                     .unwrap()
@@ -213,7 +216,10 @@ impl Runtime {
 
         // Execute element initialization
         for ei in instr_e {
-            let src = Self::eval_expression(ei.offset).unwrap().as_i32().unwrap();
+            let src = Self::eval_expression(&self.store, &mi, ei.offset)
+                .unwrap()
+                .as_i32()
+                .unwrap();
             let ea = mi.elems[ei.elemidx];
             let elem = self.store.elements.get(ea);
             let ta = mi.tables[ei.tableidx as usize];
@@ -229,7 +235,10 @@ impl Runtime {
 
         // Execute data initialization
         for di in instr_d {
-            let src = Self::eval_expression(di.offset).unwrap().as_i32().unwrap();
+            let src = Self::eval_expression(&self.store, &mi, di.offset)
+                .unwrap()
+                .as_i32()
+                .unwrap();
             let da = mi.datas[di.dataidx];
             let data = self.store.data.get(da);
             let ma = mi.mems[di.memidx.0 as usize];
@@ -353,7 +362,11 @@ impl Runtime {
     }
 
     /// Evaluate a constant expression (e.g. element or data segment)
-    fn eval_expression(expr: &ConstExpression) -> result::Result<Value, RuntimeError> {
+    fn eval_expression(
+        store: &Store,
+        module: &ModuleInstance,
+        expr: &ConstExpression,
+    ) -> result::Result<Value, RuntimeError> {
         let mut value_stack = vec![];
 
         for inst in &expr.0 {
@@ -363,7 +376,10 @@ impl Runtime {
                 Instruction::I64Const(v) => value_stack.push(Value::I64(*v)),
                 Instruction::F32Const(v) => value_stack.push(Value::F32(*v)),
                 Instruction::F64Const(v) => value_stack.push(Value::F64(*v)),
-                Instruction::GlobalGet(_) => todo!(),
+                Instruction::GlobalGet(idx) => {
+                    let v = Runtime::global_get(&store.globals, module, *idx)?;
+                    value_stack.push(v);
+                }
                 Instruction::RefNull(rt) => value_stack.push(Value::Ref(Ref::Null(*rt))),
                 Instruction::RefFunc(fi) => value_stack.push(Value::Ref(Ref::Func((*fi).into()))),
                 _ => return Err(RuntimeError::trap("invalid const expression")),
