@@ -391,17 +391,16 @@ impl Elements {
 
     pub fn get(&self, addr: ElemAddr) -> &ElemInstance {
         let elem = self.0.get(addr.0).unwrap();
-        assert!(!elem.dropped);
         elem
     }
 
     pub fn get_mut(&mut self, addr: ElemAddr) -> &mut ElemInstance {
         let elem = self.0.get_mut(addr.0).unwrap();
-        assert!(!elem.dropped);
         elem
     }
 
     pub fn drop(&mut self, addr: ElemAddr) {
+        self.0[addr.0].refs.clear();
         self.0[addr.0].dropped = true;
     }
 }
@@ -436,11 +435,11 @@ impl Data {
 
     pub fn get(&mut self, addr: DataAddr) -> &mut DataInstance {
         let data = self.0.get_mut(addr.0).unwrap();
-        assert!(!data.dropped);
         data
     }
 
     pub fn drop(&mut self, addr: DataAddr) {
+        self.0[addr.0].data.clear();
         self.0[addr.0].dropped = true;
     }
 }
