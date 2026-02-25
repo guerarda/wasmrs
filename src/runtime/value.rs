@@ -83,15 +83,15 @@ impl From<ValType> for Value {
 }
 
 impl Value {
-    pub fn as_ref(self) -> Option<Ref> {
+    pub fn into_ref(self) -> Option<Ref> {
         match self {
             Value::Ref(r) => Some(r),
             _ => None,
         }
     }
 
-    pub fn as_ref_checked(self, rt: &RefType) -> Option<Ref> {
-        self.as_ref().filter(|r| r.is_ref_type(rt))
+    pub fn into_ref_checked(self, rt: &RefType) -> Option<Ref> {
+        self.into_ref().filter(|r| r.is_ref_type(rt))
     }
 
     pub fn as_bool(self) -> Option<bool> {

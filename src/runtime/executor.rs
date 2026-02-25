@@ -529,7 +529,7 @@ impl<'a> ExecutionContext<'a> {
                         let rv = self
                             .value_stack
                             .pop()
-                            .and_then(|v| v.as_ref())
+                            .and_then(Value::into_ref)
                             .ok_or(RuntimeError::trap("table.set, assert ref on the stack"))?;
                         let i = self
                             .value_stack
@@ -1103,7 +1103,7 @@ impl<'a> ExecutionContext<'a> {
                                 RuntimeError::internal("table.grow, invalid argument type"),
                             )?;
                         let val =
-                            self.value_stack.pop().and_then(Value::as_ref).ok_or(
+                            self.value_stack.pop().and_then(Value::into_ref).ok_or(
                                 RuntimeError::internal("table.grow, invalid argument type"),
                             )?;
                         let res =
@@ -1122,7 +1122,7 @@ impl<'a> ExecutionContext<'a> {
                         let v = self
                             .value_stack
                             .pop()
-                            .and_then(|v| v.as_ref())
+                            .and_then(Value::into_ref)
                             .ok_or(RuntimeError::trap("out-of-bounds table access"))?;
                         let i = Self::pop_i32(self.value_stack)?;
 

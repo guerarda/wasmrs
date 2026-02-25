@@ -145,7 +145,7 @@ impl Runtime {
                 let init = match &t.expr {
                     Some(expr) => Self::eval_expression(&self.store, &mi, expr)
                         .unwrap()
-                        .as_ref()
+                        .into_ref()
                         .unwrap(),
                     None => Ref::Null(t.tabletype.elemtype),
                 };
@@ -176,7 +176,7 @@ impl Runtime {
                             .map(|e| {
                                 Self::eval_expression(&self.store, &mi, e)
                                     .unwrap()
-                                    .as_ref_checked(rt)
+                                    .into_ref_checked(rt)
                                     .unwrap()
                             })
                             .collect::<Vec<_>>();
