@@ -20,7 +20,6 @@ pub struct FuncLocal {
 
 #[derive(Debug)]
 pub struct CodeEntry {
-    #[allow(dead_code)]
     pub size: usize,
     pub locals: Vec<FuncLocal>,
     pub body: Vec<Instruction>,

@@ -10,9 +10,7 @@ use crate::binary::{
 #[derive(Debug)]
 pub enum DataSegmentMode {
     Active {
-        #[allow(dead_code)]
         mem_index: u32,
-        #[allow(dead_code)]
         offset: ConstExpression,
     },
     Passive,
@@ -75,9 +73,7 @@ impl<'a> FromReader<'a> for DataSegmentMode {
 
 #[derive(Debug)]
 pub struct DataSegment {
-    #[allow(dead_code)]
     pub mode: DataSegmentMode,
-    #[allow(dead_code)]
     pub data: Vec<u8>,
 }
 

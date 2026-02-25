@@ -297,9 +297,7 @@ impl<'a> FromReader<'a> for LimitFlag {
 
 #[derive(Debug, Clone)]
 pub struct Limit {
-    #[allow(dead_code)]
     pub min: u32,
-    #[allow(dead_code)]
     pub max: Option<u32>,
 }
 

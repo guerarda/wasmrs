@@ -16,7 +16,6 @@ pub struct TableEntry {
 #[derive(Debug, Clone)]
 pub struct TableType {
     pub elemtype: RefType,
-    #[allow(dead_code)]
     pub limit: Limit,
 }
 

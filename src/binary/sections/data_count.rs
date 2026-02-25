@@ -5,7 +5,6 @@ use crate::binary::{
 
 /// Data Count Section
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct DataCountSection(pub u32);
 
 pub fn decode_data_count_section(

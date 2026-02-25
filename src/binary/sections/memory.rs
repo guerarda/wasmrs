@@ -8,7 +8,6 @@ use crate::binary::{
 
 /// Memory Section
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct MemType(pub Limit);
 
 pub type MemorySection = Vec<MemType>;

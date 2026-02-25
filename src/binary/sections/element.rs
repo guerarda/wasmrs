@@ -17,33 +17,6 @@ pub enum ElementSegmentMode {
     Declarative,
 }
 
-#[derive(Debug)]
-pub enum ElementSegmentModeReadError {
-    Flag(ReadError),
-    TableIndex(ReadError),
-    Expression(ConstExpressionReadError),
-}
-
-impl error::Error for ElementSegmentModeReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Flag(e) => Some(e),
-            Self::TableIndex(e) => Some(e),
-            Self::Expression(e) => Some(e),
-        }
-    }
-}
-
-impl fmt::Display for ElementSegmentModeReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Flag(_) => write!(f, "reading flag"),
-            Self::TableIndex(_) => write!(f, "reading table index"),
-            Self::Expression(_) => write!(f, "reading expression"),
-        }
-    }
-}
-
 impl<'a> FromReader<'a> for ElementSegmentMode {
     type Error = ElementSegmentModeReadError;
 
@@ -199,6 +172,33 @@ impl SectionEntry for ElementSegment {
 }
 
 /// Errors
+#[derive(Debug)]
+pub enum ElementSegmentModeReadError {
+    Flag(ReadError),
+    TableIndex(ReadError),
+    Expression(ConstExpressionReadError),
+}
+
+impl error::Error for ElementSegmentModeReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Flag(e) => Some(e),
+            Self::TableIndex(e) => Some(e),
+            Self::Expression(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for ElementSegmentModeReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Flag(_) => write!(f, "reading flag"),
+            Self::TableIndex(_) => write!(f, "reading table index"),
+            Self::Expression(_) => write!(f, "reading expression"),
+        }
+    }
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ElementSectionReadError {

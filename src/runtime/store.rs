@@ -54,7 +54,6 @@ impl fmt::Display for FuncAddr {
 /// Func Instance
 #[derive(Debug, Clone)]
 pub struct Func {
-    #[allow(dead_code)]
     pub typeidx: TypeIdx,
     pub locals: Vec<ValType>,
     pub body: Vec<Instruction>,
