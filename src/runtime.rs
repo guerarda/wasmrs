@@ -7,6 +7,7 @@ use crate::{
         sections::{
             data::DataSegmentMode,
             element::{ElementSegmentItems, ElementSegmentMode},
+            export::ExportKind,
         },
         types::{ConstExpression, DataIdx, ElemIdx, GlobalIdx, MemIndex, RefType, TableIdx},
     },
@@ -200,9 +201,14 @@ impl Runtime {
         // Allocate exports
         if let Some(exports) = &module.exports {
             for export in exports {
-                let funcaddr = mi.funcs[export.index as usize];
-                mi.exports
-                    .insert(export.name.clone(), ExternVal::Func(funcaddr));
+                let idx = export.index as usize;
+                let val = match &export.kind {
+                    ExportKind::Func => ExternVal::Func(mi.funcs[idx]),
+                    ExportKind::Table => ExternVal::Table(mi.tables[idx]),
+                    ExportKind::Memory => ExternVal::Mem(mi.mems[idx]),
+                    ExportKind::Global => ExternVal::Global(mi.globals[idx]),
+                };
+                mi.exports.insert(export.name.clone(), val);
             }
         }
 

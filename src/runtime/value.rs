@@ -2,7 +2,10 @@ use core::fmt;
 
 use crate::{
     binary::types::{RefType, ValType},
-    runtime::{RuntimeError, store::FuncAddr},
+    runtime::{
+        RuntimeError,
+        store::{FuncAddr, GlobalAddr, MemAddr, TableAddr},
+    },
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -124,7 +127,7 @@ impl fmt::Display for Value {
 #[derive(Debug)]
 pub enum ExternVal {
     Func(FuncAddr),
-    Table(usize),
-    Mem(usize),
-    Global(usize),
+    Table(TableAddr),
+    Mem(MemAddr),
+    Global(GlobalAddr),
 }
