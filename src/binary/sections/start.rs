@@ -6,7 +6,6 @@ use crate::binary::{
 
 /// Start Section
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct StartSection(pub FuncIdx);
 
 pub fn decode_start_section(

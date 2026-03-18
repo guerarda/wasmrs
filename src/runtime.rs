@@ -258,8 +258,27 @@ impl Runtime {
             self.store.data.drop(da);
         }
 
+        // Get start function
+        let start_fn = module.start.as_ref().map(|s| mi.funcs[s.0 as usize]);
+
         // Register module
         self.module_registry.add(h, mi);
+
+        // Execute start function after module registration so that
+        // module instnace handle is valid
+        if let Some(funcidx) = start_fn {
+            let mut value_stack = vec![];
+            let mut call_stack = vec![];
+
+            let mut ctx = ExecutionContext::new(
+                &mut value_stack,
+                &mut call_stack,
+                &mut self.store,
+                &self.module_registry,
+            );
+            ctx.call(funcidx);
+            ctx.execute().unwrap();
+        }
         h
     }
 
