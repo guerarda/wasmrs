@@ -259,7 +259,7 @@ impl Runtime {
         }
 
         // Register module
-        self.module_registry.register(h, mi);
+        self.module_registry.add(h, mi);
         h
     }
 
@@ -437,6 +437,16 @@ impl Runtime {
         //validation::validate_module(&module)?;
         let handle = self.instantiate_module(&module, &[]);
         Ok(handle)
+    }
+
+    /// Associate a name to a module, for referencing exports
+    pub fn register_module(
+        &mut self,
+        name: String,
+        handle: ModuleHandle,
+    ) -> result::Result<(), Error> {
+        self.module_registry.register(name, handle);
+        Ok(())
     }
 }
 

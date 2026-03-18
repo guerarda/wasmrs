@@ -27,6 +27,7 @@ pub struct ModuleHandle(usize);
 
 #[derive(Debug, Default)]
 pub struct ModuleRegistry {
+    names: HashMap<String, ModuleHandle>,
     map: HashMap<ModuleHandle, ModuleInstance>,
     next_handle: usize,
 }
@@ -38,13 +39,17 @@ impl ModuleRegistry {
         h
     }
 
-    pub fn register(&mut self, handle: ModuleHandle, inst: ModuleInstance) {
+    pub fn add(&mut self, handle: ModuleHandle, inst: ModuleInstance) {
         match self.map.entry(handle) {
             Entry::Vacant(e) => {
                 e.insert(inst);
             }
             Entry::Occupied(_) => panic!("Handle taken"),
         }
+    }
+
+    pub fn register(&mut self, name: String, handle: ModuleHandle) {
+        self.names.insert(name, handle);
     }
 
     pub fn get_instance(&self, handle: ModuleHandle) -> &ModuleInstance {
