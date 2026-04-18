@@ -8,6 +8,7 @@ use crate::{
             data::DataSegmentMode,
             element::{ElementSegmentItems, ElementSegmentMode},
             export::ExportKind,
+            import::ImportDesc,
         },
         types::{ConstExpression, DataIdx, ElemIdx, GlobalIdx, MemIndex, RefType, TableIdx},
     },
@@ -17,8 +18,8 @@ use crate::{
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
         store::{
-            Data, DataInstance, ElemInstance, Elements, FuncAddr, Globals, Memories,
-            MemoryInstance, Store, TableAddr, TableInstance, Tables,
+            Data, DataInstance, ElemInstance, Elements, Globals, Memories, MemoryInstance, Store,
+            TableInstance, Tables,
         },
         value::{ExternVal, Ref, Value},
     },
@@ -38,15 +39,6 @@ pub struct Runtime {
     module_registry: ModuleRegistry,
 }
 
-#[derive(Debug)]
-pub enum ExternAddr {
-    Tag,
-    Global,
-    Mem,
-    Table(TableAddr),
-    Func(FuncAddr),
-}
-
 struct DataInit<'a> {
     offset: &'a ConstExpression,
     len: usize,
@@ -62,12 +54,8 @@ struct ElemInit<'a> {
 }
 
 impl Runtime {
-    fn instantiate_module(&mut self, module: &Module, _externaddr: &[ExternAddr]) -> ModuleHandle {
-        if let Some(_imports) = &module.imports {
-            // validate import type matches externaddr supplied
-            todo!()
-        }
-
+    // TODO Error handling
+    fn instantiate_module(&mut self, module: &Module) -> ModuleHandle {
         // Prepare Data and Element init
         let instr_d = module.data.as_ref().map_or(vec![], |datasec| {
             datasec
@@ -116,6 +104,41 @@ impl Runtime {
         // Preliminary module instance
         let h = self.module_registry.reserve();
         let mut mi = ModuleInstance::default();
+
+        // Register imports first
+        // TODO Type check import descriptor payloads against the resolved
+        // ExternVal payload
+        if let Some(imports) = &module.imports {
+            for import in imports {
+                let ev = self
+                    .module_registry
+                    .resolve(&import.mod_name, &import.name)
+                    .unwrap();
+
+                match import.desc {
+                    ImportDesc::Func(_) => {
+                        if let ExternVal::Func(addr) = ev {
+                            mi.funcs.push(addr);
+                        }
+                    }
+                    ImportDesc::Table(_) => {
+                        if let ExternVal::Table(addr) = ev {
+                            mi.tables.push(addr);
+                        }
+                    }
+                    ImportDesc::Mem(_) => {
+                        if let ExternVal::Mem(addr) = ev {
+                            mi.mems.push(addr);
+                        }
+                    }
+                    ImportDesc::Global(_) => {
+                        if let ExternVal::Global(addr) = ev {
+                            mi.globals.push(addr);
+                        }
+                    }
+                }
+            }
+        }
 
         // Register functions
         if let (Some(funcsec), Some(codesec), Some(typesec)) =
@@ -454,7 +477,7 @@ impl Runtime {
     pub fn load_module(&mut self, bytes: &[u8]) -> std::result::Result<ModuleHandle, Error> {
         let module = module::decode_bytes(bytes.to_vec())?;
         //validation::validate_module(&module)?;
-        let handle = self.instantiate_module(&module, &[]);
+        let handle = self.instantiate_module(&module);
         Ok(handle)
     }
 

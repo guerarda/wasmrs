@@ -124,7 +124,7 @@ impl fmt::Display for Value {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ExternVal {
     Func(FuncAddr),
     Table(TableAddr),

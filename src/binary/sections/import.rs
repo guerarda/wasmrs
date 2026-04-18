@@ -63,11 +63,8 @@ pub enum ImportDesc {
 
 #[derive(Debug)]
 pub struct ImportEntry {
-    #[allow(dead_code)]
     pub mod_name: String,
-    #[allow(dead_code)]
     pub name: String,
-    #[allow(dead_code)]
     pub desc: ImportDesc,
 }
 

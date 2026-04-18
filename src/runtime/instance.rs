@@ -55,4 +55,16 @@ impl ModuleRegistry {
     pub fn get_instance(&self, handle: ModuleHandle) -> &ModuleInstance {
         self.map.get(&handle).unwrap()
     }
+
+    pub fn resolve(&self, module_name: &str, name: &str) -> Option<ExternVal> {
+        let Some(mh) = self.names.get(module_name) else {
+            return None;
+        };
+
+        let Some(mi) = self.map.get(mh) else {
+            return None;
+        };
+
+        mi.exports.get(name).copied()
+    }
 }
