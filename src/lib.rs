@@ -13,13 +13,14 @@ pub use binary::types::RefType;
 
 use validation::ValidationError;
 
-use crate::runtime::RuntimeError;
+use crate::runtime::{RuntimeError, UnlinkableError};
 
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
     Malformed(MalformedError),
     Invalid(ValidationError),
+    Unlinkable(UnlinkableError),
     Trap(RuntimeError),
 }
 
@@ -28,6 +29,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::Malformed(e) => write!(f, "malformed module: {}", e),
             Error::Invalid(e) => write!(f, "invalid module: {}", e),
+            Error::Unlinkable(e) => write!(f, "unlinkable: {}", e),
             Error::Trap(e) => write!(f, "trap: {}", e),
         }
     }
@@ -38,6 +40,7 @@ impl std::error::Error for Error {
         match self {
             Self::Malformed(e) => Some(e),
             Self::Invalid(e) => Some(e),
+            Self::Unlinkable(e) => Some(e),
             Self::Trap(e) => Some(e),
         }
     }
@@ -52,6 +55,12 @@ impl From<MalformedError> for Error {
 impl From<ValidationError> for Error {
     fn from(value: ValidationError) -> Self {
         Error::Invalid(value)
+    }
+}
+
+impl From<UnlinkableError> for Error {
+    fn from(value: UnlinkableError) -> Self {
+        Error::Unlinkable(value)
     }
 }
 

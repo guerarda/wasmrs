@@ -505,6 +505,29 @@ impl Runtime {
     }
 }
 
+/// Unlinkable Error
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum UnlinkableError {
+    UnknownImport,
+    IncompatibleImportType,
+}
+
+impl error::Error for UnlinkableError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for UnlinkableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Self::UnknownImport => write!(f, "unknown import"),
+            Self::IncompatibleImportType => write!(f, "incompatible import type"),
+        }
+    }
+}
+
 /// Trap Error
 #[derive(Debug)]
 pub struct RuntimeError {
