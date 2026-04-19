@@ -54,8 +54,7 @@ struct ElemInit<'a> {
 }
 
 impl Runtime {
-    // TODO Error handling
-    fn instantiate_module(&mut self, module: &Module) -> ModuleHandle {
+    fn instantiate_module(&mut self, module: &Module) -> result::Result<ModuleHandle, Error> {
         // Prepare Data and Element init
         let instr_d = module.data.as_ref().map_or(vec![], |datasec| {
             datasec
@@ -113,7 +112,7 @@ impl Runtime {
                 let ev = self
                     .module_registry
                     .resolve(&import.mod_name, &import.name)
-                    .unwrap();
+                    .ok_or(UnlinkableError::UnknownImport)?;
 
                 match import.desc {
                     ImportDesc::Func(_) => {
@@ -157,7 +156,7 @@ impl Runtime {
         // Init Globals
         if let Some(globalsec) = &module.globals {
             for g in globalsec {
-                let val = Self::eval_expression(&self.store, &mi, &g.body).unwrap();
+                let val = Self::eval_expression(&self.store, &mi, &g.body)?;
                 let a = self.store.globals.alloc(g.gt.clone(), val);
                 mi.globals.push(a);
             }
@@ -167,10 +166,10 @@ impl Runtime {
         if let Some(tablesec) = &module.tables {
             for t in tablesec {
                 let init = match &t.expr {
-                    Some(expr) => Self::eval_expression(&self.store, &mi, expr)
-                        .unwrap()
-                        .into_ref()
-                        .unwrap(),
+                    Some(expr) => Self::eval_expression(&self.store, &mi, expr).and_then(|e| {
+                        e.into_ref()
+                            .ok_or(RuntimeError::internal("mismatched type"))
+                    })?,
                     None => Ref::Null(t.tabletype.elemtype),
                 };
                 let size = t.tabletype.limit.min as usize;
@@ -198,12 +197,11 @@ impl Runtime {
                         let refs = exprs
                             .iter()
                             .map(|e| {
-                                Self::eval_expression(&self.store, &mi, e)
-                                    .unwrap()
+                                Self::eval_expression(&self.store, &mi, e)?
                                     .into_ref_checked(rt)
-                                    .unwrap()
+                                    .ok_or(RuntimeError::internal("mismatched type"))
                             })
-                            .collect::<Vec<_>>();
+                            .collect::<Result<Vec<_>, _>>()?;
                         let a = self.store.elements.alloc(*rt, refs);
                         mi.elems.push(a);
                     }
@@ -245,10 +243,9 @@ impl Runtime {
 
         // Execute element initialization
         for ei in instr_e {
-            let src = Self::eval_expression(&self.store, &mi, ei.offset)
-                .unwrap()
+            let src = Self::eval_expression(&self.store, &mi, ei.offset)?
                 .as_i32()
-                .unwrap();
+                .ok_or(RuntimeError::internal("expected i32"))?;
             let ea = mi.elems[ei.elemidx];
             let elem = self.store.elements.get(ea);
             let ta = mi.tables[ei.tableidx as usize];
@@ -256,18 +253,16 @@ impl Runtime {
             self.store
                 .tables
                 .get_mut(ta)
-                .init(src as usize, 0, ei.len, elem)
-                .unwrap();
+                .init(src as usize, 0, ei.len, elem)?;
 
             self.store.elements.drop(ea);
         }
 
         // Execute data initialization
         for di in instr_d {
-            let src = Self::eval_expression(&self.store, &mi, di.offset)
-                .unwrap()
+            let src = Self::eval_expression(&self.store, &mi, di.offset)?
                 .as_i32()
-                .unwrap();
+                .ok_or(RuntimeError::internal("expected i32"))?;
             let da = mi.datas[di.dataidx];
             let data = self.store.data.get(da);
             let ma = mi.mems[di.memidx.0 as usize];
@@ -275,8 +270,7 @@ impl Runtime {
             self.store
                 .memories
                 .get_mut(ma)
-                .init(src as usize, 0, di.len, data)
-                .unwrap();
+                .init(src as usize, 0, di.len, data)?;
 
             self.store.data.drop(da);
         }
@@ -300,9 +294,9 @@ impl Runtime {
                 &self.module_registry,
             );
             ctx.call(funcidx);
-            ctx.execute().unwrap();
+            ctx.execute()?;
         }
-        h
+        Ok(h)
     }
 
     pub(super) fn global_get(
@@ -477,7 +471,7 @@ impl Runtime {
     pub fn load_module(&mut self, bytes: &[u8]) -> std::result::Result<ModuleHandle, Error> {
         let module = module::decode_bytes(bytes.to_vec())?;
         //validation::validate_module(&module)?;
-        let handle = self.instantiate_module(&module);
+        let handle = self.instantiate_module(&module)?;
         Ok(handle)
     }
 
