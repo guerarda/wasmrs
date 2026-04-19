@@ -959,7 +959,8 @@ impl<'a> ExecutionContext<'a> {
                         }
                     }
                     Instruction::RefFunc(fi) => {
-                        self.value_stack.push(Value::Ref(Ref::Func((*fi).into())))
+                        let addr = module_inst.funcs[*fi as usize];
+                        self.value_stack.push(Value::Ref(Ref::Func(addr)))
                     }
                     Instruction::I32TruncSatF32S => {
                         conv_op!(self, F32, I32, |a: f32| a as i32);

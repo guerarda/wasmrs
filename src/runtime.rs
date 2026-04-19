@@ -187,7 +187,7 @@ impl Runtime {
                     ElementSegmentItems::Functions(items) => {
                         let refs = items
                             .iter()
-                            .map(|it| Ref::Func(it.0.into()))
+                            .map(|it| Ref::Func(mi.funcs[it.0 as usize]))
                             .collect::<Vec<_>>();
                         let a = self.store.elements.alloc(RefType::Func, refs);
 
@@ -423,7 +423,7 @@ impl Runtime {
                     value_stack.push(v);
                 }
                 Instruction::RefNull(rt) => value_stack.push(Value::Ref(Ref::Null(*rt))),
-                Instruction::RefFunc(fi) => value_stack.push(Value::Ref(Ref::Func((*fi).into()))),
+                Instruction::RefFunc(fi) => value_stack.push(Value::Ref(Ref::Func(module.funcs[*fi as usize]))),
                 _ => return Err(RuntimeError::trap("invalid const expression")),
             }
         }
