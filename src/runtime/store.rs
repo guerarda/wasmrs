@@ -51,19 +51,37 @@ impl fmt::Display for FuncAddr {
     }
 }
 
-/// Func Instance
-#[derive(Debug, Clone)]
-pub struct Func {
-    pub typeidx: TypeIdx,
-    pub locals: Vec<ValType>,
-    pub body: Vec<Instruction>,
+/// Func Body
+pub enum FuncBody {
+    Wasm(WasmFn),
+    Host(HostFn),
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for FuncBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Wasm(w) => write!(f, "Wasm Function({:?})", w),
+            Self::Host(_) => write!(f, "Host Function"),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct FuncInstance {
     pub ftype: FuncType,
     pub module: ModuleHandle,
-    pub func: Func,
+    pub body: FuncBody,
+}
+
+/// Host Fn
+pub type HostFn = Box<dyn Fn(&[Value]) -> result::Result<Vec<Value>, RuntimeError>>;
+
+/// Wasm Function
+#[derive(Debug, Clone)]
+pub struct WasmFn {
+    pub typeidx: TypeIdx,
+    pub locals: Vec<ValType>,
+    pub expr: Vec<Instruction>,
 }
 
 #[derive(Debug)]
@@ -462,16 +480,16 @@ impl Functions {
             }
             v
         };
-        let func = Func {
+        let func = WasmFn {
             typeidx,
             locals,
-            body: code.body.clone(),
+            expr: code.body.clone(),
         };
 
         let funcinst = FuncInstance {
             ftype,
             module,
-            func,
+            body: FuncBody::Wasm(func),
         };
 
         self.0.push(funcinst);

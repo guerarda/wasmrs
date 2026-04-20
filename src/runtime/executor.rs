@@ -11,7 +11,7 @@ use crate::{
         Runtime, RuntimeError,
         instance::{ModuleInstance, ModuleRegistry},
         stack::{Frame, Label},
-        store::{FuncAddr, Store},
+        store::{FuncAddr, FuncBody, Store},
         value::{Ref, Value},
     },
 };
@@ -327,20 +327,18 @@ impl<'a> ExecutionContext<'a> {
     pub(super) fn call(&mut self, funcaddr: FuncAddr) {
         let func_instance = &self.store.functions.get(funcaddr);
         let n_args = func_instance.ftype.params.len();
-        let arity = func_instance.ftype.results.len() as u32;
         let sp = self.value_stack.len() - n_args;
 
-        let mut locals: Vec<Value> = self.value_stack.split_off(sp);
-        locals.extend(
-            func_instance
-                .func
-                .locals
-                .clone()
-                .into_iter()
-                .map(Into::<Value>::into),
-        );
-        self.call_stack
-            .push(Frame::new(arity, funcaddr, locals, sp));
+        match &func_instance.body {
+            FuncBody::Wasm(wasm_fn) => {
+                let arity = func_instance.ftype.results.len() as u32;
+                let mut locals: Vec<Value> = self.value_stack.split_off(sp);
+                locals.extend(wasm_fn.locals.clone().into_iter().map(Into::<Value>::into));
+                self.call_stack
+                    .push(Frame::new(arity, funcaddr, locals, sp));
+            }
+            FuncBody::Host(_) => todo!(),
+        }
     }
 
     pub(super) fn execute(&mut self) -> result::Result<(), RuntimeError> {
@@ -354,8 +352,15 @@ impl<'a> ExecutionContext<'a> {
             };
 
             let func_inst = self.store.functions.get(frame.funcaddr);
+            let FuncBody::Wasm(wasm_fn) = &func_inst.body else {
+                return Err(RuntimeError::internal(
+                    "attempting to execute a non-wasm function",
+                ));
+            };
+
             let module_inst = self.module_registry.get_instance(func_inst.module);
-            let instrs = &func_inst.func.body;
+
+            let instrs = &wasm_fn.expr;
 
             frame.pc += 1;
             if let Some(inst) = instrs.get(frame.pc as usize) {
