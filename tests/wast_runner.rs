@@ -25,12 +25,8 @@ const EXCLUDED: &[&str] = &[
     "imports.wast",
     "linking.wast",
     "memory.wast",
-    "memory_grow.wast",
     "names.wast",
     "ref_func.wast",
-    "table_copy.wast",
-    "table_grow.wast",
-    "table_init.wast",
 ];
 
 /// Files that contain modules importing from "spectest".
