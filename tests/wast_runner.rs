@@ -474,12 +474,8 @@ fn collect_file_test_actions(
                 WastDirective::Invoke(invoke) => {
                     let args: Option<Vec<_>> = invoke.args.iter().map(convert_wast_arg).collect();
                     if let Some(args) = args {
-                        let test_name = format!(
-                            "{}::[{}]line_{}::Invoke",
-                            file_name,
-                            tests.len(),
-                            line
-                        );
+                        let test_name =
+                            format!("{}::[{}]line_{}::Invoke", file_name, tests.len(), line);
                         tests.push((
                             test_name,
                             CollectedTest::Run(TestAction::Invoke(InvokeAction {
@@ -534,7 +530,12 @@ fn collect_file_test_actions(
     file_tests
 }
 
-fn collect_tests(detailed: bool, run_assert_invalid: bool, run_all: bool, run_spectest: bool) -> Vec<Trial> {
+fn collect_tests(
+    detailed: bool,
+    run_assert_invalid: bool,
+    run_all: bool,
+    run_spectest: bool,
+) -> Vec<Trial> {
     let file_tests = collect_file_test_actions(run_assert_invalid, run_all, run_spectest);
 
     if detailed {
@@ -571,10 +572,7 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-fn run_file_actions(
-    file_name: &str,
-    actions: Vec<(String, CollectedTest)>,
-) -> Result<(), Failed> {
+fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> Result<(), Failed> {
     let mut runtime = Runtime::default();
     let mut current_module = None;
     let mut failures = Vec::new();
@@ -594,9 +592,8 @@ fn run_file_actions(
                 run_count += 1;
                 match action {
                     TestAction::LoadModule { wasm_bytes } => {
-                        let result = catch_unwind(AssertUnwindSafe(|| {
-                            runtime.load_module(&wasm_bytes)
-                        }));
+                        let result =
+                            catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
                         match result {
                             Ok(Ok(mh)) => {
                                 current_module = Some(mh);
@@ -679,10 +676,8 @@ fn run_file_actions(
 
                     TestAction::AssertTrap(a) => {
                         let Some(mh) = current_module else {
-                            failures.push(format!(
-                                "{}: no module loaded for assert_trap",
-                                short_name
-                            ));
+                            failures
+                                .push(format!("{}: no module loaded for assert_trap", short_name));
                             continue;
                         };
 
@@ -749,10 +744,7 @@ fn run_file_actions(
 
                     TestAction::Invoke(a) => {
                         let Some(mh) = current_module else {
-                            failures.push(format!(
-                                "{}: no module loaded for invoke",
-                                short_name
-                            ));
+                            failures.push(format!("{}: no module loaded for invoke", short_name));
                             continue;
                         };
 
@@ -785,8 +777,7 @@ fn run_file_actions(
                         wasm_bytes,
                         message,
                     } => {
-                        let result =
-                            catch_unwind(AssertUnwindSafe(|| parse_module(&wasm_bytes)));
+                        let result = catch_unwind(AssertUnwindSafe(|| parse_module(&wasm_bytes)));
                         match result {
                             Ok(Ok(_)) => {
                                 failures.push(format!(

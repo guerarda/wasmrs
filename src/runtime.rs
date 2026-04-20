@@ -423,7 +423,9 @@ impl Runtime {
                     value_stack.push(v);
                 }
                 Instruction::RefNull(rt) => value_stack.push(Value::Ref(Ref::Null(*rt))),
-                Instruction::RefFunc(fi) => value_stack.push(Value::Ref(Ref::Func(module.funcs[*fi as usize]))),
+                Instruction::RefFunc(fi) => {
+                    value_stack.push(Value::Ref(Ref::Func(module.funcs[*fi as usize])))
+                }
                 _ => return Err(RuntimeError::trap("invalid const expression")),
             }
         }
