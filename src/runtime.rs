@@ -10,7 +10,9 @@ use crate::{
             export::ExportKind,
             import::ImportDesc,
         },
-        types::{ConstExpression, DataIdx, ElemIdx, GlobalIdx, MemIndex, RefType, TableIdx},
+        types::{
+            ConstExpression, DataIdx, ElemIdx, FuncType, GlobalIdx, MemIndex, RefType, TableIdx,
+        },
     },
     instructions::Instruction,
     runtime::{
@@ -18,8 +20,8 @@ use crate::{
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
         store::{
-            Data, DataInstance, ElemInstance, Elements, Globals, Memories, MemoryInstance, Store,
-            TableInstance, Tables,
+            Data, DataInstance, ElemInstance, Elements, Globals, Memories,
+            MemoryInstance, Store, TableInstance, Tables,
         },
         value::{ExternVal, Ref, Value},
     },
@@ -145,7 +147,7 @@ impl Runtime {
         {
             for (code, typeidx) in codesec.iter().zip(funcsec) {
                 let ftype = typesec[*typeidx as usize].clone();
-                let a = self.store.functions.alloc(h, code, *typeidx, ftype);
+                let a = self.store.functions.alloc(h, ftype, code, *typeidx);
                 mi.funcs.push(a);
             }
         }
@@ -441,7 +443,11 @@ impl Runtime {
         fn_name: &str,
         fn_args: &[Value],
     ) -> result::Result<Vec<Value>, Error> {
-        let mi = self.module_registry.get_instance(module);
+        let mi = self
+            .module_registry
+            .get_instance(module)
+            .ok_or(RuntimeError::internal("unknown module"))?;
+
         let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
         let arity = self.store.functions.get(funcaddr).ftype.results.len();
 
@@ -484,6 +490,20 @@ impl Runtime {
         handle: ModuleHandle,
     ) -> result::Result<(), Error> {
         self.module_registry.register(name, handle);
+        Ok(())
+    }
+
+    pub fn register_host_fn(
+        &mut self,
+        mod_name: &str,
+        fn_name: &str,
+        ftype: FuncType,
+        func: impl Fn(&[Value]) -> result::Result<Vec<Value>, RuntimeError> + 'static,
+    ) -> result::Result<(), Error> {
+        let (mh, host) = self.module_registry.get_or_create_host(mod_name);
+        let addr = self.store.functions.alloc_host(mh, ftype, func);
+        host.exports
+            .insert(fn_name.to_string(), ExternVal::Func(addr));
         Ok(())
     }
 }

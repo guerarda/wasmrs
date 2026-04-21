@@ -324,6 +324,7 @@ impl<'a> ExecutionContext<'a> {
             .ok_or_else(|| RuntimeError::internal("assert, i32 expected on the stack"))
     }
 
+    // TODO returns a result, host function can trap
     pub(super) fn call(&mut self, funcaddr: FuncAddr) {
         let func_instance = &self.store.functions.get(funcaddr);
         let n_args = func_instance.ftype.params.len();
@@ -337,7 +338,11 @@ impl<'a> ExecutionContext<'a> {
                 self.call_stack
                     .push(Frame::new(arity, funcaddr, locals, sp));
             }
-            FuncBody::Host(_) => todo!(),
+            FuncBody::Host(f) => {
+                let args = self.value_stack.split_off(sp);
+                let results = f(&args);
+                self.value_stack.extend(results.unwrap());
+            }
         }
     }
 
@@ -358,7 +363,10 @@ impl<'a> ExecutionContext<'a> {
                 ));
             };
 
-            let module_inst = self.module_registry.get_instance(func_inst.module);
+            let module_inst = self
+                .module_registry
+                .get_instance(func_inst.module)
+                .ok_or(RuntimeError::internal("unknown module"))?;
 
             let instrs = &wasm_fn.expr;
 

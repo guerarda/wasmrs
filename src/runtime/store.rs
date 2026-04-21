@@ -469,9 +469,9 @@ impl Functions {
     pub fn alloc(
         &mut self,
         module: ModuleHandle,
+        ftype: FuncType,
         code: &CodeEntry,
         typeidx: TypeIdx,
-        ftype: FuncType,
     ) -> FuncAddr {
         let locals = {
             let mut v = vec![];
@@ -496,8 +496,22 @@ impl Functions {
         FuncAddr(self.0.len() - 1)
     }
 
-    pub fn get(&mut self, addr: FuncAddr) -> &FuncInstance {
+    pub fn get(&self, addr: FuncAddr) -> &FuncInstance {
         self.0.get(addr.0).unwrap()
+    }
+
+    pub fn alloc_host(
+        &mut self,
+        module: ModuleHandle,
+        ftype: FuncType,
+        func: impl Fn(&[Value]) -> result::Result<Vec<Value>, RuntimeError> + 'static,
+    ) -> FuncAddr {
+        self.0.push(FuncInstance {
+            ftype,
+            module,
+            body: FuncBody::Host(Box::new(func)),
+        });
+        FuncAddr(self.0.len() - 1)
     }
 }
 
