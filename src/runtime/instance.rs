@@ -94,6 +94,14 @@ impl ModuleRegistry {
         (mh, host)
     }
 
+    pub fn resolve_export(&self, handle: ModuleHandle, name: &str) -> Option<ExternVal> {
+        let entry = self.map.get(&handle)?;
+        match entry {
+            ModuleEntry::Wasm(inst) => inst.exports.get(name).copied(),
+            ModuleEntry::Host(host) => host.exports.get(name).copied(),
+        }
+    }
+
     pub fn resolve(&self, module_name: &str, name: &str) -> Option<ExternVal> {
         let Some(mh) = self.names.get(module_name) else {
             return None;

@@ -20,7 +20,7 @@ use crate::{
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
         store::{
-            Data, DataInstance, ElemInstance, Elements, Globals, Memories,
+            Data, DataInstance, ElemInstance, Elements, FuncAddr, Globals, Memories,
             MemoryInstance, Store, TableInstance, Tables,
         },
         value::{ExternVal, Ref, Value},
@@ -443,12 +443,13 @@ impl Runtime {
         fn_name: &str,
         fn_args: &[Value],
     ) -> result::Result<Vec<Value>, Error> {
-        let mi = self
+        let ev = self
             .module_registry
-            .get_instance(module)
-            .ok_or(RuntimeError::internal("unknown module"))?;
-
-        let funcaddr = mi.exports.get(fn_name).unwrap().try_into().unwrap();
+            .resolve_export(module, fn_name)
+            .ok_or(RuntimeError::internal("unknown export"))?;
+        let funcaddr: FuncAddr = (&ev)
+            .try_into()
+            .map_err(|_| RuntimeError::internal("export is not a function"))?;
         let arity = self.store.functions.get(funcaddr).ftype.results.len();
 
         let mut value_stack = Vec::from(fn_args);
@@ -499,12 +500,12 @@ impl Runtime {
         fn_name: &str,
         ftype: FuncType,
         func: impl Fn(&[Value]) -> result::Result<Vec<Value>, RuntimeError> + 'static,
-    ) -> result::Result<(), Error> {
+    ) -> result::Result<ModuleHandle, Error> {
         let (mh, host) = self.module_registry.get_or_create_host(mod_name);
         let addr = self.store.functions.alloc_host(mh, ftype, func);
         host.exports
             .insert(fn_name.to_string(), ExternVal::Func(addr));
-        Ok(())
+        Ok(mh)
     }
 }
 
@@ -701,5 +702,161 @@ impl fmt::Display for InternalErrorKind {
             Self::ValueStackUnderflow => write!(f, "value stack underflow"),
             Self::CallStackUnderflow => write!(f, "call stack underflow"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        binary::types::{FuncType, ValType},
+        runtime::{Runtime, value::Value},
+    };
+
+    #[test]
+    fn test_host_fn_direct_call() -> anyhow::Result<()> {
+        let mut runtime = Runtime::default();
+
+        let mh = runtime.register_host_fn(
+            "env",
+            "add",
+            FuncType {
+                params: vec![ValType::I32, ValType::I32],
+                results: vec![ValType::I32],
+            },
+            |args| {
+                let a = args[0].as_i32().unwrap();
+                let b = args[1].as_i32().unwrap();
+                Ok(vec![Value::I32(a + b)])
+            },
+        )?;
+
+        let cases = [(3, 4, 7), (0, 0, 0), (-1, 1, 0)];
+
+        for (a, b, expected) in cases {
+            let r = runtime.invoke(mh, "add", &[Value::I32(a), Value::I32(b)])?;
+            assert!(
+                matches!(r.as_slice(), [Value::I32(v)] if *v == expected),
+                "add({a}, {b}): expected {expected}, got {r:?}",
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_host_fn_import() -> anyhow::Result<()> {
+        // (module
+        //   (import "env" "add" (func $add (param i32 i32) (result i32)))
+        //   (func (export "call_add") (param i32 i32) (result i32)
+        //     local.get 0 local.get 1 call 0))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, (i32 i32) -> (i32)
+            b"\x01\x07\x01\x60\x02\x7f\x7f\x01\x7f",
+            // import section: "env"."add" -> func type 0
+            b"\x02\x0b\x01\x03\x65\x6e\x76\x03\x61\x64\x64\x00\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // export section: "call_add" -> func 1
+            b"\x07\x0c\x01\x08\x63\x61\x6c\x6c\x5f\x61\x64\x64\x00\x01",
+            // code section: local.get 0, local.get 1, call 0, end
+            b"\x0a\x0a\x01\x08\x00\x20\x00\x20\x01\x10\x00\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+
+        runtime.register_host_fn(
+            "env",
+            "add",
+            FuncType {
+                params: vec![ValType::I32, ValType::I32],
+                results: vec![ValType::I32],
+            },
+            |args| {
+                let a = args[0].as_i32().unwrap();
+                let b = args[1].as_i32().unwrap();
+                Ok(vec![Value::I32(a + b)])
+            },
+        )?;
+
+        let mh = runtime.load_module(&bytes)?;
+
+        let cases = [(10, 20, 30), (0, 0, 0), (-5, 3, -2)];
+
+        for (a, b, expected) in cases {
+            let r = runtime.invoke(mh, "call_add", &[Value::I32(a), Value::I32(b)])?;
+            assert!(
+                matches!(r.as_slice(), [Value::I32(v)] if *v == expected),
+                "call_add({a}, {b}): expected {expected}, got {r:?}",
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_host_fn_multiple_imports() -> anyhow::Result<()> {
+        // (module
+        //   (import "math" "double" (func $double (param i32) (result i32)))
+        //   (import "math" "negate" (func $negate (param i32) (result i32)))
+        //   (func (export "double_negate") (param i32) (result i32)
+        //     local.get 0 call 0 call 1))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, (i32) -> (i32)
+            b"\x01\x06\x01\x60\x01\x7f\x01\x7f",
+            // import section: "math"."double" type 0, "math"."negate" type 0
+            b"\x02\x1d\x02\x04\x6d\x61\x74\x68\x06\x64\x6f\x75\x62\x6c\x65\x00\x00\x04\x6d\x61\x74\x68\x06\x6e\x65\x67\x61\x74\x65\x00\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // export section: "double_negate" -> func 2
+            b"\x07\x11\x01\x0d\x64\x6f\x75\x62\x6c\x65\x5f\x6e\x65\x67\x61\x74\x65\x00\x02",
+            // code section: local.get 0, call 0, call 1, end
+            b"\x0a\x0a\x01\x08\x00\x20\x00\x10\x00\x10\x01\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+
+        runtime.register_host_fn(
+            "math",
+            "double",
+            FuncType {
+                params: vec![ValType::I32],
+                results: vec![ValType::I32],
+            },
+            |args| {
+                let x = args[0].as_i32().unwrap();
+                Ok(vec![Value::I32(x * 2)])
+            },
+        )?;
+
+        runtime.register_host_fn(
+            "math",
+            "negate",
+            FuncType {
+                params: vec![ValType::I32],
+                results: vec![ValType::I32],
+            },
+            |args| {
+                let x = args[0].as_i32().unwrap();
+                Ok(vec![Value::I32(-x)])
+            },
+        )?;
+
+        let mh = runtime.load_module(&bytes)?;
+
+        let cases = [(5, -10), (0, 0), (-3, 6)];
+
+        for (input, expected) in cases {
+            let r = runtime.invoke(mh, "double_negate", &[Value::I32(input)])?;
+            assert!(
+                matches!(r.as_slice(), [Value::I32(v)] if *v == expected),
+                "double_negate({input}): expected {expected}, got {r:?}",
+            );
+        }
+
+        Ok(())
     }
 }
