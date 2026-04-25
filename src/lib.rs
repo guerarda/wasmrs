@@ -9,7 +9,11 @@ pub mod runtime;
 mod validation;
 
 pub use binary::MalformedError;
-pub use binary::types::RefType;
+pub use binary::sections::global::{GlobalType, MutabilityFlag};
+pub use binary::sections::memory::MemType;
+pub use binary::sections::table::TableType;
+pub use binary::types::{FuncType, Limit, RefType, ValType};
+pub use runtime::value::Ref;
 
 use validation::ValidationError;
 

@@ -14,6 +14,8 @@ use wasmrs::runtime::Runtime;
 use wasmrs::runtime::value::{Ref, Value};
 use wasmrs::{parse_module, validate_module};
 
+mod spectest;
+
 /// Wast files to skip by default. Use --all to include them.
 const EXCLUDED: &[&str] = &[
     "align.wast",
@@ -578,6 +580,8 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
     let mut failures = Vec::new();
     let mut run_count = 0;
     let mut ignored_count = 0;
+
+    spectest::setup_spectest(&mut runtime);
 
     for (name, collected) in actions {
         let short_name = name
