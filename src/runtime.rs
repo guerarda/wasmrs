@@ -8,7 +8,10 @@ use crate::{
             data::DataSegmentMode,
             element::{ElementSegmentItems, ElementSegmentMode},
             export::ExportKind,
+            global::GlobalType,
             import::ImportDesc,
+            memory::MemType,
+            table::TableType,
         },
         types::{
             ConstExpression, DataIdx, ElemIdx, FuncType, GlobalIdx, MemIndex, RefType, TableIdx,
@@ -505,6 +508,48 @@ impl Runtime {
         let addr = self.store.functions.alloc_host(mh, ftype, func);
         host.exports
             .insert(fn_name.to_string(), ExternVal::Func(addr));
+        Ok(mh)
+    }
+
+    pub fn register_host_global(
+        &mut self,
+        mod_name: &str,
+        name: &str,
+        gtype: GlobalType,
+        value: Value,
+    ) -> result::Result<ModuleHandle, Error> {
+        let (mh, host) = self.module_registry.get_or_create_host(mod_name);
+        let addr = self.store.globals.alloc(gtype, value);
+        host.exports
+            .insert(name.to_string(), ExternVal::Global(addr));
+        Ok(mh)
+    }
+
+    pub fn register_host_table(
+        &mut self,
+        mod_name: &str,
+        name: &str,
+        ttype: TableType,
+        init_ref: Ref,
+    ) -> result::Result<ModuleHandle, Error> {
+        let (mh, host) = self.module_registry.get_or_create_host(mod_name);
+        let size = ttype.limit.min as usize;
+
+        let addr = self.store.tables.alloc(ttype, vec![init_ref; size]);
+        host.exports
+            .insert(name.to_string(), ExternVal::Table(addr));
+        Ok(mh)
+    }
+
+    pub fn register_host_memory(
+        &mut self,
+        mod_name: &str,
+        name: &str,
+        mtype: MemType,
+    ) -> result::Result<ModuleHandle, Error> {
+        let (mh, host) = self.module_registry.get_or_create_host(mod_name);
+        let addr = self.store.memories.alloc(&mtype);
+        host.exports.insert(name.to_string(), ExternVal::Mem(addr));
         Ok(mh)
     }
 }
