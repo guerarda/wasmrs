@@ -10,6 +10,7 @@ use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
 use wasmrs::Error;
 use wasmrs::RefType;
+use wasmrs::runtime::instance::ModuleHandle;
 use wasmrs::runtime::Runtime;
 use wasmrs::runtime::value::{Ref, Value};
 use wasmrs::{parse_module, validate_module};
@@ -160,6 +161,7 @@ fn value_matches(actual: &Value, expected: &TestRet) -> bool {
 /// A single assertion expecting success
 struct ReturnAssertion {
     line: usize,
+    module_name: Option<String>,
     func_name: String,
     args: Vec<TestArg>,
     expected: Vec<TestRet>,
@@ -168,6 +170,7 @@ struct ReturnAssertion {
 /// A single assertion expecting a trap
 struct TrapAssertion {
     line: usize,
+    module_name: Option<String>,
     func_name: String,
     args: Vec<TestArg>,
     message: String,
@@ -176,6 +179,7 @@ struct TrapAssertion {
 /// A bare invoke (side-effecting, no assertion on return value)
 struct InvokeAction {
     line: usize,
+    module_name: Option<String>,
     func_name: String,
     args: Vec<TestArg>,
 }
@@ -183,9 +187,9 @@ struct InvokeAction {
 /// A single test action extracted from a WAST directive
 enum TestAction {
     /// Module that should load successfully
-    LoadModule { wasm_bytes: Vec<u8> },
+    LoadModule { wasm_bytes: Vec<u8>, name: Option<String> },
     /// Register the current module under a name
-    Register { name: String },
+    Register { name: String, module_name: Option<String> },
     /// Assert a function returns expected values
     AssertReturn(ReturnAssertion),
     /// Assert a function traps
@@ -277,28 +281,32 @@ fn collect_file_test_actions(
 
             match directive {
                 WastDirective::Module(mut module) => {
+                    let mod_name = module.name().map(|id| id.name().to_string());
                     let wasm_bytes = module.encode().expect("failed to encode module");
                     let test_name =
                         format!("{}::[{}]line_{}::Module", file_name, tests.len(), line);
                     tests.push((
                         test_name,
-                        CollectedTest::Run(TestAction::LoadModule { wasm_bytes }),
+                        CollectedTest::Run(TestAction::LoadModule { wasm_bytes, name: mod_name }),
                     ));
                 }
 
-                WastDirective::Register { name, .. } => {
+                WastDirective::Register { name, module, .. } => {
+                    let mod_name = module.map(|id| id.name().to_string());
                     let test_name =
                         format!("{}::[{}]line_{}::Register", file_name, tests.len(), line);
                     tests.push((
                         test_name,
                         CollectedTest::Run(TestAction::Register {
                             name: name.to_string(),
+                            module_name: mod_name,
                         }),
                     ));
                 }
 
                 WastDirective::AssertReturn { exec, results, .. } => {
                     if let WastExecute::Invoke(invoke) = exec {
+                        let module_name = invoke.module.map(|id| id.name().to_string());
                         let args: Option<Vec<_>> =
                             invoke.args.iter().map(convert_wast_arg).collect();
                         let expected: Option<Vec<_>> =
@@ -316,6 +324,7 @@ fn collect_file_test_actions(
                                     test_name,
                                     CollectedTest::Run(TestAction::AssertReturn(ReturnAssertion {
                                         line,
+                                        module_name,
                                         func_name: invoke.name.to_string(),
                                         args,
                                         expected,
@@ -416,6 +425,7 @@ fn collect_file_test_actions(
 
                 WastDirective::AssertTrap { exec, message, .. } => {
                     if let WastExecute::Invoke(invoke) = exec {
+                        let module_name = invoke.module.map(|id| id.name().to_string());
                         let args: Option<Vec<_>> =
                             invoke.args.iter().map(convert_wast_arg).collect();
                         if let Some(args) = args {
@@ -429,6 +439,7 @@ fn collect_file_test_actions(
                                 test_name,
                                 CollectedTest::Run(TestAction::AssertTrap(TrapAssertion {
                                     line,
+                                    module_name,
                                     func_name: invoke.name.to_string(),
                                     args,
                                     message: message.to_string(),
@@ -455,6 +466,7 @@ fn collect_file_test_actions(
                 }
 
                 WastDirective::Invoke(invoke) => {
+                    let module_name = invoke.module.map(|id| id.name().to_string());
                     let args: Option<Vec<_>> = invoke.args.iter().map(convert_wast_arg).collect();
                     if let Some(args) = args {
                         let test_name =
@@ -463,6 +475,7 @@ fn collect_file_test_actions(
                             test_name,
                             CollectedTest::Run(TestAction::Invoke(InvokeAction {
                                 line,
+                                module_name,
                                 func_name: invoke.name.to_string(),
                                 args,
                             })),
@@ -471,6 +484,7 @@ fn collect_file_test_actions(
                 }
 
                 WastDirective::AssertExhaustion { call, message, .. } => {
+                    let module_name = call.module.map(|id| id.name().to_string());
                     let args: Option<Vec<_>> = call.args.iter().map(convert_wast_arg).collect();
                     if let Some(args) = args {
                         let test_name = format!(
@@ -483,6 +497,7 @@ fn collect_file_test_actions(
                             test_name,
                             CollectedTest::Run(TestAction::AssertExhaustion(TrapAssertion {
                                 line,
+                                module_name,
                                 func_name: call.name.to_string(),
                                 args,
                                 message: message.to_string(),
@@ -540,6 +555,17 @@ fn collect_tests(detailed: bool, run_assert_invalid: bool, run_all: bool) -> Vec
     }
 }
 
+fn resolve_module(
+    module_name: &Option<String>,
+    named_modules: &HashMap<String, ModuleHandle>,
+    current_module: Option<ModuleHandle>,
+) -> Option<ModuleHandle> {
+    module_name
+        .as_ref()
+        .and_then(|n| named_modules.get(n).copied())
+        .or(current_module)
+}
+
 fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(s) = payload.downcast_ref::<&str>() {
         s.to_string()
@@ -553,6 +579,7 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
 fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> Result<(), Failed> {
     let mut runtime = Runtime::default();
     let mut current_module = None;
+    let mut named_modules: HashMap<String, ModuleHandle> = HashMap::new();
     let mut failures = Vec::new();
     let mut run_count = 0;
     let mut ignored_count = 0;
@@ -571,12 +598,15 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
             CollectedTest::Run(action) => {
                 run_count += 1;
                 match action {
-                    TestAction::LoadModule { wasm_bytes } => {
+                    TestAction::LoadModule { wasm_bytes, name } => {
                         let result =
                             catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
                         match result {
                             Ok(Ok(mh)) => {
                                 current_module = Some(mh);
+                                if let Some(mod_name) = name {
+                                    named_modules.insert(mod_name, mh);
+                                }
                             }
                             Ok(Err(e)) => {
                                 current_module = None;
@@ -593,14 +623,15 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                         }
                     }
 
-                    TestAction::Register { name: reg_name } => {
-                        if let Some(mh) = current_module {
+                    TestAction::Register { name: reg_name, module_name } => {
+                        let target = resolve_module(&module_name, &named_modules, current_module);
+                        if let Some(mh) = target {
                             let _ = runtime.register_module(reg_name, mh);
                         }
                     }
 
                     TestAction::AssertReturn(a) => {
-                        let Some(mh) = current_module else {
+                        let Some(mh) = resolve_module(&a.module_name, &named_modules, current_module) else {
                             failures.push(format!(
                                 "{}: no module loaded for assert_return",
                                 short_name
@@ -655,7 +686,7 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                     }
 
                     TestAction::AssertTrap(a) => {
-                        let Some(mh) = current_module else {
+                        let Some(mh) = resolve_module(&a.module_name, &named_modules, current_module) else {
                             failures
                                 .push(format!("{}: no module loaded for assert_trap", short_name));
                             continue;
@@ -688,7 +719,7 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                     }
 
                     TestAction::AssertExhaustion(a) => {
-                        let Some(mh) = current_module else {
+                        let Some(mh) = resolve_module(&a.module_name, &named_modules, current_module) else {
                             failures.push(format!(
                                 "{}: no module loaded for assert_exhaustion",
                                 short_name
@@ -723,7 +754,7 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                     }
 
                     TestAction::Invoke(a) => {
-                        let Some(mh) = current_module else {
+                        let Some(mh) = resolve_module(&a.module_name, &named_modules, current_module) else {
                             failures.push(format!("{}: no module loaded for invoke", short_name));
                             continue;
                         };
