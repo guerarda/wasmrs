@@ -27,18 +27,7 @@ const EXCLUDED: &[&str] = &[
     "imports.wast",
     "linking.wast",
     "memory.wast",
-    "names.wast",
     "ref_func.wast",
-];
-
-/// Files that contain modules importing from "spectest".
-/// Skipped unless --spectest is passed.
-const NEEDS_SPECTEST: &[&str] = &[
-    "binary.wast",
-    "binary-leb128.wast",
-    "start.wast",
-    "table.wast",
-    "token.wast",
 ];
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
@@ -221,7 +210,6 @@ fn main() {
     let mut detailed = false;
     let mut run_assert_invalid = true;
     let mut run_all = false;
-    let mut run_spectest = false;
     let args: Vec<String> = std::env::args()
         .filter(|arg| {
             if arg == "--detailed" {
@@ -233,16 +221,13 @@ fn main() {
             } else if arg == "--all" {
                 run_all = true;
                 false
-            } else if arg == "--spectest" {
-                run_spectest = true;
-                false
             } else {
                 true
             }
         })
         .collect();
     let args = Arguments::from_iter(args);
-    let tests = collect_tests(detailed, run_assert_invalid, run_all, run_spectest);
+    let tests = collect_tests(detailed, run_assert_invalid, run_all);
     libtest_mimic::run(&args, tests).exit();
 }
 
@@ -256,7 +241,6 @@ enum CollectedTest {
 fn collect_file_test_actions(
     run_assert_invalid: bool,
     run_all: bool,
-    run_spectest: bool,
 ) -> HashMap<String, Vec<(String, CollectedTest)>> {
     let mut file_tests: HashMap<String, Vec<(String, CollectedTest)>> = HashMap::new();
 
@@ -270,9 +254,6 @@ fn collect_file_test_actions(
         .filter(|p| {
             let name = p.file_name().unwrap().to_str().unwrap();
             if !run_all && EXCLUDED.contains(&name) {
-                return false;
-            }
-            if !run_spectest && NEEDS_SPECTEST.contains(&name) {
                 return false;
             }
             true
@@ -532,13 +513,8 @@ fn collect_file_test_actions(
     file_tests
 }
 
-fn collect_tests(
-    detailed: bool,
-    run_assert_invalid: bool,
-    run_all: bool,
-    run_spectest: bool,
-) -> Vec<Trial> {
-    let file_tests = collect_file_test_actions(run_assert_invalid, run_all, run_spectest);
+fn collect_tests(detailed: bool, run_assert_invalid: bool, run_all: bool) -> Vec<Trial> {
+    let file_tests = collect_file_test_actions(run_assert_invalid, run_all);
 
     if detailed {
         // Detailed mode: one Trial per file, but with per-action reporting
