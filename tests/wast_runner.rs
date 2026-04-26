@@ -198,6 +198,11 @@ enum TestAction {
     AssertExhaustion(TrapAssertion),
     /// Invoke a function (no assertion on return value)
     Invoke(InvokeAction),
+    /// Module whose instantiation should trap
+    AssertModuleTrap {
+        wasm_bytes: Vec<u8>,
+        message: String,
+    },
     /// Module that should fail to parse
     AssertMalformed {
         wasm_bytes: Vec<u8>,
@@ -454,6 +459,21 @@ fn collect_file_test_actions(
                             );
                             tests.push((test_name, CollectedTest::Ignored));
                         }
+                    } else if let WastExecute::Wat(mut wat) = exec {
+                        let wasm_bytes = wat.encode().expect("failed to encode module");
+                        let test_name = format!(
+                            "{}::[{}]line_{}::AssertModuleTrap",
+                            file_name,
+                            tests.len(),
+                            line
+                        );
+                        tests.push((
+                            test_name,
+                            CollectedTest::Run(TestAction::AssertModuleTrap {
+                                wasm_bytes,
+                                message: message.to_string(),
+                            }),
+                        ));
                     } else {
                         let test_name = format!(
                             "{}::[{}]line_{}::AssertTrap(non-invoke)",
@@ -777,6 +797,33 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                                     "line {}: invoke '{}' panicked: {}",
                                     a.line,
                                     a.func_name,
+                                    panic_message(p)
+                                ));
+                                break;
+                            }
+                        }
+                    }
+
+                    TestAction::AssertModuleTrap {
+                        wasm_bytes,
+                        message,
+                    } => {
+                        let result = catch_unwind(AssertUnwindSafe(|| {
+                            runtime.load_module(&wasm_bytes)
+                        }));
+                        match result {
+                            Ok(Ok(_)) => {
+                                failures.push(format!(
+                                    "{}: expected trap '{}', got Ok",
+                                    short_name, message
+                                ));
+                            }
+                            Ok(Err(_)) => {} // Expected trap
+                            Err(p) => {
+                                failures.push(format!(
+                                    "{}: expected trap '{}', got PANIC: {}",
+                                    short_name,
+                                    message,
                                     panic_message(p)
                                 ));
                                 break;
