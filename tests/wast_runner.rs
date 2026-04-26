@@ -10,8 +10,8 @@ use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
 use wasmrs::Error;
 use wasmrs::RefType;
-use wasmrs::runtime::instance::ModuleHandle;
 use wasmrs::runtime::Runtime;
+use wasmrs::runtime::instance::ModuleHandle;
 use wasmrs::runtime::value::{Ref, Value};
 use wasmrs::{parse_module, validate_module};
 
@@ -187,9 +187,15 @@ struct InvokeAction {
 /// A single test action extracted from a WAST directive
 enum TestAction {
     /// Module that should load successfully
-    LoadModule { wasm_bytes: Vec<u8>, name: Option<String> },
+    LoadModule {
+        wasm_bytes: Vec<u8>,
+        name: Option<String>,
+    },
     /// Register the current module under a name
-    Register { name: String, module_name: Option<String> },
+    Register {
+        name: String,
+        module_name: Option<String>,
+    },
     /// Assert a function returns expected values
     AssertReturn(ReturnAssertion),
     /// Assert a function traps
@@ -292,7 +298,10 @@ fn collect_file_test_actions(
                         format!("{}::[{}]line_{}::Module", file_name, tests.len(), line);
                     tests.push((
                         test_name,
-                        CollectedTest::Run(TestAction::LoadModule { wasm_bytes, name: mod_name }),
+                        CollectedTest::Run(TestAction::LoadModule {
+                            wasm_bytes,
+                            name: mod_name,
+                        }),
                     ));
                 }
 
@@ -643,7 +652,10 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                         }
                     }
 
-                    TestAction::Register { name: reg_name, module_name } => {
+                    TestAction::Register {
+                        name: reg_name,
+                        module_name,
+                    } => {
                         let target = resolve_module(&module_name, &named_modules, current_module);
                         if let Some(mh) = target {
                             let _ = runtime.register_module(reg_name, mh);
@@ -651,7 +663,9 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                     }
 
                     TestAction::AssertReturn(a) => {
-                        let Some(mh) = resolve_module(&a.module_name, &named_modules, current_module) else {
+                        let Some(mh) =
+                            resolve_module(&a.module_name, &named_modules, current_module)
+                        else {
                             failures.push(format!(
                                 "{}: no module loaded for assert_return",
                                 short_name
@@ -706,7 +720,9 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                     }
 
                     TestAction::AssertTrap(a) => {
-                        let Some(mh) = resolve_module(&a.module_name, &named_modules, current_module) else {
+                        let Some(mh) =
+                            resolve_module(&a.module_name, &named_modules, current_module)
+                        else {
                             failures
                                 .push(format!("{}: no module loaded for assert_trap", short_name));
                             continue;
@@ -739,7 +755,9 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                     }
 
                     TestAction::AssertExhaustion(a) => {
-                        let Some(mh) = resolve_module(&a.module_name, &named_modules, current_module) else {
+                        let Some(mh) =
+                            resolve_module(&a.module_name, &named_modules, current_module)
+                        else {
                             failures.push(format!(
                                 "{}: no module loaded for assert_exhaustion",
                                 short_name
@@ -774,7 +792,9 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                     }
 
                     TestAction::Invoke(a) => {
-                        let Some(mh) = resolve_module(&a.module_name, &named_modules, current_module) else {
+                        let Some(mh) =
+                            resolve_module(&a.module_name, &named_modules, current_module)
+                        else {
                             failures.push(format!("{}: no module loaded for invoke", short_name));
                             continue;
                         };
@@ -808,9 +828,8 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                         wasm_bytes,
                         message,
                     } => {
-                        let result = catch_unwind(AssertUnwindSafe(|| {
-                            runtime.load_module(&wasm_bytes)
-                        }));
+                        let result =
+                            catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
                         match result {
                             Ok(Ok(_)) => {
                                 failures.push(format!(

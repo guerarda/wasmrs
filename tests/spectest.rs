@@ -22,10 +22,7 @@ pub fn setup_spectest(runtime: &mut Runtime) {
             params: vec![ValType::I32],
             results: vec![],
         },
-        |v: &[Value]| {
-            println!("{}", v[0]);
-            Ok(vec![])
-        },
+        |_: &[Value]| Ok(vec![]),
     );
     let _ = runtime.register_host_fn(
         "spectest",
@@ -34,10 +31,7 @@ pub fn setup_spectest(runtime: &mut Runtime) {
             params: vec![ValType::I64],
             results: vec![],
         },
-        |v: &[Value]| {
-            println!("{}", v[0]);
-            Ok(vec![])
-        },
+        |_: &[Value]| Ok(vec![]),
     );
     let _ = runtime.register_host_fn(
         "spectest",
@@ -46,10 +40,7 @@ pub fn setup_spectest(runtime: &mut Runtime) {
             params: vec![ValType::F32],
             results: vec![],
         },
-        |v: &[Value]| {
-            println!("{}", v[0]);
-            Ok(vec![])
-        },
+        |_: &[Value]| Ok(vec![]),
     );
     let _ = runtime.register_host_fn(
         "spectest",
@@ -58,10 +49,7 @@ pub fn setup_spectest(runtime: &mut Runtime) {
             params: vec![ValType::F64],
             results: vec![],
         },
-        |v: &[Value]| {
-            println!("{}", v[0]);
-            Ok(vec![])
-        },
+        |_: &[Value]| Ok(vec![]),
     );
 
     let _ = runtime.register_host_fn(
@@ -71,10 +59,7 @@ pub fn setup_spectest(runtime: &mut Runtime) {
             params: vec![ValType::I32, ValType::F32],
             results: vec![],
         },
-        |v: &[Value]| {
-            println!("{} {}", v[0], v[1]);
-            Ok(vec![])
-        },
+        |_: &[Value]| Ok(vec![]),
     );
 
     let _ = runtime.register_host_fn(
@@ -84,10 +69,7 @@ pub fn setup_spectest(runtime: &mut Runtime) {
             params: vec![ValType::F64, ValType::F64],
             results: vec![],
         },
-        |v: &[Value]| {
-            println!("{} {}", v[0], v[1]);
-            Ok(vec![])
-        },
+        |_: &[Value]| Ok(vec![]),
     );
 
     // Globals
