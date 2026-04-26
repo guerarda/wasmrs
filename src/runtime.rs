@@ -246,14 +246,20 @@ impl Runtime {
             }
         }
 
+        // Register module
+        // The module needs to be fully allocated before the element
+        // and data init loop runs
+        self.module_registry.add(h, mi);
+
         // Execute element initialization
+        let mi = self.module_registry.get_instance(h).unwrap();
         for ei in instr_e {
-            let src = Self::eval_expression(&self.store, &mi, ei.offset)?
+            let src = Self::eval_expression(&self.store, mi, ei.offset)?
                 .as_i32()
                 .ok_or(RuntimeError::internal("expected i32"))?;
             let ea = mi.elems[ei.elemidx];
-            let elem = self.store.elements.get(ea);
             let ta = mi.tables[ei.tableidx as usize];
+            let elem = self.store.elements.get(ea);
 
             self.store
                 .tables
@@ -264,13 +270,14 @@ impl Runtime {
         }
 
         // Execute data initialization
+        let mi = self.module_registry.get_instance(h).unwrap();
         for di in instr_d {
-            let src = Self::eval_expression(&self.store, &mi, di.offset)?
+            let src = Self::eval_expression(&self.store, mi, di.offset)?
                 .as_i32()
                 .ok_or(RuntimeError::internal("expected i32"))?;
             let da = mi.datas[di.dataidx];
-            let data = self.store.data.get(da);
             let ma = mi.mems[di.memidx.0 as usize];
+            let data = self.store.data.get(da);
 
             self.store
                 .memories
@@ -281,10 +288,8 @@ impl Runtime {
         }
 
         // Get start function
+        let mi = self.module_registry.get_instance(h).unwrap();
         let start_fn = module.start.as_ref().map(|s| mi.funcs[s.0 as usize]);
-
-        // Register module
-        self.module_registry.add(h, mi);
 
         // Execute start function after module registration so that
         // module instnace handle is valid
