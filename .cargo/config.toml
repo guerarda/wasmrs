@@ -1,2 +1,3 @@
 [alias]
 spec-test = "test --test wast_runner --features spec-tests --"
+wast_debug = "run --quiet --features spec-tests --bin wast_debug --"

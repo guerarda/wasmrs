@@ -4,14 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-spec-tests = []
+spec-tests = ["dep:wast"]
 
 [dependencies]
 anyhow = "1.0.100"
+wast = { version = "223", optional = true }
 
 [dev-dependencies]
-wast = "223"
 libtest-mimic = "0.8.1"
+
+[[bin]]
+name = "wast_debug"
+path = "tools/wast_debug.rs"
+required-features = ["spec-tests"]
 
 [[test]]
 name = "wast_runner"
