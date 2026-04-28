@@ -256,3 +256,289 @@ impl fmt::Display for ElementSectionReadError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Byte-level decode tests for `ElementSegment`.
+    //!
+    //! Byte sequences are derived from WebAssembly core spec §5.5.12
+    //! (Element Section), not from the current decoder. The eight branches
+    //! of the spec grammar are:
+    //!
+    //!   0:u32 e₀:expr y*:list(funcidx)                        -> active table 0, funcs
+    //!   1:u32 rt:elemkind y*:list(funcidx)                    -> passive, funcs
+    //!   2:u32 x:tableidx e:expr rt:elemkind y*:list(funcidx)  -> active explicit table, funcs
+    //!   3:u32 rt:elemkind y*:list(funcidx)                    -> declarative, funcs
+    //!   4:u32 e₀:expr e*:list(expr)                           -> active table 0, exprs (implicit (ref null func))
+    //!   5:u32 rt:reftype e*:list(expr)                        -> passive, exprs
+    //!   6:u32 x:tableidx e₀:expr rt:reftype e*:list(expr)     -> active explicit table, exprs
+    //!   7:u32 rt:reftype e*:list(expr)                        -> declarative, exprs
+    //!
+    //! `elemkind ::= 0x00`, `reftype` is one byte (`0x70` funcref, `0x6f` externref),
+    //! `list(T)` is a u32 LEB128 length prefix followed by elements, and
+    //! `i32.const N; end` is `0x41 <signed-LEB128(N)> 0x0b`.
+
+    use super::*;
+    use crate::instructions::Instruction;
+
+    fn assert_offset_zero(expr: &ConstExpression) {
+        assert!(
+            matches!(
+                expr.0.as_slice(),
+                [Instruction::I32Const(0), Instruction::End]
+            ),
+            "unexpected offset expression: {:?}",
+            expr.0
+        );
+    }
+
+    #[test]
+    fn test_decode_flag_0_active_table0_funcs() -> anyhow::Result<()> {
+        let bytes = [
+            b"\x00" as &[u8], // flag 0
+            b"\x41\x00\x0b",  // offset: i32.const 0; end
+            b"\x02\x00\x01",  // funcidx list: len=2, [0, 1]
+        ]
+        .concat();
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let seg = ElementSegment::decode(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let ElementSegmentMode::Active {
+            table_index,
+            offset,
+        } = &seg.mode
+        else {
+            panic!("expected Active, got {:?}", seg.mode);
+        };
+        assert_eq!(*table_index, None);
+        assert_offset_zero(offset);
+
+        let ElementSegmentItems::Functions(funcs) = &seg.items else {
+            panic!("expected Functions, got {:?}", seg.items);
+        };
+        assert_eq!(funcs.len(), 2);
+        assert_eq!(funcs[0].0, 0);
+        assert_eq!(funcs[1].0, 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_flag_1_passive_funcs() -> anyhow::Result<()> {
+        let bytes = [
+            b"\x01" as &[u8], // flag 1
+            b"\x00",          // elemkind = 0x00 (ref func)
+            b"\x01\x07",      // funcidx list: len=1, [7]
+        ]
+        .concat();
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let seg = ElementSegment::decode(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        assert!(matches!(seg.mode, ElementSegmentMode::Passive));
+
+        let ElementSegmentItems::Functions(funcs) = &seg.items else {
+            panic!("expected Functions, got {:?}", seg.items);
+        };
+        assert_eq!(funcs.len(), 1);
+        assert_eq!(funcs[0].0, 7);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_flag_2_active_explicit_table_funcs() -> anyhow::Result<()> {
+        let bytes = [
+            b"\x02" as &[u8], // flag 2
+            b"\x01",          // tableidx = 1
+            b"\x41\x00\x0b",  // offset: i32.const 0; end
+            b"\x00",          // elemkind = 0x00
+            b"\x01\x05",      // funcidx list: len=1, [5]
+        ]
+        .concat();
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let seg = ElementSegment::decode(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let ElementSegmentMode::Active {
+            table_index,
+            offset,
+        } = &seg.mode
+        else {
+            panic!("expected Active, got {:?}", seg.mode);
+        };
+        assert_eq!(*table_index, Some(1));
+        assert_offset_zero(offset);
+
+        let ElementSegmentItems::Functions(funcs) = &seg.items else {
+            panic!("expected Functions, got {:?}", seg.items);
+        };
+        assert_eq!(funcs.len(), 1);
+        assert_eq!(funcs[0].0, 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_flag_3_declarative_funcs() -> anyhow::Result<()> {
+        let bytes = [
+            b"\x03" as &[u8], // flag 3
+            b"\x00",          // elemkind = 0x00
+            b"\x02\x02\x03",  // funcidx list: len=2, [2, 3]
+        ]
+        .concat();
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let seg = ElementSegment::decode(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        assert!(matches!(seg.mode, ElementSegmentMode::Declarative));
+
+        let ElementSegmentItems::Functions(funcs) = &seg.items else {
+            panic!("expected Functions, got {:?}", seg.items);
+        };
+        assert_eq!(funcs.len(), 2);
+        assert_eq!(funcs[0].0, 2);
+        assert_eq!(funcs[1].0, 3);
+
+        Ok(())
+    }
+
+    // Spec: `4:u32 e₀:expr e*:list(expr)` — no rt byte; type is the implicit
+    // `(ref null func)`, which the decoder must default to `RefType::Func`.
+    #[test]
+    fn test_decode_flag_4_active_table0_exprs() -> anyhow::Result<()> {
+        let bytes = [
+            b"\x04" as &[u8],    // flag 4
+            b"\x41\x00\x0b",     // offset: i32.const 0; end
+            b"\x01\x41\x2a\x0b", // expr list: len=1, [i32.const 42; end]
+        ]
+        .concat();
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let seg = ElementSegment::decode(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let ElementSegmentMode::Active {
+            table_index,
+            offset,
+        } = &seg.mode
+        else {
+            panic!("expected Active, got {:?}", seg.mode);
+        };
+        assert_eq!(*table_index, None);
+        assert_offset_zero(offset);
+
+        let ElementSegmentItems::Expressions(rt, exprs) = &seg.items else {
+            panic!("expected Expressions, got {:?}", seg.items);
+        };
+        assert_eq!(*rt, RefType::Func);
+        assert_eq!(exprs.len(), 1);
+        assert!(matches!(
+            exprs[0].0.as_slice(),
+            [Instruction::I32Const(42), Instruction::End]
+        ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_flag_5_passive_exprs() -> anyhow::Result<()> {
+        let bytes = [
+            b"\x05" as &[u8],    // flag 5
+            b"\x70",             // reftype = funcref
+            b"\x01\x41\x09\x0b", // expr list: len=1, [i32.const 9; end]
+        ]
+        .concat();
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let seg = ElementSegment::decode(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        assert!(matches!(seg.mode, ElementSegmentMode::Passive));
+
+        let ElementSegmentItems::Expressions(rt, exprs) = &seg.items else {
+            panic!("expected Expressions, got {:?}", seg.items);
+        };
+        assert_eq!(*rt, RefType::Func);
+        assert_eq!(exprs.len(), 1);
+        assert!(matches!(
+            exprs[0].0.as_slice(),
+            [Instruction::I32Const(9), Instruction::End]
+        ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_flag_6_active_explicit_table_exprs() -> anyhow::Result<()> {
+        let bytes = [
+            b"\x06" as &[u8], // flag 6
+            b"\x01",          // tableidx = 1
+            b"\x41\x00\x0b",  // offset: i32.const 0; end
+            b"\x6f",          // reftype = externref
+            b"\x00",          // expr list: len=0
+        ]
+        .concat();
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let seg = ElementSegment::decode(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let ElementSegmentMode::Active {
+            table_index,
+            offset,
+        } = &seg.mode
+        else {
+            panic!("expected Active, got {:?}", seg.mode);
+        };
+        assert_eq!(*table_index, Some(1));
+        assert_offset_zero(offset);
+
+        let ElementSegmentItems::Expressions(rt, exprs) = &seg.items else {
+            panic!("expected Expressions, got {:?}", seg.items);
+        };
+        assert_eq!(*rt, RefType::Extern);
+        assert_eq!(exprs.len(), 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_flag_7_declarative_exprs() -> anyhow::Result<()> {
+        let bytes = [
+            b"\x07" as &[u8],    // flag 7
+            b"\x6f",             // reftype = externref
+            b"\x01\x41\x05\x0b", // expr list: len=1, [i32.const 5; end]
+        ]
+        .concat();
+
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let seg = ElementSegment::decode(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        assert!(matches!(seg.mode, ElementSegmentMode::Declarative));
+
+        let ElementSegmentItems::Expressions(rt, exprs) = &seg.items else {
+            panic!("expected Expressions, got {:?}", seg.items);
+        };
+        assert_eq!(*rt, RefType::Extern);
+        assert_eq!(exprs.len(), 1);
+        assert!(matches!(
+            exprs[0].0.as_slice(),
+            [Instruction::I32Const(5), Instruction::End]
+        ));
+
+        Ok(())
+    }
+
+    // Spec defines flags 0–7 only; bit 3 must be 0.
+    #[test]
+    fn test_decode_invalid_flag() -> anyhow::Result<()> {
+        let bytes = b"\x08";
+        let mut r = Reader::from_bytes(bytes, 0);
+        let result = ElementSegment::decode(&mut r);
+        assert!(
+            result.is_err(),
+            "expected error for flag 8, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+}
