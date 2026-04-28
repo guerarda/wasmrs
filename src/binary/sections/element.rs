@@ -121,12 +121,16 @@ impl SectionEntry for ElementSegment {
         }
 
         let mode = if flag & 0b001 != 0 {
+            // Bit 0 set, bit 1 distinguishes between passive (0)
+            // or declarative (1)
             if flag & 0b010 != 0 {
-                ElementSegmentMode::Passive
-            } else {
                 ElementSegmentMode::Declarative
+            } else {
+                ElementSegmentMode::Passive
             }
         } else {
+            // Bit 0 not set: active segment. bit 1 is set for an
+            // explicit table index
             let table_index = if flag & 0b010 != 0 {
                 Some(
                     reader
@@ -145,9 +149,15 @@ impl SectionEntry for ElementSegment {
         };
 
         let items = if flag & 0b100 != 0 {
-            let rt: RefType = reader
-                .read()
-                .map_err(ElementSectionReadError::ItemsRefType)?;
+            // Bit 2 is set, use element type and expressions.
+            // For flag == 4, rt is implied to be ref func.
+            let rt = if flag != 4 {
+                reader
+                    .read()
+                    .map_err(ElementSectionReadError::ItemsRefType)?
+            } else {
+                RefType::Func
+            };
             let exprs: Vec<ConstExpression> = reader
                 .read()
                 .map_err(ElementSectionReadError::ItemsExpressions)
@@ -155,6 +165,8 @@ impl SectionEntry for ElementSegment {
 
             ElementSegmentItems::Expressions(rt, exprs)
         } else {
+            // Bit 2 is not set, use element kind and indices.
+            // For flag 0, elemkind is implied
             if flag != 0 {
                 // Flag 0 doesn't have elemkind marker
                 let _: ElementKindMarker =
