@@ -49,8 +49,7 @@ fn main() -> Result<()> {
     let out = PathBuf::from(format!("target/wast-debug/{stem}-{n}.wasm"));
     fs::create_dir_all(out.parent().unwrap())?;
     if !out.exists() {
-        fs::write(&out, &bytes)
-            .with_context(|| format!("failed to write {}", out.display()))?;
+        fs::write(&out, &bytes).with_context(|| format!("failed to write {}", out.display()))?;
         println!("wrote {} ({} bytes)", out.display(), bytes.len());
     } else {
         println!("cached {} ({} bytes)", out.display(), bytes.len());
@@ -119,8 +118,13 @@ fn resolve(directives: &[WastDirective<'_>], n: usize) -> Result<usize> {
             | WastDirective::AssertUnlinkable { .. }
     ) || matches!(
         d,
-        WastDirective::AssertTrap { exec: WastExecute::Wat(_), .. }
-            | WastDirective::AssertReturn { exec: WastExecute::Wat(_), .. }
+        WastDirective::AssertTrap {
+            exec: WastExecute::Wat(_),
+            ..
+        } | WastDirective::AssertReturn {
+            exec: WastExecute::Wat(_),
+            ..
+        }
     );
 
     if self_carries_module {
@@ -140,9 +144,7 @@ fn resolve(directives: &[WastDirective<'_>], n: usize) -> Result<usize> {
     }
 
     if let Some(name) = wanted {
-        bail!(
-            "directive [{n}] references module ${name}; no prior `(module ${name} ...)` found"
-        );
+        bail!("directive [{n}] references module ${name}; no prior `(module ${name} ...)` found");
     }
     bail!(
         "directive [{n}] ({}) has no prior module in file",
