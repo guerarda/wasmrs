@@ -8,15 +8,34 @@ use wast::parser::{self, ParseBuffer};
 use wast::{Wast, WastDirective, WastExecute};
 
 fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 3 {
-        eprintln!("usage: {} <file.wast> <test-number>", args[0]);
+    let argv: Vec<String> = std::env::args().collect();
+    let mut no_run = false;
+    let positionals: Vec<&String> = argv
+        .iter()
+        .enumerate()
+        .filter_map(|(i, a)| {
+            if i == 0 {
+                Some(a)
+            } else if a == "--no-run" {
+                no_run = true;
+                None
+            } else {
+                Some(a)
+            }
+        })
+        .collect();
+
+    if positionals.len() != 3 {
+        eprintln!(
+            "usage: {} [--no-run] <file.wast> <test-number>",
+            positionals[0]
+        );
         process::exit(2);
     }
-    let wast_path = PathBuf::from(&args[1]);
-    let n: usize = args[2]
+    let wast_path = PathBuf::from(positionals[1]);
+    let n: usize = positionals[2]
         .parse()
-        .with_context(|| format!("invalid test number {:?}", args[2]))?;
+        .with_context(|| format!("invalid test number {:?}", positionals[2]))?;
 
     let contents = fs::read_to_string(&wast_path)
         .with_context(|| format!("failed to read {}", wast_path.display()))?;
@@ -53,6 +72,10 @@ fn main() -> Result<()> {
         println!("wrote {} ({} bytes)", out.display(), bytes.len());
     } else {
         println!("cached {} ({} bytes)", out.display(), bytes.len());
+    }
+
+    if no_run {
+        return Ok(());
     }
 
     let status = Command::new(env!("CARGO"))

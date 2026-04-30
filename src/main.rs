@@ -12,8 +12,6 @@ fn main() -> anyhow::Result<()> {
     let mut runtime = Runtime::default();
     let _ = runtime.load_module(&bytes)?;
 
-    dbg!(runtime);
-
     Ok(())
 }
 
