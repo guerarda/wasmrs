@@ -5,6 +5,7 @@ use crate::{
         module::Module,
         sections::{
             code::{CodeEntry, FuncLocal},
+            data::DataSegmentMode,
             element::{ElementSegmentItems, ElementSegmentMode},
             global::{GlobalType, MutabilityFlag},
             import::ImportDesc,
@@ -1139,7 +1140,7 @@ impl Validator {
             return Ok(());
         };
         let types_len = module.types.as_ref().map(|t| t.len()).unwrap_or(0);
-        let mut mems_len = module.memories.as_ref().map(|t| t.len()).unwrap_or(0);
+        let mut mems_count = module.memories.as_ref().map(|t| t.len()).unwrap_or(0);
 
         for i in importsec {
             match &i.desc {
@@ -1152,12 +1153,28 @@ impl Validator {
                     if !memtype.is_valid() {
                         return Err(ValidationError::InvalidLimit);
                     }
-                    mems_len += 1;
-                    if mems_len > 1 {
+                    mems_count += 1;
+                    if mems_count > 1 {
                         return Err(ValidationError::MultipleMemories);
                     }
                 }
                 _ => (),
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_data_section(module: &Module) -> result::Result<(), ValidationError> {
+        let Some(ref datasec) = module.data else {
+            return Ok(());
+        };
+
+        let mem_count = module.memory_count();
+        for d in datasec {
+            if let DataSegmentMode::Active { mem_index, .. } = &d.mode {
+                if (*mem_index as usize) >= mem_count {
+                    return Err(ValidationError::UnknownMemory);
+                }
             }
         }
         Ok(())
@@ -1168,6 +1185,7 @@ impl Validator {
         Self::validate_memory_section(module)?;
         Self::validate_element_section(module)?;
         Self::validate_imports_section(module)?;
+        Self::validate_data_section(module)?;
 
         // At this point Function and Code section should be consistent
         debug_assert_eq!(module.functions.is_some(), module.codes.is_some());
@@ -1421,6 +1439,45 @@ mod tests {
         assert!(
             result.is_err(),
             "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_data_segment_imported_memory() -> anyhow::Result<()> {
+        // (module
+        //   (import "env" "mem" (memory 1))
+        //   (data (i32.const 0) "hi"))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: 1 import, "env"."mem" memory min=1
+            b"\x02\x0c\x01\x03\x65\x6e\x76\x03\x6d\x65\x6d\x02\x00\x01",
+            // data section: 1 active segment, mem_index=0, offset=i32.const 0, "hi"
+            b"\x0b\x08\x01\x00\x41\x00\x0b\x02\x68\x69",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
+
+    #[test]
+    fn test_data_segment_unknown_memory() -> anyhow::Result<()> {
+        // Same imported memory module but data segment refers to mem_index=1 (out of range).
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            b"\x02\x0c\x01\x03\x65\x6e\x76\x03\x6d\x65\x6d\x02\x00\x01",
+            // data section: flag=0x02 (active w/ explicit memidx), memidx=1, offset=i32.const 0, "hi"
+            b"\x0b\x09\x01\x02\x01\x41\x00\x0b\x02\x68\x69",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(result, Err(ValidationError::UnknownMemory)),
+            "expected UnknownMemory, got: {:?}",
             result
         );
         Ok(())

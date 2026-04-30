@@ -2,6 +2,7 @@ use crate::instructions::Instruction;
 
 use super::reader::{ReadError, ReadErrorKind, Reader};
 use super::sections::custom::decode_custom_section;
+use super::sections::import::ImportDesc;
 use super::sections::{
     CodeSection, CustomSection, DataCountSection, DataSection, ElementSection, ExportSection,
     FunctionSection, GlobalSection, ImportSection, MemorySection, SectionError, SectionErrorKind,
@@ -120,6 +121,16 @@ pub struct Module {
 }
 
 impl Module {
+    pub(crate) fn memory_count(&self) -> usize {
+        let imported = self.imports.as_ref().map_or(0, |imps| {
+            imps.iter()
+                .filter(|i| matches!(i.desc, ImportDesc::Mem(_)))
+                .count()
+        });
+        let local = self.memories.as_ref().map_or(0, Vec::len);
+        imported + local
+    }
+
     fn from_bytes(bytes: Vec<u8>) -> Self {
         Module {
             bytes,

@@ -54,7 +54,6 @@ pub enum ImportDesc {
     Func(TypeIdx),
     #[allow(dead_code)]
     Table(TableType),
-    #[allow(dead_code)]
     Mem(MemType),
     #[allow(dead_code)]
     Global(GlobalType),
