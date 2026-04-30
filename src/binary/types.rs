@@ -401,6 +401,7 @@ pub struct MemArg {
 #[non_exhaustive]
 pub enum MemArgReadError {
     Align(ReadError),
+    AlignTooLarge(u64, u32),
     Offset(ReadError),
 }
 
@@ -408,6 +409,7 @@ impl error::Error for MemArgReadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Align(e) => Some(e),
+            Self::AlignTooLarge(_, _) => None,
             Self::Offset(e) => Some(e),
         }
     }
@@ -417,6 +419,7 @@ impl fmt::Display for MemArgReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Align(_) => write!(f, "reading align"),
+            Self::AlignTooLarge(pos, val) => write!(f, "reading align at {pos}, {val}  > 32"),
             Self::Offset(_) => write!(f, "reading offset"),
         }
     }
@@ -426,9 +429,44 @@ impl<'a> FromReader<'a> for MemArg {
     type Error = MemArgReadError;
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
-        let align: u32 = reader.read().map_err(Self::Error::Align)?;
+        let pos = reader.position();
+        let align: u32 = reader.read().map_err(Self::Error::Align).and_then(|a| {
+            (a < 32)
+                .then_some(a)
+                .ok_or(Self::Error::AlignTooLarge(pos, a))
+        })?;
         let offset: u32 = reader.read().map_err(Self::Error::Offset)?;
 
         Ok(MemArg { align, offset })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_memarg_happy_path() -> anyhow::Result<()> {
+        let bytes = [0x02u8, 0x04];
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let m = MemArg::from_reader(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
+        assert_eq!(m, MemArg { align: 2, offset: 4 });
+        Ok(())
+    }
+
+    #[test]
+    fn test_memarg_align_too_large() {
+        let bytes = [0x20u8, 0x00];
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let err = MemArg::from_reader(&mut r).expect_err("align >= 32 must reject");
+        assert!(matches!(err, MemArgReadError::AlignTooLarge(_, 32)));
+    }
+
+    #[test]
+    fn test_memarg_truncated_offset() {
+        let bytes = [0x01u8];
+        let mut r = Reader::from_bytes(&bytes, 0);
+        let err = MemArg::from_reader(&mut r).expect_err("missing offset must error");
+        assert!(matches!(err, MemArgReadError::Offset(_)));
     }
 }
