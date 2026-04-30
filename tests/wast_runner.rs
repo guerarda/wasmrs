@@ -19,7 +19,6 @@ mod spectest;
 
 /// Wast files to skip by default. Use --all to include them.
 const EXCLUDED: &[&str] = &[
-    "align.wast",
     "data.wast",
     "elem.wast",
     "exports.wast",
