@@ -52,11 +52,15 @@ fn main() -> Result<()> {
     let (line, _) = wast.directives[n].span().linecol_in(&contents);
     let line = line + 1;
     let kind = directive_kind(&wast.directives[n]);
+    let source = directive_text(&wast.directives, n, &contents);
 
     let target_idx = resolve(&wast.directives, n)?;
     let bytes = encode_directive(&mut wast.directives[target_idx])?;
 
     println!("directive [{n}] line {line} kind {kind}");
+    for line in source.lines() {
+        println!("  | {line}");
+    }
     if target_idx != n {
         println!("  -> targeting module at directive [{target_idx}]");
     }
@@ -90,6 +94,30 @@ fn main() -> Result<()> {
         .status()
         .context("failed to spawn `cargo run`")?;
     process::exit(status.code().unwrap_or(1));
+}
+
+/// Extract the source text of `directives[n]` from the original wast file.
+///
+/// Returns the lines from the start of the directive up to (but not including)
+/// the line where the next directive begins, with trailing blank lines
+/// stripped. May include trailing comments on the closing line, which is fine
+/// for context.
+fn directive_text(directives: &[WastDirective<'_>], n: usize, contents: &str) -> String {
+    let (start_line, _) = directives[n].span().linecol_in(contents);
+    let end_line = directives
+        .get(n + 1)
+        .map(|d| d.span().linecol_in(contents).0)
+        .unwrap_or(usize::MAX);
+
+    contents
+        .lines()
+        .enumerate()
+        .filter(|(i, _)| *i >= start_line && *i < end_line)
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim_end()
+        .to_string()
 }
 
 fn directive_kind(d: &WastDirective<'_>) -> &'static str {
