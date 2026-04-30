@@ -51,7 +51,6 @@ impl<'a> FromReader<'a> for ImportDescType {
 
 #[derive(Debug)]
 pub enum ImportDesc {
-    #[allow(dead_code)]
     Func(TypeIdx),
     #[allow(dead_code)]
     Table(TableType),

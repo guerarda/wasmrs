@@ -1,14 +1,27 @@
 use std::{error, fmt};
 
-use crate::binary::{
-    reader::{FromReader, Reader},
-    sections::{SectionEntry, SectionErrorKind},
-    types::{Limit, LimitReadError},
+use crate::{
+    binary::{
+        reader::{FromReader, Reader},
+        sections::{SectionEntry, SectionErrorKind},
+        types::{Limit, LimitReadError},
+    },
+    limits::MAX_WASM_32BIT_MEMORY_PAGES,
 };
 
 /// Memory Section
 #[derive(Debug, Clone)]
 pub struct MemType(pub Limit);
+
+impl MemType {
+    pub fn is_valid(&self) -> bool {
+        let l = &self.0;
+        l.min <= MAX_WASM_32BIT_MEMORY_PAGES
+            && l.max.map_or(true, |max| {
+                max <= MAX_WASM_32BIT_MEMORY_PAGES && l.min <= max
+            })
+    }
+}
 
 pub type MemorySection = Vec<MemType>;
 

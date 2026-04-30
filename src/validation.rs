@@ -7,13 +7,13 @@ use crate::{
             code::{CodeEntry, FuncLocal},
             element::{ElementSegmentItems, ElementSegmentMode},
             global::{GlobalType, MutabilityFlag},
+            import::ImportDesc,
             memory::MemType,
             table::TableType,
         },
         types::{BlockType, FuncType, GlobalIdx, MemArg, MemIndex, RefType, ValType},
     },
     instructions::Instruction,
-    limits::MAX_WASM_32BIT_MEMORY_PAGES,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -113,6 +113,7 @@ pub enum ValidationError {
     InvalidMemAlignment,
     InvalidLimit,
     InvalidElement,
+    MultipleMemories,
 }
 
 impl error::Error for ValidationError {
@@ -143,6 +144,7 @@ impl fmt::Display for ValidationError {
             Self::InvalidMemAlignment => write!(f, "invalid mem alignment"),
             Self::InvalidLimit => write!(f, "invalid limit"),
             Self::InvalidElement => write!(f, "invalid element"),
+            Self::MultipleMemories => write!(f, "multiple memories"),
         }
     }
 }
@@ -1068,6 +1070,7 @@ impl Validator {
         Ok(())
     }
 
+    // Section validation
     fn validate_table_section(module: &Module) -> result::Result<(), ValidationError> {
         let Some(ref tablesec) = module.tables else {
             return Ok(());
@@ -1085,14 +1088,16 @@ impl Validator {
         let Some(ref memsec) = module.memories else {
             return Ok(());
         };
-        if memsec.iter().any(|m| {
-            let l = &m.0;
-            l.min > MAX_WASM_32BIT_MEMORY_PAGES
-                || l.max
-                    .is_some_and(|max| max > MAX_WASM_32BIT_MEMORY_PAGES || l.min > max)
-        }) {
+
+        // Only one memory is allowed
+        if memsec.len() > 1 {
+            return Err(ValidationError::MultipleMemories);
+        }
+
+        if !memsec.iter().all(MemType::is_valid) {
             return Err(ValidationError::InvalidLimit);
         }
+
         Ok(())
     }
 
@@ -1129,10 +1134,40 @@ impl Validator {
         Ok(())
     }
 
+    fn validate_imports_section(module: &Module) -> result::Result<(), ValidationError> {
+        let Some(ref importsec) = module.imports else {
+            return Ok(());
+        };
+        let types_len = module.types.as_ref().map(|t| t.len()).unwrap_or(0);
+        let mut mems_len = module.memories.as_ref().map(|t| t.len()).unwrap_or(0);
+
+        for i in importsec {
+            match &i.desc {
+                ImportDesc::Func(idx) => {
+                    if *idx as usize >= types_len {
+                        return Err(ValidationError::UnknownType);
+                    }
+                }
+                ImportDesc::Mem(memtype) => {
+                    if !memtype.is_valid() {
+                        return Err(ValidationError::InvalidLimit);
+                    }
+                    mems_len += 1;
+                    if mems_len > 1 {
+                        return Err(ValidationError::MultipleMemories);
+                    }
+                }
+                _ => (),
+            }
+        }
+        Ok(())
+    }
+
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
         Self::validate_table_section(module)?;
         Self::validate_memory_section(module)?;
         Self::validate_element_section(module)?;
+        Self::validate_imports_section(module)?;
 
         // At this point Function and Code section should be consistent
         debug_assert_eq!(module.functions.is_some(), module.codes.is_some());
