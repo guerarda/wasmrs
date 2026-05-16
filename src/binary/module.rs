@@ -127,7 +127,25 @@ impl Module {
                 .filter(|i| matches!(i.desc, ImportDesc::Mem(_)))
                 .count()
         });
-        let local = self.memories.as_ref().map_or(0, Vec::len);
+        let local = self.memories.as_ref().map_or(0, |m| m.len());
+        imported + local
+    }
+
+    pub(crate) fn imported_global_count(&self) -> usize {
+        self.imports.as_ref().map_or(0, |imps| {
+            imps.iter()
+                .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
+                .count()
+        })
+    }
+
+    pub(crate) fn func_count(&self) -> usize {
+        let imported = self.imports.as_ref().map_or(0, |imps| {
+            imps.iter()
+                .filter(|i| matches!(i.desc, ImportDesc::Func(_)))
+                .count()
+        });
+        let local = self.functions.as_ref().map_or(0, |f| f.len());
         imported + local
     }
 
