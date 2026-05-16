@@ -12,7 +12,9 @@ use crate::{
             memory::MemType,
             table::TableType,
         },
-        types::{BlockType, FuncType, GlobalIdx, MemArg, MemIndex, RefType, ValType},
+        types::{
+            BlockType, ConstExpression, FuncType, GlobalIdx, MemArg, MemIndex, RefType, ValType,
+        },
     },
     instructions::Instruction,
 };
@@ -115,6 +117,7 @@ pub enum ValidationError {
     InvalidLimit,
     InvalidElement,
     MultipleMemories,
+    ConstantExpressionRequired,
 }
 
 impl error::Error for ValidationError {
@@ -146,6 +149,7 @@ impl fmt::Display for ValidationError {
             Self::InvalidLimit => write!(f, "invalid limit"),
             Self::InvalidElement => write!(f, "invalid element"),
             Self::MultipleMemories => write!(f, "multiple memories"),
+            Self::ConstantExpressionRequired => write!(f, "constant expression required"),
         }
     }
 }
@@ -431,6 +435,67 @@ impl Validator {
         self.pop_val_expect(valuetype.into())?;
         self.pop_val_expect(ValueType::I32)?;
         Ok(())
+    }
+
+    /// Validates that `expr` is constant and evaluates to the expected type.
+    /// Also enforces that global.get instructions only refer to allowed globals
+    /// Imported or previously defined flor Globals, and imported
+    /// only for Tables.
+    fn validate_const_expr(
+        module: &Module,
+        expr: &ConstExpression,
+        expected: &[ValueType],
+    ) -> result::Result<(), ValidationError> {
+        let mut stack = vec![];
+        for inst in &expr.0 {
+            match inst {
+                Instruction::I32Const(_) => stack.push(ValueType::I32),
+                Instruction::I64Const(_) => stack.push(ValueType::I64),
+                Instruction::F32Const(_) => stack.push(ValueType::F32),
+                Instruction::F64Const(_) => stack.push(ValueType::F64),
+                Instruction::RefNull(rt) => stack.push(ValueType::Ref(*rt)),
+                Instruction::RefFunc(idx) => {
+                    if *idx as usize >= module.func_count() {
+                        return Err(ValidationError::UnknownFunction);
+                    }
+                    stack.push(ValueType::Ref(RefType::Func))
+                }
+                Instruction::GlobalGet(idx) => {
+                    let idx = *idx as usize;
+
+                    if idx >= module.imported_global_count() {
+                        return Err(ValidationError::UnknownGlobal);
+                    }
+
+                    let import = module
+                        .imports
+                        .as_ref()
+                        .and_then(|imps| {
+                            imps.iter()
+                                .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
+                                .nth(idx)
+                        })
+                        .ok_or(ValidationError::UnknownGlobal)?;
+
+                    let ImportDesc::Global(gt) = &import.desc else {
+                        unreachable!()
+                    };
+
+                    if matches!(gt.mutflag, MutabilityFlag::Const) {
+                        stack.push(ValueType::from(gt.type_));
+                    } else {
+                        return Err(ValidationError::ConstantExpressionRequired);
+                    }
+                }
+                Instruction::End => break,
+                _ => return Err(ValidationError::ConstantExpressionRequired),
+            }
+        }
+        if stack == expected {
+            Ok(())
+        } else {
+            Err(ValidationError::TypeMismatch)
+        }
     }
 
     fn validate_function(
@@ -1180,12 +1245,29 @@ impl Validator {
         Ok(())
     }
 
+    fn validate_globals_section(module: &Module) -> result::Result<(), ValidationError> {
+        let Some(ref globalsec) = module.globals else {
+            return Ok(());
+        };
+
+        for global in globalsec.iter() {
+            // Validate expression
+            Self::validate_const_expr(
+                module,
+                &global.body,
+                &vec![ValueType::from(global.gt.type_)],
+            )?;
+        }
+        Ok(())
+    }
+
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
         Self::validate_table_section(module)?;
         Self::validate_memory_section(module)?;
         Self::validate_element_section(module)?;
         Self::validate_imports_section(module)?;
         Self::validate_data_section(module)?;
+        Self::validate_globals_section(module)?;
 
         // At this point Function and Code section should be consistent
         debug_assert_eq!(module.functions.is_some(), module.codes.is_some());
@@ -1478,6 +1560,116 @@ mod tests {
         assert!(
             matches!(result, Err(ValidationError::UnknownMemory)),
             "expected UnknownMemory, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_ref_func_out_of_bounds() -> anyhow::Result<()> {
+        // (module (global funcref (ref.func 5)))
+        // no functions defined, so index 5 is out of bounds
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // global section: 1 entry, funcref, const, ref.func 5, end
+            b"\x06\x06\x01\x70\x00\xd2\x05\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(result, Err(ValidationError::UnknownFunction)),
+            "expected UnknownFunction, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_valid_i32_const() -> anyhow::Result<()> {
+        // (module (global i32 (i32.const 0)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // global section: 1 entry, i32, const, i32.const 0, end
+            b"\x06\x06\x01\x7f\x00\x41\x00\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_type_mismatch() -> anyhow::Result<()> {
+        // (module (global i32 (f32.const 0)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // global section: 1 entry, i32, const, f32.const 0.0, end
+            b"\x06\x09\x01\x7f\x00\x43\x00\x00\x00\x00\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(result, Err(ValidationError::TypeMismatch)),
+            "expected TypeMismatch, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_non_const_instruction() -> anyhow::Result<()> {
+        // (module (global f32 (f32.const 0) (f32.neg)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // global section: 1 entry, f32, const, f32.const 0.0, f32.neg, end
+            b"\x06\x0a\x01\x7d\x00\x43\x00\x00\x00\x00\x8c\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(result, Err(ValidationError::ConstantExpressionRequired)),
+            "expected ConstantExpressionRequired, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_get_imported_immutable() -> anyhow::Result<()> {
+        // (module (import "e" "g" (global i32)) (global i32 (global.get 0)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "e"."g" global i32 const
+            b"\x02\x08\x01\x01\x65\x01\x67\x03\x7f\x00",
+            // global section: 1 entry, i32, const, global.get 0, end
+            b"\x06\x06\x01\x7f\x00\x23\x00\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_get_locally_defined() -> anyhow::Result<()> {
+        // (module (global i32 (i32.const 0)) (global i32 (global.get 0)))
+        // global.get referencing a locally defined global is not allowed in const expr
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // global section: 2 entries
+            b"\x06\x0b\x02\x7f\x00\x41\x00\x0b\x7f\x00\x23\x00\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(result, Err(ValidationError::UnknownGlobal)),
+            "expected UnknownGlobal, got: {:?}",
             result
         );
         Ok(())
