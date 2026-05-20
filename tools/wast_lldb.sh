@@ -21,4 +21,8 @@ stem=$(basename "$wast" .wast)
 cache="$repo/target/wast-debug/$stem-$n.wasm"
 
 cargo build --quiet --bin wasmrs
-exec rust-lldb -- "$repo/target/debug/wasmrs" "$cache"
+sysroot=$(rustc --print sysroot)
+exec /Library/Developer/CommandLineTools/usr/bin/lldb \
+    --one-line-before-file "command script import $sysroot/lib/rustlib/etc/lldb_lookup.py" \
+    --source-before-file "$sysroot/lib/rustlib/etc/lldb_commands" \
+    -- "$repo/target/debug/wasmrs" "$cache"
