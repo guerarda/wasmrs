@@ -1172,8 +1172,6 @@ impl Validator {
             return Ok(());
         };
         for e in elemsec {
-            // TODO validate const expression
-
             let rt = match &e.items {
                 ElementSegmentItems::Functions(funcs) => {
                     for f in funcs {
@@ -1181,10 +1179,19 @@ impl Validator {
                     }
                     RefType::Func
                 }
-                ElementSegmentItems::Expressions(rt, ..) => *rt,
+                ElementSegmentItems::Expressions(rt, expr) => {
+                    let expected = &[ValueType::from(*rt)];
+                    expr.iter()
+                        .try_for_each(|e| Self::validate_const_expr(module, e, expected))?;
+                    *rt
+                }
             };
 
-            if let ElementSegmentMode::Active { table_index, .. } = &e.mode {
+            if let ElementSegmentMode::Active {
+                table_index,
+                offset,
+            } = &e.mode
+            {
                 let tableidx = table_index.unwrap_or(0);
                 let table = module
                     .tables
@@ -1195,6 +1202,8 @@ impl Validator {
                 if table.tabletype.elemtype != rt {
                     return Err(ValidationError::TypeMismatch);
                 }
+
+                Self::validate_const_expr(module, offset, &[ValueType::I32])?;
             }
         }
         Ok(())
