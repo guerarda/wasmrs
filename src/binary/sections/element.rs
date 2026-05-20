@@ -17,44 +17,6 @@ pub enum ElementSegmentMode {
     Declarative,
 }
 
-impl<'a> FromReader<'a> for ElementSegmentMode {
-    type Error = ElementSegmentModeReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> result::Result<Self, Self::Error> {
-        let offset = reader.position() as usize;
-        let flag: u32 = reader.read().map_err(Self::Error::Flag)?;
-
-        if (flag & !0b111) != 0 {
-            return Err(Self::Error::Flag(ReadError {
-                offset,
-                kind: ReadErrorKind::UnexpectedValue {
-                    value: flag.to_string(),
-                    expected: "0 <= flag <= 7 for element segment".to_string(),
-                },
-            }));
-        }
-
-        let mode = if flag & 0b001 != 0 {
-            if flag & 0b010 != 0 {
-                ElementSegmentMode::Passive
-            } else {
-                ElementSegmentMode::Declarative
-            }
-        } else {
-            let table_index = if flag & 0b010 != 0 {
-                Some(reader.read().map_err(Self::Error::TableIndex)?)
-            } else {
-                None
-            };
-            ElementSegmentMode::Active {
-                table_index,
-                offset: reader.read().map_err(Self::Error::Expression)?,
-            }
-        };
-        Ok(mode)
-    }
-}
-
 #[derive(Debug)]
 pub struct ElementKindMarker();
 impl<'a> FromReader<'a> for ElementKindMarker {
@@ -184,33 +146,6 @@ impl SectionEntry for ElementSegment {
 }
 
 /// Errors
-#[derive(Debug)]
-pub enum ElementSegmentModeReadError {
-    Flag(ReadError),
-    TableIndex(ReadError),
-    Expression(ConstExpressionReadError),
-}
-
-impl error::Error for ElementSegmentModeReadError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Flag(e) => Some(e),
-            Self::TableIndex(e) => Some(e),
-            Self::Expression(e) => Some(e),
-        }
-    }
-}
-
-impl fmt::Display for ElementSegmentModeReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Flag(_) => write!(f, "reading flag"),
-            Self::TableIndex(_) => write!(f, "reading table index"),
-            Self::Expression(_) => write!(f, "reading expression"),
-        }
-    }
-}
-
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ElementSectionReadError {
