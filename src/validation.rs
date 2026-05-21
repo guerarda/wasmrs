@@ -1245,10 +1245,11 @@ impl Validator {
 
         let mem_count = module.memory_count();
         for d in datasec {
-            if let DataSegmentMode::Active { mem_index, .. } = &d.mode {
+            if let DataSegmentMode::Active { mem_index, offset } = &d.mode {
                 if (*mem_index as usize) >= mem_count {
                     return Err(ValidationError::UnknownMemory);
                 }
+                Self::validate_const_expr(module, offset, &[ValueType::I32])?;
             }
         }
         Ok(())
