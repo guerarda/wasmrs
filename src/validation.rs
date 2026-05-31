@@ -1,4 +1,4 @@
-use std::{error, fmt, result};
+use std::{collections::HashSet, error, fmt, result};
 
 use crate::{
     binary::{
@@ -7,6 +7,7 @@ use crate::{
             code::{CodeEntry, FuncLocal},
             data::DataSegmentMode,
             element::{ElementSegmentItems, ElementSegmentMode},
+            export::ExportKind,
             global::{GlobalType, MutabilityFlag},
             import::ImportDesc,
             memory::MemType,
@@ -118,6 +119,7 @@ pub enum ValidationError {
     InvalidElement,
     MultipleMemories,
     ConstantExpressionRequired,
+    DuplicatExportName,
 }
 
 impl error::Error for ValidationError {
@@ -150,6 +152,7 @@ impl fmt::Display for ValidationError {
             Self::InvalidElement => write!(f, "invalid element"),
             Self::MultipleMemories => write!(f, "multiple memories"),
             Self::ConstantExpressionRequired => write!(f, "constant expression required"),
+            Self::DuplicatExportName => write!(f, "duplicate export name"),
         }
     }
 }
@@ -1238,6 +1241,49 @@ impl Validator {
         Ok(())
     }
 
+    fn validate_exports_section(module: &Module) -> result::Result<(), ValidationError> {
+        let Some(ref exportsec) = module.exports else {
+            return Ok(());
+        };
+        let mut names: HashSet<String> = HashSet::new();
+
+        let func_count = module.func_count();
+        let table_count = module.table_count();
+        let mem_count = module.memory_count();
+        let global_count = module.global_count();
+
+        for e in exportsec {
+            if !names.insert(e.name.clone()) {
+                return Err(ValidationError::DuplicatExportName);
+            }
+            let idx = e.index as usize;
+            match e.kind {
+                ExportKind::Func => {
+                    if idx >= func_count {
+                        return Err(ValidationError::UnknownFunction);
+                    }
+                }
+                ExportKind::Table => {
+                    if idx >= table_count {
+                        return Err(ValidationError::UnknownTable);
+                    }
+                }
+                ExportKind::Memory => {
+                    if idx >= mem_count {
+                        return Err(ValidationError::UnknownMemory);
+                    }
+                }
+                ExportKind::Global => {
+                    if idx >= global_count {
+                        return Err(ValidationError::UnknownGlobal);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn validate_data_section(module: &Module) -> result::Result<(), ValidationError> {
         let Some(ref datasec) = module.data else {
             return Ok(());
@@ -1278,6 +1324,7 @@ impl Validator {
         Self::validate_imports_section(module)?;
         Self::validate_data_section(module)?;
         Self::validate_globals_section(module)?;
+        Self::validate_exports_section(module)?;
 
         // At this point Function and Code section should be consistent
         debug_assert_eq!(module.functions.is_some(), module.codes.is_some());

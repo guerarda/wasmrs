@@ -10,6 +10,20 @@ use super::sections::{
     decode_section, decode_start_section,
 };
 
+macro_rules! impl_count_kind {
+    ($name: ident, $variant: ident, $field: ident) => {
+        pub(crate) fn $name(&self) -> usize {
+            let imported = self.imports.as_ref().map_or(0, |imps| {
+                imps.iter()
+                    .filter(|i| matches!(i.desc, ImportDesc::$variant(_)))
+                    .count()
+            });
+            let local = self.$field.as_ref().map_or(0, |f| f.len());
+            imported + local
+        }
+    };
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum MalformedError {
@@ -121,15 +135,10 @@ pub struct Module {
 }
 
 impl Module {
-    pub(crate) fn memory_count(&self) -> usize {
-        let imported = self.imports.as_ref().map_or(0, |imps| {
-            imps.iter()
-                .filter(|i| matches!(i.desc, ImportDesc::Mem(_)))
-                .count()
-        });
-        let local = self.memories.as_ref().map_or(0, |m| m.len());
-        imported + local
-    }
+    impl_count_kind!(func_count, Func, functions);
+    impl_count_kind!(memory_count, Mem, memories);
+    impl_count_kind!(table_count, Table, tables);
+    impl_count_kind!(global_count, Global, globals);
 
     pub(crate) fn imported_global_count(&self) -> usize {
         self.imports.as_ref().map_or(0, |imps| {
@@ -137,16 +146,6 @@ impl Module {
                 .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
                 .count()
         })
-    }
-
-    pub(crate) fn func_count(&self) -> usize {
-        let imported = self.imports.as_ref().map_or(0, |imps| {
-            imps.iter()
-                .filter(|i| matches!(i.desc, ImportDesc::Func(_)))
-                .count()
-        });
-        let local = self.functions.as_ref().map_or(0, |f| f.len());
-        imported + local
     }
 
     fn from_bytes(bytes: Vec<u8>) -> Self {
