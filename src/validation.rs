@@ -1329,24 +1329,24 @@ impl Validator {
         // At this point Function and Code section should be consistent
         debug_assert_eq!(module.functions.is_some(), module.codes.is_some());
 
-        let Some(ref function_section) = module.functions else {
-            return Ok(());
-        };
-        let Some(ref code_section) = module.codes else {
-            return Ok(());
-        };
-
-        let Some(ref type_section) = module.types else {
+        let (Some(funcsec), Some(codesec)) = (module.functions.as_ref(), module.codes.as_ref())
+        else {
             return Ok(());
         };
 
-        debug_assert_eq!(function_section.len(), code_section.len());
+        debug_assert_eq!(funcsec.len(), codesec.len());
 
-        function_section
+        funcsec
             .iter()
-            .zip(code_section.iter())
+            .zip(codesec.iter())
             .try_for_each(|(idx, entry)| {
-                Validator::default().validate_function(&type_section[*idx as usize], entry, module)
+                let idx = *idx as usize;
+                let functype = module
+                    .types
+                    .as_ref()
+                    .and_then(|t| t.get(idx))
+                    .ok_or(ValidationError::UnknownType)?;
+                Validator::default().validate_function(functype, entry, module)
             })
     }
 }
