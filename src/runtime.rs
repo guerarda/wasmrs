@@ -1090,10 +1090,7 @@ mod tests {
             "t",
             TableType {
                 elemtype: RefType::Extern,
-                limit: Limit {
-                    min: 1,
-                    max: None,
-                },
+                limit: Limit { min: 1, max: None },
             },
             Ref::Null(RefType::Extern),
         )?;
@@ -1125,10 +1122,7 @@ mod tests {
             "t",
             TableType {
                 elemtype: RefType::Func,
-                limit: Limit {
-                    min: 2,
-                    max: None,
-                },
+                limit: Limit { min: 2, max: None },
             },
             Ref::Null(RefType::Func),
         )?;
@@ -1160,10 +1154,7 @@ mod tests {
             "t",
             TableType {
                 elemtype: RefType::Func,
-                limit: Limit {
-                    min: 1,
-                    max: None,
-                },
+                limit: Limit { min: 1, max: None },
             },
             Ref::Null(RefType::Func),
         )?;
@@ -1225,14 +1216,7 @@ mod tests {
         .concat();
 
         let mut runtime = Runtime::default();
-        runtime.register_host_memory(
-            "env",
-            "m",
-            MemType(Limit {
-                min: 1,
-                max: None,
-            }),
-        )?;
+        runtime.register_host_memory("env", "m", MemType(Limit { min: 1, max: None }))?;
 
         let r = runtime.load_module(&bytes);
         assert!(
@@ -1256,14 +1240,7 @@ mod tests {
         .concat();
 
         let mut runtime = Runtime::default();
-        runtime.register_host_memory(
-            "env",
-            "m",
-            MemType(Limit {
-                min: 1,
-                max: None,
-            }),
-        )?;
+        runtime.register_host_memory("env", "m", MemType(Limit { min: 1, max: None }))?;
 
         let r = runtime.load_module(&bytes);
         assert!(
@@ -1387,10 +1364,7 @@ mod tests {
             "t",
             TableType {
                 elemtype: RefType::Func,
-                limit: Limit {
-                    min: 4,
-                    max: None,
-                },
+                limit: Limit { min: 4, max: None },
             },
             Ref::Null(RefType::Func),
         )?;

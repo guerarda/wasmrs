@@ -995,8 +995,7 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                         global_name,
                         expected,
                     } => {
-                        let Some(mh) =
-                            resolve_module(&module_name, &named_modules, current_module)
+                        let Some(mh) = resolve_module(&module_name, &named_modules, current_module)
                         else {
                             failures.push(format!(
                                 "{}: no module loaded for assert_return (get)",

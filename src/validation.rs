@@ -1308,11 +1308,7 @@ impl Validator {
 
         for global in globalsec.iter() {
             // Validate expression
-            Self::validate_const_expr(
-                module,
-                &global.body,
-                &vec![ValueType::from(global.gt.type_)],
-            )?;
+            Self::validate_const_expr(module, &global.body, &[ValueType::from(global.gt.type_)])?;
         }
         Ok(())
     }

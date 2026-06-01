@@ -103,9 +103,7 @@ impl ModuleRegistry {
     }
 
     pub fn resolve(&self, module_name: &str, name: &str) -> Option<ExternVal> {
-        let Some(mh) = self.names.get(module_name) else {
-            return None;
-        };
+        let mh = self.names.get(module_name)?;
 
         let Some(mi) = self.map.get(mh) else {
             panic!("name exist but doesn't map to a module");

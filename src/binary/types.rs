@@ -305,7 +305,7 @@ impl Limit {
     pub fn matches(&self, expected: &Limit) -> bool {
         self.min >= expected.min
             && match expected.max {
-                Some(em) => self.max.map_or(false, |m| m <= em),
+                Some(em) => self.max.is_some_and(|m| m <= em),
                 None => true,
             }
     }

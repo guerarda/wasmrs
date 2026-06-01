@@ -407,13 +407,11 @@ impl Elements {
     }
 
     pub fn get(&self, addr: ElemAddr) -> &ElemInstance {
-        let elem = self.0.get(addr.0).unwrap();
-        elem
+        (self.0.get(addr.0).unwrap()) as _
     }
 
     pub fn get_mut(&mut self, addr: ElemAddr) -> &mut ElemInstance {
-        let elem = self.0.get_mut(addr.0).unwrap();
-        elem
+        (self.0.get_mut(addr.0).unwrap()) as _
     }
 
     pub fn drop(&mut self, addr: ElemAddr) {
@@ -451,8 +449,7 @@ impl Data {
     }
 
     pub fn get(&mut self, addr: DataAddr) -> &mut DataInstance {
-        let data = self.0.get_mut(addr.0).unwrap();
-        data
+        (self.0.get_mut(addr.0).unwrap()) as _
     }
 
     pub fn drop(&mut self, addr: DataAddr) {

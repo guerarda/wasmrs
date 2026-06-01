@@ -17,9 +17,8 @@ impl MemType {
     pub fn is_valid(&self) -> bool {
         let l = &self.0;
         l.min <= MAX_WASM_32BIT_MEMORY_PAGES
-            && l.max.map_or(true, |max| {
-                max <= MAX_WASM_32BIT_MEMORY_PAGES && l.min <= max
-            })
+            && l.max
+                .is_none_or(|max| max <= MAX_WASM_32BIT_MEMORY_PAGES && l.min <= max)
     }
 }
 
