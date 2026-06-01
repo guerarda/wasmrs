@@ -149,7 +149,6 @@ fn value_matches(actual: &Value, expected: &TestRet) -> bool {
 
 /// A single assertion expecting success
 struct ReturnAssertion {
-    line: usize,
     module_name: Option<String>,
     func_name: String,
     args: Vec<TestArg>,
@@ -158,7 +157,6 @@ struct ReturnAssertion {
 
 /// A single assertion expecting a trap
 struct TrapAssertion {
-    line: usize,
     module_name: Option<String>,
     func_name: String,
     args: Vec<TestArg>,
@@ -167,7 +165,6 @@ struct TrapAssertion {
 
 /// A bare invoke (side-effecting, no assertion on return value)
 struct InvokeAction {
-    line: usize,
     module_name: Option<String>,
     func_name: String,
     args: Vec<TestArg>,
@@ -326,7 +323,6 @@ fn collect_file_test_actions(
                                 tests.push((
                                     test_name,
                                     CollectedTest::Run(TestAction::AssertReturn(ReturnAssertion {
-                                        line,
                                         module_name,
                                         func_name: invoke.name.to_string(),
                                         args,
@@ -441,7 +437,6 @@ fn collect_file_test_actions(
                             tests.push((
                                 test_name,
                                 CollectedTest::Run(TestAction::AssertTrap(TrapAssertion {
-                                    line,
                                     module_name,
                                     func_name: invoke.name.to_string(),
                                     args,
@@ -492,7 +487,6 @@ fn collect_file_test_actions(
                         tests.push((
                             test_name,
                             CollectedTest::Run(TestAction::Invoke(InvokeAction {
-                                line,
                                 module_name,
                                 func_name: invoke.name.to_string(),
                                 args,
@@ -514,7 +508,6 @@ fn collect_file_test_actions(
                         tests.push((
                             test_name,
                             CollectedTest::Run(TestAction::AssertExhaustion(TrapAssertion {
-                                line,
                                 module_name,
                                 func_name: call.name.to_string(),
                                 args,
@@ -671,15 +664,15 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                             Ok(Ok(values)) => values,
                             Ok(Err(e)) => {
                                 failures.push(format!(
-                                    "line {}: '{}' trapped: {}",
-                                    a.line, a.func_name, e
+                                    "{}: '{}' trapped: {}",
+                                    short_name, a.func_name, e
                                 ));
                                 continue;
                             }
                             Err(p) => {
                                 failures.push(format!(
-                                    "line {}: '{}' panicked: {}",
-                                    a.line,
+                                    "{}: '{}' panicked: {}",
+                                    short_name,
                                     a.func_name,
                                     panic_message(p)
                                 ));
@@ -689,8 +682,8 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
 
                         if actual.len() != a.expected.len() {
                             failures.push(format!(
-                                "line {}: '{}' returned {} values, expected {}",
-                                a.line,
+                                "{}: '{}' returned {} values, expected {}",
+                                short_name,
                                 a.func_name,
                                 actual.len(),
                                 a.expected.len()
@@ -701,8 +694,8 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                         for (i, (act, exp)) in actual.iter().zip(a.expected.iter()).enumerate() {
                             if !value_matches(act, exp) {
                                 failures.push(format!(
-                                    "line {}: '{}' result[{}] mismatch: got {:?}, expected {:?}",
-                                    a.line, a.func_name, i, act, exp
+                                    "{}: '{}' result[{}] mismatch: got {:?}, expected {:?}",
+                                    short_name, a.func_name, i, act, exp
                                 ));
                             }
                         }
@@ -725,15 +718,15 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                         match result {
                             Ok(Ok(_)) => {
                                 failures.push(format!(
-                                    "line {}: '{}' expected trap '{}', got success",
-                                    a.line, a.func_name, a.message
+                                    "{}: '{}' expected trap '{}', got success",
+                                    short_name, a.func_name, a.message
                                 ));
                             }
                             Ok(Err(_)) => {} // Expected trap - success
                             Err(p) => {
                                 failures.push(format!(
-                                    "line {}: '{}' expected trap '{}', got panic: {}",
-                                    a.line,
+                                    "{}: '{}' expected trap '{}', got panic: {}",
+                                    short_name,
                                     a.func_name,
                                     a.message,
                                     panic_message(p)
@@ -762,15 +755,15 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                         match result {
                             Ok(Ok(_)) => {
                                 failures.push(format!(
-                                    "line {}: '{}' expected exhaustion '{}', got success",
-                                    a.line, a.func_name, a.message
+                                    "{}: '{}' expected exhaustion '{}', got success",
+                                    short_name, a.func_name, a.message
                                 ));
                             }
                             Ok(Err(_)) => {} // Expected exhaustion - success
                             Err(p) => {
                                 failures.push(format!(
-                                    "line {}: '{}' expected exhaustion '{}', got panic: {}",
-                                    a.line,
+                                    "{}: '{}' expected exhaustion '{}', got panic: {}",
+                                    short_name,
                                     a.func_name,
                                     a.message,
                                     panic_message(p)
@@ -797,14 +790,14 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                             Ok(Ok(_)) => {}
                             Ok(Err(e)) => {
                                 failures.push(format!(
-                                    "line {}: invoke '{}' trapped: {}",
-                                    a.line, a.func_name, e
+                                    "{}: invoke '{}' trapped: {}",
+                                    short_name, a.func_name, e
                                 ));
                             }
                             Err(p) => {
                                 failures.push(format!(
-                                    "line {}: invoke '{}' panicked: {}",
-                                    a.line,
+                                    "{}: invoke '{}' panicked: {}",
+                                    short_name,
                                     a.func_name,
                                     panic_message(p)
                                 ));
