@@ -595,6 +595,13 @@ impl Runtime {
         host.exports.insert(name.to_string(), ExternVal::Mem(addr));
         Ok(mh)
     }
+
+    pub fn get_global_value(&self, mh: ModuleHandle, name: &str) -> Option<Value> {
+        match self.module_registry.resolve_export(mh, name)? {
+            ExternVal::Global(addr) => Some(self.store.globals.get(addr).value),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -802,8 +809,19 @@ impl fmt::Display for InternalErrorKind {
 #[cfg(test)]
 mod tests {
     use crate::{
-        binary::types::{FuncType, ValType},
-        runtime::{Runtime, value::Value},
+        Error, Limit,
+        binary::{
+            sections::{
+                global::{GlobalType, MutabilityFlag},
+                memory::MemType,
+                table::TableType,
+            },
+            types::{FuncType, RefType, ValType},
+        },
+        runtime::{
+            Runtime, UnlinkableError,
+            value::{Ref, Value},
+        },
     };
 
     #[test]
@@ -951,6 +969,432 @@ mod tests {
             );
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_func_type_mismatch_params() -> anyhow::Result<()> {
+        // (module (import "env" "f" (func (param i32) (result i32))))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, (i32) -> (i32)
+            b"\x01\x06\x01\x60\x01\x7f\x01\x7f",
+            // import section: "env"."f" -> func type 0
+            b"\x02\x09\x01\x03\x65\x6e\x76\x01\x66\x00\x00",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_fn(
+            "env",
+            "f",
+            FuncType {
+                params: vec![ValType::I64],
+                results: vec![ValType::I32],
+            },
+            |_| Ok(vec![Value::I32(0)]),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_func_type_mismatch_results() -> anyhow::Result<()> {
+        // (module (import "env" "f" (func (param i32) (result i32))))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, (i32) -> (i32)
+            b"\x01\x06\x01\x60\x01\x7f\x01\x7f",
+            // import section: "env"."f" -> func type 0
+            b"\x02\x09\x01\x03\x65\x6e\x76\x01\x66\x00\x00",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_fn(
+            "env",
+            "f",
+            FuncType {
+                params: vec![ValType::I32],
+                results: vec![ValType::I64],
+            },
+            |_| Ok(vec![Value::I64(0)]),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_func_kind_mismatch() -> anyhow::Result<()> {
+        // (module (import "env" "x" (func (result i32))))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // import section: "env"."x" -> func type 0
+            b"\x02\x09\x01\x03\x65\x6e\x76\x01\x78\x00\x00",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_global(
+            "env",
+            "x",
+            GlobalType {
+                type_: ValType::I32,
+                mutflag: MutabilityFlag::Const,
+            },
+            Value::I32(0),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_table_elemtype_mismatch() -> anyhow::Result<()> {
+        // (module (import "env" "t" (table 1 funcref)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."t" -> table funcref, {min: 1}
+            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x00\x01",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_table(
+            "env",
+            "t",
+            TableType {
+                elemtype: RefType::Extern,
+                limit: Limit {
+                    min: 1,
+                    max: None,
+                },
+            },
+            Ref::Null(RefType::Extern),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_table_min_too_small() -> anyhow::Result<()> {
+        // (module (import "env" "t" (table 5 funcref)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."t" -> table funcref, {min: 5}
+            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x00\x05",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_table(
+            "env",
+            "t",
+            TableType {
+                elemtype: RefType::Func,
+                limit: Limit {
+                    min: 2,
+                    max: None,
+                },
+            },
+            Ref::Null(RefType::Func),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_table_max_required_but_absent() -> anyhow::Result<()> {
+        // (module (import "env" "t" (table 1 10 funcref)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."t" -> table funcref, {min: 1, max: 10}
+            b"\x02\x0c\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x01\x01\x0a",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_table(
+            "env",
+            "t",
+            TableType {
+                elemtype: RefType::Func,
+                limit: Limit {
+                    min: 1,
+                    max: None,
+                },
+            },
+            Ref::Null(RefType::Func),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_table_max_too_large() -> anyhow::Result<()> {
+        // (module (import "env" "t" (table 1 5 funcref)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."t" -> table funcref, {min: 1, max: 5}
+            b"\x02\x0c\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x01\x01\x05",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_table(
+            "env",
+            "t",
+            TableType {
+                elemtype: RefType::Func,
+                limit: Limit {
+                    min: 1,
+                    max: Some(10),
+                },
+            },
+            Ref::Null(RefType::Func),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_memory_min_too_small() -> anyhow::Result<()> {
+        // (module (import "env" "m" (memory 4)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."m" -> memory {min: 4}
+            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x6d\x02\x00\x04",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_memory(
+            "env",
+            "m",
+            MemType(Limit {
+                min: 1,
+                max: None,
+            }),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_memory_max_required_but_absent() -> anyhow::Result<()> {
+        // (module (import "env" "m" (memory 1 8)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."m" -> memory {min: 1, max: 8}
+            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x6d\x02\x01\x01\x08",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_memory(
+            "env",
+            "m",
+            MemType(Limit {
+                min: 1,
+                max: None,
+            }),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_memory_max_too_large() -> anyhow::Result<()> {
+        // (module (import "env" "m" (memory 1 4)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."m" -> memory {min: 1, max: 4}
+            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x6d\x02\x01\x01\x04",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_memory(
+            "env",
+            "m",
+            MemType(Limit {
+                min: 1,
+                max: Some(8),
+            }),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_global_type_mismatch() -> anyhow::Result<()> {
+        // (module (import "env" "g" (global i32)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."g" -> global i32 const
+            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x67\x03\x7f\x00",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_global(
+            "env",
+            "g",
+            GlobalType {
+                type_: ValType::I64,
+                mutflag: MutabilityFlag::Const,
+            },
+            Value::I64(0),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_global_mut_mismatch() -> anyhow::Result<()> {
+        // (module (import "env" "g" (global (mut i32))))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."g" -> global i32 var
+            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x67\x03\x7f\x01",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_global(
+            "env",
+            "g",
+            GlobalType {
+                type_: ValType::I32,
+                mutflag: MutabilityFlag::Const,
+            },
+            Value::I32(0),
+        )?;
+
+        let r = runtime.load_module(&bytes);
+        assert!(
+            matches!(
+                r,
+                Err(Error::Unlinkable(UnlinkableError::IncompatibleImportType))
+            ),
+            "expected IncompatibleImportType, got {r:?}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_table_wider_min_ok() -> anyhow::Result<()> {
+        // (module (import "env" "t" (table 1 funcref)))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // import section: "env"."t" -> table funcref, {min: 1}
+            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x00\x01",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        runtime.register_host_table(
+            "env",
+            "t",
+            TableType {
+                elemtype: RefType::Func,
+                limit: Limit {
+                    min: 4,
+                    max: None,
+                },
+            },
+            Ref::Null(RefType::Func),
+        )?;
+        runtime.load_module(&bytes)?;
         Ok(())
     }
 }
