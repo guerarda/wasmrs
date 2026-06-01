@@ -18,7 +18,7 @@ use wasmrs::{parse_module, validate_module};
 mod spectest;
 
 /// Wast files to skip by default. Use --all to include them.
-const EXCLUDED: &[&str] = &["elem.wast"];
+const EXCLUDED: &[&str] = &[];
 
 /// Owned argument value (to avoid lifetime issues with wast's borrowed types)
 #[derive(Debug, Clone)]
