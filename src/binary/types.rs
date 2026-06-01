@@ -450,7 +450,13 @@ mod tests {
         let bytes = [0x02u8, 0x04];
         let mut r = Reader::from_bytes(&bytes, 0);
         let m = MemArg::from_reader(&mut r).map_err(|e| anyhow::anyhow!("{e}"))?;
-        assert_eq!(m, MemArg { align: 2, offset: 4 });
+        assert_eq!(
+            m,
+            MemArg {
+                align: 2,
+                offset: 4
+            }
+        );
         Ok(())
     }
 
