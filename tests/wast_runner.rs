@@ -205,6 +205,17 @@ enum TestAction {
         wasm_bytes: Vec<u8>,
         message: String,
     },
+    /// Module that should fail to instantiate due to import mismatch
+    AssertUnlinkable {
+        wasm_bytes: Vec<u8>,
+        message: String,
+    },
+    /// Assert that an exported global has the expected value
+    AssertReturnGet {
+        module_name: Option<String>,
+        global_name: String,
+        expected: Vec<TestRet>,
+    },
 }
 
 fn main() {
@@ -304,8 +315,8 @@ fn collect_file_test_actions(
                     ));
                 }
 
-                WastDirective::AssertReturn { exec, results, .. } => {
-                    if let WastExecute::Invoke(invoke) = exec {
+                WastDirective::AssertReturn { exec, results, .. } => match exec {
+                    WastExecute::Invoke(invoke) => {
                         let module_name = invoke.module.map(|id| id.name().to_string());
                         let args: Option<Vec<_>> =
                             invoke.args.iter().map(convert_wast_arg).collect();
@@ -340,16 +351,49 @@ fn collect_file_test_actions(
                                 tests.push((test_name, CollectedTest::Ignored));
                             }
                         }
-                    } else {
+                    }
+                    WastExecute::Get { module, global, .. } => {
+                        let module_name = module.map(|id| id.name().to_string());
+                        let expected: Option<Vec<_>> =
+                            results.iter().map(convert_wast_ret).collect();
+                        match expected {
+                            Some(expected) => {
+                                let test_name = format!(
+                                    "{}::[{}]line_{}::AssertReturnGet",
+                                    file_name,
+                                    tests.len(),
+                                    line
+                                );
+                                tests.push((
+                                    test_name,
+                                    CollectedTest::Run(TestAction::AssertReturnGet {
+                                        module_name,
+                                        global_name: global.to_string(),
+                                        expected,
+                                    }),
+                                ));
+                            }
+                            None => {
+                                let test_name = format!(
+                                    "{}::[{}]line_{}::AssertReturnGet (unsupported ret)",
+                                    file_name,
+                                    tests.len(),
+                                    line
+                                );
+                                tests.push((test_name, CollectedTest::Ignored));
+                            }
+                        }
+                    }
+                    WastExecute::Wat(_) => {
                         let test_name = format!(
-                            "{}::[{}]line_{}::AssertReturn(Get/Wat)",
+                            "{}::[{}]line_{}::AssertReturn(Wat)",
                             file_name,
                             tests.len(),
                             line
                         );
                         tests.push((test_name, CollectedTest::Ignored));
                     }
-                }
+                },
 
                 WastDirective::AssertMalformed {
                     mut module,
@@ -517,9 +561,29 @@ fn collect_file_test_actions(
                     }
                 }
 
+                WastDirective::AssertUnlinkable {
+                    mut module,
+                    message,
+                    ..
+                } => {
+                    let wasm_bytes = module.encode().expect("failed to encode module");
+                    let test_name = format!(
+                        "{}::[{}]line_{}::AssertUnlinkable",
+                        file_name,
+                        tests.len(),
+                        line
+                    );
+                    tests.push((
+                        test_name,
+                        CollectedTest::Run(TestAction::AssertUnlinkable {
+                            wasm_bytes,
+                            message: message.to_string(),
+                        }),
+                    ));
+                }
+
                 other => {
                     let kind = match other {
-                        WastDirective::AssertUnlinkable { .. } => "AssertUnlinkable",
                         WastDirective::AssertException { .. } => "AssertException",
                         WastDirective::AssertSuspension { .. } => "AssertSuspension",
                         WastDirective::Wait { .. } => "Wait",
@@ -892,6 +956,74 @@ fn run_file_actions(file_name: &str, actions: Vec<(String, CollectedTest)>) -> R
                                     panic_message(p)
                                 ));
                             }
+                        }
+                    }
+
+                    TestAction::AssertUnlinkable {
+                        wasm_bytes,
+                        message,
+                    } => {
+                        let result =
+                            catch_unwind(AssertUnwindSafe(|| runtime.load_module(&wasm_bytes)));
+                        match result {
+                            Ok(Ok(_)) => {
+                                failures.push(format!(
+                                    "{}: expected unlinkable error '{}', got Ok",
+                                    short_name, message
+                                ));
+                            }
+                            Ok(Err(Error::Unlinkable(_))) => {} // Expected
+                            Ok(Err(e)) => {
+                                failures.push(format!(
+                                    "{}: expected unlinkable error '{}', got: {}",
+                                    short_name, message, e
+                                ));
+                            }
+                            Err(p) => {
+                                failures.push(format!(
+                                    "{}: expected unlinkable error '{}', got PANIC: {}",
+                                    short_name,
+                                    message,
+                                    panic_message(p)
+                                ));
+                            }
+                        }
+                    }
+
+                    TestAction::AssertReturnGet {
+                        module_name,
+                        global_name,
+                        expected,
+                    } => {
+                        let Some(mh) =
+                            resolve_module(&module_name, &named_modules, current_module)
+                        else {
+                            failures.push(format!(
+                                "{}: no module loaded for assert_return (get)",
+                                short_name
+                            ));
+                            continue;
+                        };
+                        let Some(value) = runtime.get_global_value(mh, &global_name) else {
+                            failures.push(format!(
+                                "{}: '{}' is not an exported global",
+                                short_name, global_name
+                            ));
+                            continue;
+                        };
+                        if expected.len() != 1 {
+                            failures.push(format!(
+                                "{}: assert_return (get) expects 1 value, got {}",
+                                short_name,
+                                expected.len()
+                            ));
+                            continue;
+                        }
+                        if !value_matches(&value, &expected[0]) {
+                            failures.push(format!(
+                                "{}: '{}' = {:?}, expected {:?}",
+                                short_name, global_name, value, expected[0]
+                            ));
                         }
                     }
                 }
