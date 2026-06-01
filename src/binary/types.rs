@@ -55,7 +55,7 @@ impl<'a> FromReader<'a> for MemIndex {
 
 /// RefType
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefType {
     Func = 0x70,
     Extern = 0x6f,
@@ -105,7 +105,7 @@ impl fmt::Display for RefType {
 
 /// ValType
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValType {
     Ref(RefType),
 
@@ -295,10 +295,20 @@ impl<'a> FromReader<'a> for LimitFlag {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Limit {
     pub min: u32,
     pub max: Option<u32>,
+}
+
+impl Limit {
+    pub fn matches(&self, expected: &Limit) -> bool {
+        self.min >= expected.min
+            && match expected.max {
+                Some(em) => self.max.map_or(false, |m| m <= em),
+                None => true,
+            }
+    }
 }
 
 #[derive(Debug)]

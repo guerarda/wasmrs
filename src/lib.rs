@@ -62,12 +62,6 @@ impl From<ValidationError> for Error {
     }
 }
 
-impl From<UnlinkableError> for Error {
-    fn from(value: UnlinkableError) -> Self {
-        Error::Unlinkable(value)
-    }
-}
-
 impl From<RuntimeError> for Error {
     fn from(value: RuntimeError) -> Self {
         Error::Trap(value)

@@ -272,7 +272,7 @@ pub struct Tables(pub Vec<TableInstance>);
 
 #[derive(Debug)]
 pub struct TableInstance {
-    tabletype: TableType,
+    pub tabletype: TableType,
     pub refs: Vec<Ref>,
 }
 

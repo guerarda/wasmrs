@@ -52,7 +52,6 @@ impl<'a> FromReader<'a> for ImportDescType {
 #[derive(Debug)]
 pub enum ImportDesc {
     Func(TypeIdx),
-    #[allow(dead_code)]
     Table(TableType),
     Mem(MemType),
     Global(GlobalType),

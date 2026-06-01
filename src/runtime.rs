@@ -1,7 +1,7 @@
 use std::{error, fmt, result};
 
 use crate::{
-    Error, Module,
+    Error, Limit, Module,
     binary::{
         module,
         sections::{
@@ -109,36 +109,68 @@ impl Runtime {
         let mut mi = ModuleInstance::default();
 
         // Register imports first
-        // TODO Type check import descriptor payloads against the resolved
-        // ExternVal payload
         if let Some(imports) = &module.imports {
             for import in imports {
-                let ev = self
+                let externval = self
                     .module_registry
                     .resolve(&import.mod_name, &import.name)
                     .ok_or(UnlinkableError::UnknownImport)?;
 
-                match import.desc {
-                    ImportDesc::Func(_) => {
-                        if let ExternVal::Func(addr) = ev {
-                            mi.funcs.push(addr);
+                match (&import.desc, &externval) {
+                    (ImportDesc::Func(idx), ExternVal::Func(addr)) => {
+                        let func = self.store.functions.get(*addr);
+                        let expected = module
+                            .types
+                            .as_ref()
+                            .and_then(|t| t.get(*idx as usize))
+                            .expect("type index within bound");
+
+                        if func.ftype != *expected {
+                            return Err(UnlinkableError::IncompatibleImportType.into());
                         }
+                        mi.funcs.push(*addr);
                     }
-                    ImportDesc::Table(_) => {
-                        if let ExternVal::Table(addr) = ev {
-                            mi.tables.push(addr);
+                    (ImportDesc::Table(expected), ExternVal::Table(addr)) => {
+                        let ti = self.store.tables.get(*addr);
+                        // Use the limit from the current state, after table.grow
+                        // the min changes, not the original limit
+                        let current = Limit {
+                            min: ti
+                                .refs
+                                .len()
+                                .try_into()
+                                .expect("table length within declared max"),
+                            max: ti.tabletype.limit.max,
+                        };
+
+                        if ti.tabletype.elemtype != expected.elemtype
+                            || !current.matches(&expected.limit)
+                        {
+                            return Err(UnlinkableError::IncompatibleImportType.into());
                         }
+                        mi.tables.push(*addr);
                     }
-                    ImportDesc::Mem(_) => {
-                        if let ExternVal::Mem(addr) = ev {
-                            mi.mems.push(addr);
+                    (ImportDesc::Mem(expected), ExternVal::Mem(addr)) => {
+                        let mem = self.store.memories.get(*addr);
+                        // Use the limit from the current state, after mem.grow
+                        // the min changes, not the original limit
+                        let current = Limit {
+                            min: mem.size(),
+                            max: mem.memtype.0.max,
+                        };
+                        if !current.matches(&expected.0) {
+                            return Err(UnlinkableError::IncompatibleImportType.into());
                         }
+                        mi.mems.push(*addr);
                     }
-                    ImportDesc::Global(_) => {
-                        if let ExternVal::Global(addr) = ev {
-                            mi.globals.push(addr);
+                    (ImportDesc::Global(expected), ExternVal::Global(addr)) => {
+                        let global = self.store.globals.get(*addr);
+                        if global.globaltype != *expected {
+                            return Err(UnlinkableError::IncompatibleImportType.into());
                         }
+                        mi.globals.push(*addr);
                     }
+                    _ => return Err(UnlinkableError::IncompatibleImportType.into()),
                 }
             }
         }
@@ -598,6 +630,12 @@ impl fmt::Display for UnlinkableError {
             Self::UnknownImport => write!(f, "unknown import"),
             Self::IncompatibleImportType => write!(f, "incompatible import type"),
         }
+    }
+}
+
+impl From<UnlinkableError> for Error {
+    fn from(value: UnlinkableError) -> Self {
+        Error::Unlinkable(value)
     }
 }
 
