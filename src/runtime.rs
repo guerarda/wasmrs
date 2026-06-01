@@ -99,7 +99,6 @@ impl Runtime {
                             tableidx: table_index.unwrap_or(0),
                         })
                     }
-
                     _ => None,
                 })
                 .collect()
@@ -188,6 +187,14 @@ impl Runtime {
         // Init Elements
         if let Some(elementsec) = &module.elements {
             for e in elementsec {
+                // Declarative are immediately dropped
+                if matches!(e.mode, ElementSegmentMode::Declarative) {
+                    let a = self.store.elements.alloc(e.reftype(), vec![]);
+                    self.store.elements.drop(a);
+                    mi.elems.push(a);
+                    continue;
+                }
+
                 match &e.items {
                     ElementSegmentItems::Functions(items) => {
                         let refs = items
@@ -195,7 +202,6 @@ impl Runtime {
                             .map(|it| Ref::Func(mi.funcs[it.0 as usize]))
                             .collect::<Vec<_>>();
                         let a = self.store.elements.alloc(RefType::Func, refs);
-
                         mi.elems.push(a);
                     }
                     ElementSegmentItems::Expressions(rt, exprs) => {

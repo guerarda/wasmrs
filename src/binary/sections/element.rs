@@ -60,6 +60,15 @@ pub struct ElementSegment {
     pub items: ElementSegmentItems,
 }
 
+impl ElementSegment {
+    pub fn reftype(&self) -> RefType {
+        match &self.items {
+            ElementSegmentItems::Functions(_) => RefType::Func,
+            ElementSegmentItems::Expressions(rt, ..) => *rt,
+        }
+    }
+}
+
 impl From<ElementSectionReadError> for SectionErrorKind {
     fn from(value: ElementSectionReadError) -> Self {
         Self::ElementSection(value)
