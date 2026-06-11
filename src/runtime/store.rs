@@ -14,7 +14,7 @@ use crate::{
     runtime::{
         RuntimeError, WASM_MEM_PAGE_BYTE_SIZE,
         instance::ModuleHandle,
-        value::{ExternVal, Ref, Value},
+        value::{Ref, Value},
     },
 };
 
@@ -31,17 +31,6 @@ impl From<usize> for FuncAddr {
 impl From<u32> for FuncAddr {
     fn from(value: u32) -> Self {
         FuncAddr(value as usize)
-    }
-}
-
-impl TryFrom<&ExternVal> for FuncAddr {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &ExternVal) -> std::result::Result<Self, Self::Error> {
-        match *value {
-            ExternVal::Func(funcaddr) => Ok(funcaddr),
-            _ => panic!("oops"),
-        }
     }
 }
 

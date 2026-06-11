@@ -131,3 +131,33 @@ pub enum ExternVal {
     Mem(MemAddr),
     Global(GlobalAddr),
 }
+
+impl ExternVal {
+    pub fn as_func(&self) -> Option<FuncAddr> {
+        match self {
+            ExternVal::Func(funcaddr) => Some(*funcaddr),
+            _ => None,
+        }
+    }
+
+    pub fn as_table(&self) -> Option<TableAddr> {
+        match self {
+            ExternVal::Table(addr) => Some(*addr),
+            _ => None,
+        }
+    }
+
+    pub fn as_mem(&self) -> Option<MemAddr> {
+        match self {
+            ExternVal::Mem(addr) => Some(*addr),
+            _ => None,
+        }
+    }
+
+    pub fn as_global(&self) -> Option<GlobalAddr> {
+        match self {
+            ExternVal::Global(addr) => Some(*addr),
+            _ => None,
+        }
+    }
+}

@@ -494,8 +494,8 @@ impl Runtime {
             .resolve_export(module, fn_name)
             .ok_or(RuntimeError::internal("unknown export"))?;
         let funcaddr: FuncAddr = (&ev)
-            .try_into()
-            .map_err(|_| RuntimeError::internal("export is not a function"))?;
+            .as_func()
+            .ok_or(RuntimeError::internal("export is not a function"))?;
         let arity = self.store.functions.get(funcaddr).ftype.results.len();
 
         let mut value_stack = Vec::from(fn_args);
