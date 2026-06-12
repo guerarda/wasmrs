@@ -355,7 +355,7 @@ impl Runtime {
         let a = module_inst
             .globals
             .get(idx as usize)
-            .ok_or(RuntimeError::trap("undefined global"))?;
+            .ok_or(RuntimeError::internal("undefined global"))?;
         let g = globals.get(*a);
 
         Ok(g.value)
@@ -370,7 +370,7 @@ impl Runtime {
         let a = module_inst
             .globals
             .get(idx as usize)
-            .ok_or(RuntimeError::trap("undefined global"))?;
+            .ok_or(RuntimeError::internal("undefined global"))?;
         let g = globals.get_mut(*a);
 
         // TODO Assert on type
@@ -387,7 +387,7 @@ impl Runtime {
         let a = module_inst
             .tables
             .get(idx as usize)
-            .ok_or(RuntimeError::trap("undefined table"))?;
+            .ok_or(RuntimeError::internal("undefined table"))?;
         Ok(tables.get(*a))
     }
 
@@ -399,7 +399,7 @@ impl Runtime {
         let a = module_inst
             .tables
             .get(idx as usize)
-            .ok_or(RuntimeError::trap("undefined table"))?;
+            .ok_or(RuntimeError::internal("undefined table"))?;
         Ok(tables.get_mut(*a))
     }
 
@@ -411,7 +411,7 @@ impl Runtime {
         let a = module_inst
             .elems
             .get(idx as usize)
-            .ok_or(RuntimeError::trap("undefined element"))?;
+            .ok_or(RuntimeError::internal("undefined element"))?;
         Ok(elements.get(*a))
     }
 
@@ -423,7 +423,7 @@ impl Runtime {
         let a = module_inst
             .mems
             .get(idx.0 as usize)
-            .ok_or(RuntimeError::trap("undefined memory"))?;
+            .ok_or(RuntimeError::internal("undefined memory"))?;
         Ok(memories.get(*a))
     }
 
@@ -435,7 +435,7 @@ impl Runtime {
         let a = module_inst
             .mems
             .get(idx.0 as usize)
-            .ok_or(RuntimeError::trap("undefined memory"))?;
+            .ok_or(RuntimeError::internal("undefined memory"))?;
         Ok(memories.get_mut(*a))
     }
 
@@ -447,7 +447,7 @@ impl Runtime {
         let a = module_inst
             .datas
             .get(idx as usize)
-            .ok_or(RuntimeError::trap("undefined data"))?;
+            .ok_or(RuntimeError::internal("undefined data"))?;
         Ok(datas.get(*a))
     }
 
@@ -474,12 +474,12 @@ impl Runtime {
                 Instruction::RefFunc(fi) => {
                     value_stack.push(Value::Ref(Ref::Func(module.funcs[*fi as usize])))
                 }
-                _ => return Err(RuntimeError::trap("invalid const expression")),
+                _ => return Err(RuntimeError::internal("invalid const expression")),
             }
         }
         value_stack
             .pop()
-            .ok_or_else(|| RuntimeError::trap("const expression produced no value"))
+            .ok_or_else(|| RuntimeError::internal("const expression produced no value"))
     }
 
     /// Invoke a function from a given module
@@ -697,17 +697,6 @@ impl fmt::Display for RuntimeError {
 }
 
 impl RuntimeError {
-    fn trap(msg: &'static str) -> Self {
-        Self {
-            kind: RuntimeErrorKind::Trap(msg),
-            pc: -1,
-            instruction: "",
-            call_stack: vec![],
-            value_stack: vec![],
-            fn_name: None,
-        }
-    }
-
     fn internal(msg: &'static str) -> Self {
         Self {
             kind: RuntimeErrorKind::Internal(msg),
@@ -740,10 +729,29 @@ impl RuntimeError {
     }
 }
 
+impl From<RuntimeErrorKind> for RuntimeError {
+    fn from(value: RuntimeErrorKind) -> Self {
+        Self {
+            kind: value,
+            pc: -1,
+            instruction: "",
+            call_stack: vec![],
+            value_stack: vec![],
+            fn_name: None,
+        }
+    }
+}
+
+impl From<TrapErrorKind> for RuntimeError {
+    fn from(value: TrapErrorKind) -> Self {
+        RuntimeErrorKind::from(value).into()
+    }
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum RuntimeErrorKind {
-    Trap(&'static str),
+    Trap(TrapErrorKind),
     Internal(&'static str),
 }
 
@@ -756,9 +764,15 @@ impl error::Error for RuntimeErrorKind {
 impl fmt::Display for RuntimeErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Trap(msg) => write!(f, "trap: {msg}"),
+            Self::Trap(kind) => write!(f, "trap: {kind}"),
             Self::Internal(msg) => write!(f, "internal: {msg}"),
         }
+    }
+}
+
+impl From<TrapErrorKind> for RuntimeErrorKind {
+    fn from(value: TrapErrorKind) -> Self {
+        RuntimeErrorKind::Trap(value)
     }
 }
 
@@ -767,6 +781,11 @@ impl fmt::Display for RuntimeErrorKind {
 pub enum TrapErrorKind {
     Unreachable,
     DivisionByZero,
+    CallStackExhausted,
+    OutOfBoundsMemoryAccess,
+    OutOfBoundsTableAccess,
+    IndirectCallTypeMismatch,
+    UninitializedElement,
 }
 
 impl error::Error for TrapErrorKind {
@@ -780,6 +799,11 @@ impl fmt::Display for TrapErrorKind {
         match self {
             Self::Unreachable => write!(f, "unreachable"),
             Self::DivisionByZero => write!(f, "division by zero"),
+            Self::CallStackExhausted => write!(f, "call stack exhausted"),
+            Self::OutOfBoundsMemoryAccess => write!(f, "out of bounds memory access"),
+            Self::OutOfBoundsTableAccess => write!(f, "out of bounds table access"),
+            Self::IndirectCallTypeMismatch => write!(f, "indirect call type mismatch"),
+            Self::UninitializedElement => write!(f, "uninitialized element"),
         }
     }
 }

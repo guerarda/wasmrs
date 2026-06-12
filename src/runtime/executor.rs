@@ -8,7 +8,7 @@ use crate::{
     instructions::Instruction,
     limits::MAX_STACK_DEPTH,
     runtime::{
-        Runtime, RuntimeError,
+        Runtime, RuntimeError, TrapErrorKind,
         instance::{ModuleInstance, ModuleRegistry},
         stack::{Frame, Label},
         store::{FuncAddr, FuncBody, Store},
@@ -75,7 +75,9 @@ macro_rules! try_binary_op {
         let rhs = $self.value_stack.pop().unwrap();
         let lhs = $self.value_stack.pop().unwrap();
         let res = match (lhs, rhs) {
-            (Value::$variant(a), Value::$variant(b)) => $op(a, b).ok_or(RuntimeError::trap(""))?,
+            (Value::$variant(a), Value::$variant(b)) => {
+                $op(a, b).ok_or(RuntimeError::internal(""))?
+            }
             _ => unreachable!(),
         };
         $self.value_stack.push(Value::$variant(res as _));
@@ -87,7 +89,7 @@ macro_rules! try_binary_op {
         let lhs = $self.value_stack.pop().unwrap();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => {
-                $op(a as $ty, b as $ty).ok_or(RuntimeError::trap(""))?
+                $op(a as $ty, b as $ty).ok_or(RuntimeError::internal(""))?
             }
             _ => unreachable!(),
         };
@@ -111,7 +113,7 @@ macro_rules! try_conv_op {
     ($self:expr, $from_variant:ident, $to_variant:ident, $op:expr) => {{
         let val = $self.value_stack.pop().unwrap();
         let res = match (val) {
-            Value::$from_variant(a) => $op(a).ok_or(RuntimeError::trap(""))?,
+            Value::$from_variant(a) => $op(a).ok_or(RuntimeError::internal(""))?,
             _ => unreachable!(),
         };
         $self.value_stack.push(Value::$to_variant(res));
@@ -349,7 +351,7 @@ impl<'a> ExecutionContext<'a> {
     pub(super) fn execute(&mut self) -> result::Result<(), RuntimeError> {
         loop {
             if self.call_stack.len() > MAX_STACK_DEPTH {
-                return Err(RuntimeError::trap("max stack depth"));
+                return Err(TrapErrorKind::CallStackExhausted.into());
             }
 
             let Some(frame) = self.call_stack.last_mut() else {
@@ -374,7 +376,7 @@ impl<'a> ExecutionContext<'a> {
             if let Some(inst) = instrs.get(frame.pc as usize) {
                 match inst {
                     Instruction::Unreachable => {
-                        return Err(RuntimeError::trap("unreachable"));
+                        return Err(TrapErrorKind::Unreachable.into());
                     }
                     Instruction::Nop => continue,
                     Instruction::Block(bt) => {
@@ -456,17 +458,17 @@ impl<'a> ExecutionContext<'a> {
                         let r = tab_inst
                             .refs
                             .get(i as usize)
-                            .ok_or(RuntimeError::trap("tab index out of bounds"))?;
+                            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
 
                         if r.is_null() {
-                            return Err(RuntimeError::trap("unexpected null ref"));
+                            return Err(TrapErrorKind::UninitializedElement.into());
                         }
 
                         let func_addr = r
                             .as_funcref()
                             .ok_or(RuntimeError::internal("assert: expected func ref"))?;
                         if self.store.functions.get(func_addr).ftype != *ft {
-                            return Err(RuntimeError::trap("function type mismatch"));
+                            return Err(TrapErrorKind::IndirectCallTypeMismatch.into());
                         }
                         self.call(func_addr);
                     }
@@ -524,32 +526,27 @@ impl<'a> ExecutionContext<'a> {
                         Runtime::global_set(&mut self.store.globals, module_inst, *idx, v)?;
                     }
                     Instruction::TableGet(table_idx) => {
-                        let i = self
-                            .value_stack
-                            .pop()
-                            .unwrap()
-                            .as_i32()
-                            .ok_or(RuntimeError::trap("table.get, assert i32 on the stack"))?;
+                        let i =
+                            self.value_stack.pop().unwrap().as_i32().ok_or(
+                                RuntimeError::internal("table.get, assert i32 on the stack"),
+                            )?;
                         let ti = Runtime::table_get(&self.store.tables, module_inst, *table_idx)?;
                         let r = ti
                             .refs
                             .get(i as usize)
-                            .ok_or(RuntimeError::trap("table access out of bounds"))?;
+                            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
 
                         self.value_stack.push(Value::Ref(*r));
                     }
                     Instruction::TableSet(table_idx) => {
-                        let rv = self
-                            .value_stack
-                            .pop()
-                            .and_then(Value::into_ref)
-                            .ok_or(RuntimeError::trap("table.set, assert ref on the stack"))?;
-                        let i = self
-                            .value_stack
-                            .pop()
-                            .unwrap()
-                            .as_i32()
-                            .ok_or(RuntimeError::trap("table.get, assert i32 on the stack"))?;
+                        let rv =
+                            self.value_stack.pop().and_then(Value::into_ref).ok_or(
+                                RuntimeError::internal("table.set, assert ref on the stack"),
+                            )?;
+                        let i =
+                            self.value_stack.pop().unwrap().as_i32().ok_or(
+                                RuntimeError::internal("table.get, assert i32 on the stack"),
+                            )?;
                         let ti = Runtime::table_get_mut(
                             &mut self.store.tables,
                             module_inst,
@@ -558,7 +555,7 @@ impl<'a> ExecutionContext<'a> {
 
                         *ti.refs
                             .get_mut(i as usize)
-                            .ok_or(RuntimeError::trap("table access out of bounds"))? = rv;
+                            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)? = rv;
                     }
 
                     Instruction::I32Load(memarg) => load!(self, module_inst, memarg, i32, I32),
@@ -1004,21 +1001,21 @@ impl<'a> ExecutionContext<'a> {
                             .value_stack
                             .pop()
                             .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::trap(""))?
+                            .ok_or(RuntimeError::internal("uncaught validation"))?
                             as usize;
 
                         let j = self
                             .value_stack
                             .pop()
                             .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::trap(""))?
+                            .ok_or(RuntimeError::internal("uncaught validation"))?
                             as usize;
 
                         let i = self
                             .value_stack
                             .pop()
                             .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::trap(""))?
+                            .ok_or(RuntimeError::internal("uncaught validation"))?
                             as usize;
 
                         let meminst = Runtime::memory_get_mut(
@@ -1066,21 +1063,21 @@ impl<'a> ExecutionContext<'a> {
                             .value_stack
                             .pop()
                             .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::trap(""))?
+                            .ok_or(RuntimeError::internal(""))?
                             as usize;
 
                         let j = self
                             .value_stack
                             .pop()
                             .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::trap(""))?
+                            .ok_or(RuntimeError::internal(""))?
                             as usize;
 
                         let i = self
                             .value_stack
                             .pop()
                             .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::trap(""))?
+                            .ok_or(RuntimeError::internal(""))?
                             as usize;
 
                         let ti = Runtime::table_get_mut(
@@ -1137,7 +1134,7 @@ impl<'a> ExecutionContext<'a> {
                             .value_stack
                             .pop()
                             .and_then(Value::into_ref)
-                            .ok_or(RuntimeError::trap("out-of-bounds table access"))?;
+                            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
                         let i = Self::pop_i32(self.value_stack)?;
 
                         let ti = Runtime::table_get_mut(&mut self.store.tables, module_inst, *idx)?;

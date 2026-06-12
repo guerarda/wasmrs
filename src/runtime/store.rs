@@ -12,7 +12,7 @@ use crate::{
     instructions::Instruction,
     limits::{MAX_WASM_32BIT_MEMORY_PAGES, MAX_WASM_TABLE_LEN},
     runtime::{
-        RuntimeError, WASM_MEM_PAGE_BYTE_SIZE,
+        RuntimeError, TrapErrorKind, WASM_MEM_PAGE_BYTE_SIZE,
         instance::ModuleHandle,
         value::{Ref, Value},
     },
@@ -89,12 +89,12 @@ impl MemoryInstance {
         let dst_end = dst
             .checked_add(len)
             .filter(|&end| end <= self.data.len())
-            .ok_or_else(|| RuntimeError::trap("out of bounds memory access"))?;
+            .ok_or(TrapErrorKind::OutOfBoundsMemoryAccess)?;
 
         let src_end = src
             .checked_add(len)
             .filter(|&end| end <= data_inst.data.len())
-            .ok_or_else(|| RuntimeError::trap("out of bounds memory access"))?;
+            .ok_or(TrapErrorKind::OutOfBoundsMemoryAccess)?;
 
         if len == 0 {
             return Ok(());
@@ -139,15 +139,14 @@ impl MemoryInstance {
     ) -> result::Result<&[u8], RuntimeError> {
         let ea = (base as u32)
             .checked_add(offset)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-            as usize;
+            .ok_or(TrapErrorKind::OutOfBoundsMemoryAccess)? as usize;
 
         let end = ea
             .checked_add(len)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?;
+            .ok_or(TrapErrorKind::OutOfBoundsMemoryAccess)?;
 
         if end > self.data.len() {
-            return Err(RuntimeError::trap("out-of-bound memory access"));
+            return Err(TrapErrorKind::OutOfBoundsMemoryAccess.into());
         }
 
         Ok(&self.data[ea..end])
@@ -162,15 +161,14 @@ impl MemoryInstance {
         // Calculate effective address
         let ea = (base as u32)
             .checked_add(offset)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?
-            as usize;
+            .ok_or(TrapErrorKind::OutOfBoundsMemoryAccess)? as usize;
 
         let end = ea
             .checked_add(len)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound memory access"))?;
+            .ok_or(TrapErrorKind::OutOfBoundsMemoryAccess)?;
 
         if end > self.data.len() {
-            return Err(RuntimeError::trap("out-of-bound memory access"));
+            return Err(TrapErrorKind::OutOfBoundsMemoryAccess.into());
         }
 
         Ok(&mut self.data[ea..end])
@@ -280,12 +278,12 @@ impl TableInstance {
         let dst_end = dst
             .checked_add(len)
             .filter(|&end| end <= self.refs.len())
-            .ok_or_else(|| RuntimeError::trap("out of bounds table access"))?;
+            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
 
         let src_end = src
             .checked_add(len)
             .filter(|&end| end <= elem_inst.refs.len())
-            .ok_or_else(|| RuntimeError::trap("out of bounds table access"))?;
+            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
 
         if len == 0 {
             return Ok(());
@@ -321,10 +319,10 @@ impl TableInstance {
         let base = base as usize;
         let end = base
             .checked_add(len)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound table access"))?;
+            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
 
         if end > self.refs.len() {
-            return Err(RuntimeError::trap("out-of-bound table access"));
+            return Err(TrapErrorKind::OutOfBoundsTableAccess.into());
         }
 
         Ok(&self.refs[base..end])
@@ -339,10 +337,10 @@ impl TableInstance {
 
         let end = base
             .checked_add(len)
-            .ok_or_else(|| RuntimeError::trap("out-of-bound table access"))?;
+            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
 
         if end > self.refs.len() {
-            return Err(RuntimeError::trap("out-of-bound table access"));
+            return Err(TrapErrorKind::OutOfBoundsTableAccess.into());
         }
 
         Ok(&mut self.refs[base..end])
