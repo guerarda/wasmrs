@@ -1135,7 +1135,6 @@ impl Validator {
                 }
             }
         }
-        self.pop_ctrl()?;
         Ok(())
     }
 
