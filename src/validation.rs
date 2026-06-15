@@ -203,13 +203,15 @@ impl Validator {
     }
 
     fn push_ctrl(&mut self, opcode: Instruction, start: Vec<ValueType>, end: Vec<ValueType>) {
+        let height = self.vals.len();
+        self.push_vals(&start);
         self.ctrls.push(CtrlFrame {
             opcode,
             start_types: start,
             end_types: end,
-            height: self.vals.len(),
+            height,
             unreachable: false,
-        })
+        });
     }
 
     fn pop_ctrl(&mut self) -> result::Result<CtrlFrame, ValidationError> {
@@ -507,9 +509,8 @@ impl Validator {
         entry: &CodeEntry,
         module: &Module,
     ) -> result::Result<(), ValidationError> {
-        let start_types: Vec<ValueType> = functype.params.iter().map(ValueType::from).collect();
         let end_types: Vec<ValueType> = functype.results.iter().map(ValueType::from).collect();
-        self.push_ctrl(Instruction::Call(0), start_types, end_types);
+        self.push_ctrl(Instruction::Call(0), vec![], end_types);
 
         for inst in &entry.body {
             match inst {
@@ -543,6 +544,11 @@ impl Validator {
                 }
                 Instruction::End => {
                     let frame = self.pop_ctrl()?;
+                    if matches!(frame.opcode, Instruction::If(_))
+                        && frame.start_types != frame.end_types
+                    {
+                        return Err(ValidationError::TypeMismatch);
+                    }
                     self.push_vals(&frame.end_types);
                 }
                 Instruction::Br(n) => {
