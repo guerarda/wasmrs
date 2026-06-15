@@ -26,6 +26,12 @@
             rust
             pkgs.wabt
           ];
+
+          shellHook = ''
+            if [ -x /Library/Developer/CommandLineTools/usr/bin/lldb ]; then
+              export PATH=/Library/Developer/CommandLineTools/usr/bin:$PATH
+            fi
+          '';
         };
       });
 }
