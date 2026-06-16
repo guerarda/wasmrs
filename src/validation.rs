@@ -272,18 +272,29 @@ impl Validator {
     }
 
     /// Returns the type for an idx in the Function Section.
-    // TODO doesn't handle imports, index is in 0..imports..functions,
     fn func_type_at(module: &Module, func_idx: u32) -> result::Result<&FuncType, ValidationError> {
-        let &type_idx = module
-            .functions
-            .as_ref()
-            .and_then(|funcs| funcs.get(func_idx as usize))
+        let mut funcs = module.imports.as_ref().map_or(vec![], |imports| {
+            imports
+                .iter()
+                .filter_map(|i| {
+                    if let ImportDesc::Func(idx) = i.desc {
+                        Some(idx)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        });
+        funcs.extend(module.functions.iter().flatten().cloned());
+        let &type_idx = funcs
+            .get(func_idx as usize)
             .ok_or(ValidationError::UnknownFunction)?;
 
         Self::type_at(module, type_idx)
     }
 
     /// Returns the table type at the given index
+    // TODO doesn't handle imports, index is in 0..imports..locals,
     fn table_type(module: &Module, table_idx: u32) -> result::Result<&TableType, ValidationError> {
         module
             .tables
@@ -315,6 +326,7 @@ impl Validator {
     }
 
     /// Returns the global type at the given index
+    // TODO doesn't handle imports, index is in 0..imports..locals,
     fn global_type(
         module: &Module,
         idx: GlobalIdx,
