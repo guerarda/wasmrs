@@ -1744,4 +1744,50 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn test_table_size_imported_table() -> anyhow::Result<()> {
+        // (module
+        //   (import "e" "t" (table 1 funcref))
+        //   (func (result i32) table.size))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // import section: "e"."t" table funcref min=1
+            b"\x02\x09\x01\x01\x65\x01\x74\x01\x70\x00\x01",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // code section: table.size 0, end
+            b"\x0a\x07\x01\x05\x00\xfc\x10\x00\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_get_imported_global_in_function() -> anyhow::Result<()> {
+        // (module
+        //   (import "e" "g" (global i32))
+        //   (func (result i32) global.get 0))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // import section: "e"."g" global i32 const
+            b"\x02\x08\x01\x01\x65\x01\x67\x03\x7f\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // code section: global.get 0, end
+            b"\x0a\x06\x01\x04\x00\x23\x00\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
 }
