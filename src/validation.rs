@@ -273,21 +273,19 @@ impl Validator {
 
     /// Returns the type for an idx in the Function Section.
     fn func_type_at(module: &Module, func_idx: u32) -> result::Result<&FuncType, ValidationError> {
-        let mut funcs = module.imports.as_ref().map_or(vec![], |imports| {
-            imports
-                .iter()
-                .filter_map(|i| {
-                    if let ImportDesc::Func(idx) = i.desc {
-                        Some(idx)
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        });
-        funcs.extend(module.functions.iter().flatten().cloned());
-        let &type_idx = funcs
-            .get(func_idx as usize)
+        let imported = module
+            .imports
+            .iter()
+            .flatten()
+            .filter_map(|i| match i.desc {
+                ImportDesc::Func(idx) => Some(idx),
+                _ => None,
+            });
+        let defined = module.functions.iter().flatten().copied();
+
+        let type_idx = imported
+            .chain(defined)
+            .nth(func_idx as usize)
             .ok_or(ValidationError::UnknownFunction)?;
 
         Self::type_at(module, type_idx)
