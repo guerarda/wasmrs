@@ -272,6 +272,7 @@ impl Validator {
     }
 
     /// Returns the type for an idx in the Function Section.
+    // TODO cache the function index array with imports at the module level
     fn func_type_at(module: &Module, func_idx: u32) -> result::Result<&FuncType, ValidationError> {
         let imported = module
             .imports
@@ -292,14 +293,48 @@ impl Validator {
     }
 
     /// Returns the table type at the given index
-    // TODO doesn't handle imports, index is in 0..imports..locals,
-    fn table_type(module: &Module, table_idx: u32) -> result::Result<&TableType, ValidationError> {
-        module
-            .tables
-            .as_ref()
-            .and_then(|tables| tables.get(table_idx as usize))
-            .map(|table| &table.tabletype)
+    // TODO cache the function index array with imports at the module level
+    fn table_type_at(
+        module: &Module,
+        table_idx: u32,
+    ) -> result::Result<&TableType, ValidationError> {
+        let imported = module
+            .imports
+            .iter()
+            .flatten()
+            .filter_map(|i| match &i.desc {
+                ImportDesc::Table(table_type) => Some(table_type),
+                _ => None,
+            });
+        let defined = module.tables.iter().flatten().map(|t| &t.tabletype);
+
+        imported
+            .chain(defined)
+            .nth(table_idx as usize)
             .ok_or(ValidationError::UnknownTable)
+    }
+
+    /// Returns the global type at the given index
+    // TODO cache the function index array with imports at the module level
+    fn global_type_at(
+        module: &Module,
+        idx: GlobalIdx,
+    ) -> result::Result<&GlobalType, ValidationError> {
+        let imported = module
+            .imports
+            .iter()
+            .flatten()
+            .filter_map(|i| match &i.desc {
+                ImportDesc::Global(global_type) => Some(global_type),
+                _ => None,
+            });
+
+        let defined = module.globals.iter().flatten().map(|g| &g.gt);
+
+        imported
+            .chain(defined)
+            .nth(idx as usize)
+            .ok_or(ValidationError::UnknownGlobal)
     }
 
     /// Return the type of the function local at the given index
@@ -321,24 +356,6 @@ impl Validator {
             count += local.count;
         }
         Err(ValidationError::UnknownLocal)
-    }
-
-    /// Returns the global type at the given index
-    // TODO doesn't handle imports, index is in 0..imports..locals,
-    fn global_type(
-        module: &Module,
-        idx: GlobalIdx,
-    ) -> result::Result<&GlobalType, ValidationError> {
-        let globals = module
-            .globals
-            .as_ref()
-            .ok_or(ValidationError::MissingGlobalSection)?;
-
-        let entry = globals
-            .get(idx as usize)
-            .ok_or(ValidationError::UnknownGlobal)?;
-
-        Ok(&entry.gt)
     }
 
     /// Returns the label_types for the nth frame from the top
@@ -637,7 +654,7 @@ impl Validator {
                 }
                 Instruction::CallIndirect((type_idx, table_idx)) => {
                     // [t1* i32] -> [t2*]
-                    let table_type = Self::table_type(module, *table_idx)?;
+                    let table_type = Self::table_type_at(module, *table_idx)?;
                     if !matches!(table_type.elemtype, RefType::Func) {
                         return Err(ValidationError::TableTypeMismatch);
                     }
@@ -713,12 +730,12 @@ impl Validator {
                 }
                 Instruction::GlobalGet(idx) => {
                     // [] -> [t]
-                    let gt = Self::global_type(module, *idx)?;
+                    let gt = Self::global_type_at(module, *idx)?;
                     self.push_val(gt.into());
                 }
                 Instruction::GlobalSet(idx) => {
                     // [t] -> []
-                    let gt = Self::global_type(module, *idx)?;
+                    let gt = Self::global_type_at(module, *idx)?;
                     if matches!(gt.mutflag, MutabilityFlag::Const) {
                         return Err(ValidationError::ImmutableGlobal);
                     }
@@ -727,12 +744,12 @@ impl Validator {
                 Instruction::TableGet(idx) => {
                     // [at] -> [t]
                     self.pop_val_expect(ValueType::I32)?;
-                    let t = Self::table_type(module, *idx)?;
+                    let t = Self::table_type_at(module, *idx)?;
                     self.push_val(t.elemtype.into());
                 }
                 Instruction::TableSet(idx) => {
                     // [at t] -> []
-                    let t = Self::table_type(module, *idx)?;
+                    let t = Self::table_type_at(module, *idx)?;
                     self.pop_val_expect(t.elemtype.into())?;
                     self.pop_val_expect(ValueType::I32)?;
                 }
@@ -1062,11 +1079,7 @@ impl Validator {
                     self.pop_val_expect(ValueType::I32)?;
 
                     // table exists
-                    let table = module
-                        .tables
-                        .as_ref()
-                        .and_then(|tables| tables.get(*tableidx as usize))
-                        .ok_or(ValidationError::UnknownTable)?;
+                    let tabletype = Self::table_type_at(module, *tableidx)?;
 
                     // element exists
                     let elem = module
@@ -1080,7 +1093,7 @@ impl Validator {
                         ElementSegmentItems::Expressions(rt, ..) => rt,
                     };
 
-                    if elemtype != table.tabletype.elemtype {
+                    if elemtype != tabletype.elemtype {
                         return Err(ValidationError::TypeMismatch);
                     }
                 }
@@ -1099,19 +1112,10 @@ impl Validator {
                     self.pop_val_expect(ValueType::I32)?;
                     self.pop_val_expect(ValueType::I32)?;
 
-                    let dst = module
-                        .tables
-                        .as_ref()
-                        .and_then(|tables| tables.get(*dstidx as usize))
-                        .ok_or(ValidationError::UnknownTable)?;
+                    let dst_type = Self::table_type_at(module, *dstidx)?;
+                    let src_type = Self::table_type_at(module, *srcidx)?;
 
-                    let src = module
-                        .tables
-                        .as_ref()
-                        .and_then(|tables| tables.get(*srcidx as usize))
-                        .ok_or(ValidationError::UnknownTable)?;
-
-                    if src.tabletype.elemtype != dst.tabletype.elemtype {
+                    if src_type.elemtype != dst_type.elemtype {
                         return Err(ValidationError::TypeMismatch);
                     }
                 }
@@ -1119,22 +1123,12 @@ impl Validator {
                     // [t at] -> [at]
                     self.pop_val_expect(ValueType::I32)?;
                     self.pop_val_expect(ValueType::I32)?;
-
-                    module
-                        .tables
-                        .as_ref()
-                        .and_then(|tables| tables.get(*idx as usize))
-                        .ok_or(ValidationError::UnknownTable)?;
+                    Self::table_type_at(module, *idx)?;
 
                     self.push_val(ValueType::I32);
                 }
                 Instruction::TableSize(idx) => {
-                    module
-                        .tables
-                        .as_ref()
-                        .and_then(|tables| tables.get(*idx as usize))
-                        .ok_or(ValidationError::UnknownTable)?;
-
+                    Self::table_type_at(module, *idx)?;
                     self.push_val(ValueType::I32);
                 }
                 Instruction::TableFill(idx) => {
@@ -1142,12 +1136,7 @@ impl Validator {
                     self.pop_val_expect(ValueType::I32)?;
                     self.pop_val_expect(ValueType::I32)?;
                     self.pop_val_expect(ValueType::I32)?;
-
-                    module
-                        .tables
-                        .as_ref()
-                        .and_then(|tables| tables.get(*idx as usize))
-                        .ok_or(ValidationError::UnknownTable)?;
+                    Self::table_type_at(module, *idx)?;
                 }
             }
         }
