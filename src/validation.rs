@@ -335,6 +335,26 @@ impl Validator {
             .ok_or(ValidationError::UnknownGlobal)
     }
 
+    fn mem_type_at(
+        module: &Module,
+        mem_idx: MemIndex,
+    ) -> result::Result<&MemType, ValidationError> {
+        let imported = module
+            .imports
+            .iter()
+            .flatten()
+            .filter_map(|i| match &i.desc {
+                ImportDesc::Mem(mem_type) => Some(mem_type),
+                _ => None,
+            });
+        let defined = module.memories.iter().flatten();
+
+        imported
+            .chain(defined)
+            .nth(mem_idx.0 as usize)
+            .ok_or(ValidationError::UnknownMemory)
+    }
+
     /// Return the type of the function local at the given index
     fn local_type(
         functype: &FuncType,
@@ -364,17 +384,6 @@ impl Validator {
         } else {
             &frame.end_types
         }
-    }
-
-    fn mem_type_at(
-        module: &Module,
-        mem_idx: MemIndex,
-    ) -> result::Result<&MemType, ValidationError> {
-        module
-            .memories
-            .as_ref()
-            .and_then(|mems| mems.get(mem_idx.0 as usize))
-            .ok_or(ValidationError::UnknownMemory)
     }
 
     /// Validate that the memory alignment does not exceed the natural
@@ -1025,13 +1034,7 @@ impl Validator {
                     self.pop_val_expect(ValueType::I32)?;
 
                     // memory exists
-                    if module
-                        .memories
-                        .as_ref()
-                        .is_none_or(|mems| (memidx.0 as usize) >= mems.len())
-                    {
-                        return Err(ValidationError::UnknownMemory);
-                    }
+                    Self::mem_type_at(module, *memidx)?;
 
                     // data exists
                     if module
