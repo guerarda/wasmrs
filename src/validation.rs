@@ -1121,20 +1121,24 @@ impl Validator {
                 }
                 Instruction::TableGrow(idx) => {
                     // [t at] -> [at]
+                    let tabletype = Self::table_type_at(module, *idx)?;
+                    self.pop_val_expect(tabletype.elemtype.into())?;
                     self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
-                    Self::table_type_at(module, *idx)?;
 
                     self.push_val(ValueType::I32);
                 }
                 Instruction::TableSize(idx) => {
+                    // [] -> [at]
                     Self::table_type_at(module, *idx)?;
                     self.push_val(ValueType::I32);
                 }
                 Instruction::TableFill(idx) => {
                     // [at t at] -> []
                     self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
+
+                    let tabletype = Self::table_type_at(module, *idx)?;
+                    self.pop_val_expect(tabletype.elemtype.into())?;
+
                     self.pop_val_expect(ValueType::I32)?;
                     Self::table_type_at(module, *idx)?;
                 }
