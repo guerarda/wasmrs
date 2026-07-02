@@ -119,6 +119,7 @@ pub enum ValidationError {
     MultipleMemories,
     ConstantExpressionRequired,
     DuplicatExportName,
+    FunctionCodeMismatch,
 }
 
 impl error::Error for ValidationError {
@@ -151,6 +152,7 @@ impl fmt::Display for ValidationError {
             Self::MultipleMemories => write!(f, "multiple memories"),
             Self::ConstantExpressionRequired => write!(f, "constant expression required"),
             Self::DuplicatExportName => write!(f, "duplicate export name"),
+            Self::FunctionCodeMismatch => write!(f, "function and code section mismatch"),
         }
     }
 }
@@ -1331,15 +1333,12 @@ impl Validator {
         Self::validate_globals_section(module)?;
         Self::validate_exports_section(module)?;
 
-        // At this point Function and Code section should be consistent
-        debug_assert_eq!(module.functions.is_some(), module.codes.is_some());
+        let funcsec = module.functions.as_deref().unwrap_or(&[]);
+        let codesec = module.codes.as_deref().unwrap_or(&[]);
 
-        let (Some(funcsec), Some(codesec)) = (module.functions.as_ref(), module.codes.as_ref())
-        else {
-            return Ok(());
-        };
-
-        debug_assert_eq!(funcsec.len(), codesec.len());
+        if funcsec.len() != codesec.len() {
+            return Err(ValidationError::FunctionCodeMismatch);
+        }
 
         funcsec
             .iter()
