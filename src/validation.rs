@@ -1206,14 +1206,10 @@ impl Validator {
                 offset,
             } = &e.mode
             {
-                let tableidx = table_index.unwrap_or(0);
-                let table = module
-                    .tables
-                    .as_ref()
-                    .and_then(|tables| tables.get(tableidx as usize))
-                    .ok_or(ValidationError::UnknownTable)?;
+                let idx = table_index.unwrap_or(0);
+                let table_type = Self::table_type_at(module, idx)?;
 
-                if table.tabletype.elemtype != rt {
+                if table_type.elemtype != rt {
                     return Err(ValidationError::TypeMismatch);
                 }
 
