@@ -120,6 +120,7 @@ pub enum ValidationError {
     ConstantExpressionRequired,
     DuplicatExportName,
     FunctionCodeMismatch,
+    StartFunction,
 }
 
 impl error::Error for ValidationError {
@@ -153,6 +154,7 @@ impl fmt::Display for ValidationError {
             Self::ConstantExpressionRequired => write!(f, "constant expression required"),
             Self::DuplicatExportName => write!(f, "duplicate export name"),
             Self::FunctionCodeMismatch => write!(f, "function and code section mismatch"),
+            Self::StartFunction => write!(f, "start function type"),
         }
     }
 }
@@ -1320,6 +1322,20 @@ impl Validator {
         Ok(())
     }
 
+    // Start function, if present, must have type [] -> []
+    fn validate_start_section(module: &Module) -> result::Result<(), ValidationError> {
+        let Some(ref startsec) = module.start else {
+            return Ok(());
+        };
+
+        let functype = Self::func_type_at(module, startsec.0)?;
+
+        if !functype.params.is_empty() || !functype.results.is_empty() {
+            return Err(ValidationError::StartFunction);
+        }
+        return Ok(());
+    }
+
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
         Self::validate_table_section(module)?;
         Self::validate_memory_section(module)?;
@@ -1328,6 +1344,7 @@ impl Validator {
         Self::validate_data_section(module)?;
         Self::validate_globals_section(module)?;
         Self::validate_exports_section(module)?;
+        Self::validate_start_section(module)?;
 
         let funcsec = module.functions.as_deref().unwrap_or(&[]);
         let codesec = module.codes.as_deref().unwrap_or(&[]);
