@@ -159,6 +159,102 @@ impl fmt::Display for ValidationError {
     }
 }
 
+impl ValidationError {
+    fn mint(e: ValidationError) -> ValidationError {
+        #[cfg(feature = "debug-errors")]
+        dbg_breakpoint::breakpoint_if_debugging();
+        e
+    }
+
+    fn type_mismatch() -> Self {
+        Self::mint(ValidationError::TypeMismatch)
+    }
+
+    fn value_stack_underflow() -> Self {
+        Self::mint(ValidationError::ValueStackUnderflow)
+    }
+
+    fn control_stack_underflow() -> Self {
+        Self::mint(ValidationError::ControlStackUnderflow)
+    }
+
+    fn table_type_mismatch() -> Self {
+        Self::mint(ValidationError::TableTypeMismatch)
+    }
+
+    fn else_without_matching_if() -> Self {
+        Self::mint(ValidationError::ElseWithoutMatchingIf)
+    }
+
+    fn unknown_local() -> Self {
+        Self::mint(ValidationError::UnknownLocal)
+    }
+
+    fn unknown_global() -> Self {
+        Self::mint(ValidationError::UnknownGlobal)
+    }
+
+    fn unknown_type() -> Self {
+        Self::mint(ValidationError::UnknownType)
+    }
+
+    fn unknown_table() -> Self {
+        Self::mint(ValidationError::UnknownTable)
+    }
+
+    fn unknown_function() -> Self {
+        Self::mint(ValidationError::UnknownFunction)
+    }
+
+    fn unknown_memory() -> Self {
+        Self::mint(ValidationError::UnknownMemory)
+    }
+
+    fn unknown_data() -> Self {
+        Self::mint(ValidationError::UnknownData)
+    }
+
+    fn unknown_element() -> Self {
+        Self::mint(ValidationError::UnknownElement)
+    }
+
+    fn immutable_global() -> Self {
+        Self::mint(ValidationError::ImmutableGlobal)
+    }
+
+    fn invalid_select_types() -> Self {
+        Self::mint(ValidationError::InvalidSelectTypes)
+    }
+
+    fn invalid_mem_alignment() -> Self {
+        Self::mint(ValidationError::InvalidMemAlignment)
+    }
+
+    fn invalid_limit() -> Self {
+        Self::mint(ValidationError::InvalidLimit)
+    }
+
+    fn multiple_memories() -> Self {
+        Self::mint(ValidationError::MultipleMemories)
+    }
+
+    fn constant_expression_required() -> Self {
+        Self::mint(ValidationError::ConstantExpressionRequired)
+    }
+
+    fn duplicate_export_name() -> Self {
+        Self::mint(ValidationError::DuplicatExportName)
+    }
+
+    fn function_code_mismatch() -> Self {
+        Self::mint(ValidationError::FunctionCodeMismatch)
+    }
+
+    fn start_function() -> Self {
+        Self::mint(ValidationError::StartFunction)
+    }
+}
+
 impl Validator {
     fn push_val(&mut self, val: ValueType) {
         self.vals.push(val)
@@ -187,7 +283,7 @@ impl Validator {
         }
 
         if self.vals.len() == last.height {
-            return Err(ValidationError::ValueStackUnderflow);
+            return Err(ValidationError::value_stack_underflow());
         }
 
         Ok(self.vals.pop().expect("unexpected empty value stack"))
@@ -199,7 +295,7 @@ impl Validator {
     ) -> result::Result<ValueType, ValidationError> {
         let actual = self.pop_val()?;
         if actual != expected && actual != ValueType::Unknown && expected != ValueType::Unknown {
-            return Err(ValidationError::TypeMismatch);
+            return Err(ValidationError::type_mismatch());
         }
         Ok(actual)
     }
@@ -220,7 +316,7 @@ impl Validator {
         let frame = self
             .ctrls
             .last()
-            .ok_or(ValidationError::ControlStackUnderflow)?;
+            .ok_or_else(|| ValidationError::control_stack_underflow())?;
         let height = frame.height;
 
         // need to clone here because pop_vals_expect below
@@ -229,7 +325,7 @@ impl Validator {
 
         let _ = self.pop_vals_expect(&end_types)?;
         if self.vals.len() != height {
-            return Err(ValidationError::TypeMismatch);
+            return Err(ValidationError::type_mismatch());
         }
         Ok(self.ctrls.pop().expect("unexpected empty control stack"))
     }
@@ -253,7 +349,10 @@ impl Validator {
             BlockType::Empty => (vec![], vec![]),
             BlockType::Value(vt) => (vec![], vec![vt.into()]),
             BlockType::Index(idx) => {
-                let types = &module.types.as_ref().ok_or(ValidationError::UnknownType)?;
+                let types = &module
+                    .types
+                    .as_ref()
+                    .ok_or_else(|| ValidationError::unknown_type())?;
 
                 let t = &types[*idx as usize];
                 (
@@ -270,7 +369,7 @@ impl Validator {
             .types
             .as_ref()
             .and_then(|types| types.get(type_idx as usize))
-            .ok_or(ValidationError::UnknownType)
+            .ok_or_else(|| ValidationError::unknown_type())
     }
 
     /// Returns the type for an idx in the Function Section.
@@ -289,7 +388,7 @@ impl Validator {
         let type_idx = imported
             .chain(defined)
             .nth(func_idx as usize)
-            .ok_or(ValidationError::UnknownFunction)?;
+            .ok_or_else(|| ValidationError::unknown_function())?;
 
         Self::type_at(module, type_idx)
     }
@@ -313,7 +412,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(table_idx as usize)
-            .ok_or(ValidationError::UnknownTable)
+            .ok_or_else(|| ValidationError::unknown_table())
     }
 
     /// Returns the global type at the given index
@@ -336,7 +435,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(idx as usize)
-            .ok_or(ValidationError::UnknownGlobal)
+            .ok_or_else(|| ValidationError::unknown_global())
     }
 
     fn mem_type_at(
@@ -356,7 +455,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(mem_idx.0 as usize)
-            .ok_or(ValidationError::UnknownMemory)
+            .ok_or_else(|| ValidationError::unknown_memory())
     }
 
     /// Return the type of the function local at the given index
@@ -377,7 +476,7 @@ impl Validator {
             }
             count += local.count;
         }
-        Err(ValidationError::UnknownLocal)
+        Err(ValidationError::unknown_local())
     }
 
     /// Returns the label_types for the nth frame from the top
@@ -397,7 +496,7 @@ impl Validator {
         byte_size: u32,
     ) -> result::Result<(), ValidationError> {
         if (1 << memarg.align) > byte_size {
-            Err(ValidationError::InvalidMemAlignment)
+            Err(ValidationError::invalid_mem_alignment())
         } else {
             Ok(())
         }
@@ -499,7 +598,7 @@ impl Validator {
                 Instruction::RefNull(rt) => stack.push(ValueType::Ref(*rt)),
                 Instruction::RefFunc(idx) => {
                     if *idx as usize >= module.func_count() {
-                        return Err(ValidationError::UnknownFunction);
+                        return Err(ValidationError::unknown_function());
                     }
                     stack.push(ValueType::Ref(RefType::Func))
                 }
@@ -507,7 +606,7 @@ impl Validator {
                     let idx = *idx as usize;
 
                     if idx >= module.imported_global_count() {
-                        return Err(ValidationError::UnknownGlobal);
+                        return Err(ValidationError::unknown_global());
                     }
 
                     let import = module
@@ -518,7 +617,7 @@ impl Validator {
                                 .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
                                 .nth(idx)
                         })
-                        .ok_or(ValidationError::UnknownGlobal)?;
+                        .ok_or_else(|| ValidationError::unknown_global())?;
 
                     let ImportDesc::Global(gt) = &import.desc else {
                         unreachable!()
@@ -527,17 +626,17 @@ impl Validator {
                     if matches!(gt.mutflag, MutabilityFlag::Const) {
                         stack.push(ValueType::from(gt.type_));
                     } else {
-                        return Err(ValidationError::ConstantExpressionRequired);
+                        return Err(ValidationError::constant_expression_required());
                     }
                 }
                 Instruction::End => break,
-                _ => return Err(ValidationError::ConstantExpressionRequired),
+                _ => return Err(ValidationError::constant_expression_required()),
             }
         }
         if stack == expected {
             Ok(())
         } else {
-            Err(ValidationError::TypeMismatch)
+            Err(ValidationError::type_mismatch())
         }
     }
 
@@ -576,7 +675,7 @@ impl Validator {
                 Instruction::Else => {
                     let frame = self.pop_ctrl()?;
                     if !matches!(frame.opcode, Instruction::If(_)) {
-                        return Err(ValidationError::ElseWithoutMatchingIf);
+                        return Err(ValidationError::else_without_matching_if());
                     }
                     self.push_ctrl(Instruction::Else, frame.start_types, frame.end_types)
                 }
@@ -585,14 +684,14 @@ impl Validator {
                     if matches!(frame.opcode, Instruction::If(_))
                         && frame.start_types != frame.end_types
                     {
-                        return Err(ValidationError::TypeMismatch);
+                        return Err(ValidationError::type_mismatch());
                     }
                     self.push_vals(&frame.end_types);
                 }
                 Instruction::Br(n) => {
                     let n = *n as usize;
                     if self.ctrls.len() <= n {
-                        return Err(ValidationError::ControlStackUnderflow);
+                        return Err(ValidationError::control_stack_underflow());
                     }
                     // FIXME Avoid Copy. pop_vals must be in ValueStack impl
                     let lt = Self::label_types(n, &self.ctrls).to_vec();
@@ -602,7 +701,7 @@ impl Validator {
                 Instruction::BrIf(n) => {
                     let n = *n as usize;
                     if self.ctrls.len() <= n {
-                        return Err(ValidationError::ControlStackUnderflow);
+                        return Err(ValidationError::control_stack_underflow());
                     }
                     self.pop_val_expect(ValueType::I32)?;
 
@@ -616,7 +715,7 @@ impl Validator {
 
                     let m = idx.default as usize;
                     if self.ctrls.len() <= m {
-                        return Err(ValidationError::ControlStackUnderflow);
+                        return Err(ValidationError::control_stack_underflow());
                     }
                     let m_types = Self::label_types(m, &self.ctrls).to_vec();
                     let arity = m_types.len();
@@ -624,11 +723,11 @@ impl Validator {
                     for n in &idx.labels {
                         let n = *n as usize;
                         if self.ctrls.len() <= n {
-                            return Err(ValidationError::ControlStackUnderflow);
+                            return Err(ValidationError::control_stack_underflow());
                         }
                         let n_types = Self::label_types(n, &self.ctrls).to_vec();
                         if n_types.len() != arity {
-                            return Err(ValidationError::TypeMismatch);
+                            return Err(ValidationError::type_mismatch());
                         }
                         self.push_vals(&n_types);
                     }
@@ -667,7 +766,7 @@ impl Validator {
                     // [t1* i32] -> [t2*]
                     let table_type = Self::table_type_at(module, *table_idx)?;
                     if !matches!(table_type.elemtype, RefType::Func) {
-                        return Err(ValidationError::TableTypeMismatch);
+                        return Err(ValidationError::table_type_mismatch());
                     }
 
                     self.pop_val_expect(ValueType::I32)?;
@@ -698,11 +797,11 @@ impl Validator {
                     let t2 = self.pop_val()?;
 
                     if !((t1.is_num() && t2.is_num()) || (t1.is_vec() && t2.is_vec())) {
-                        return Err(ValidationError::TypeMismatch);
+                        return Err(ValidationError::type_mismatch());
                     }
 
                     if t1 != t2 && t1 != ValueType::Unknown && t2 != ValueType::Unknown {
-                        return Err(ValidationError::TypeMismatch);
+                        return Err(ValidationError::type_mismatch());
                     }
 
                     if matches!(t1, ValueType::Unknown) {
@@ -714,7 +813,7 @@ impl Validator {
                 Instruction::SelectT(vt) => {
                     // [t t i32] -> [t]
                     let [t] = vt.as_slice() else {
-                        return Err(ValidationError::InvalidSelectTypes);
+                        return Err(ValidationError::invalid_select_types());
                     };
 
                     let t = t.into();
@@ -748,7 +847,7 @@ impl Validator {
                     // [t] -> []
                     let gt = Self::global_type_at(module, *idx)?;
                     if matches!(gt.mutflag, MutabilityFlag::Const) {
-                        return Err(ValidationError::ImmutableGlobal);
+                        return Err(ValidationError::immutable_global());
                     }
                     self.pop_val_expect(gt.into())?;
                 }
@@ -1013,7 +1112,7 @@ impl Validator {
                 Instruction::RefIsNull => {
                     let v = self.pop_val()?;
                     if !matches!(v, ValueType::Ref(_)) {
-                        return Err(ValidationError::TypeMismatch);
+                        return Err(ValidationError::type_mismatch());
                     }
                     self.push_val(ValueType::I32);
                 }
@@ -1046,7 +1145,7 @@ impl Validator {
                         .as_ref()
                         .is_none_or(|data| (*dataidx as usize) >= data.len())
                     {
-                        return Err(ValidationError::UnknownData);
+                        return Err(ValidationError::unknown_data());
                     }
                 }
                 Instruction::DataDrop(idx) => {
@@ -1055,7 +1154,7 @@ impl Validator {
                         .as_ref()
                         .is_none_or(|data| (*idx as usize) >= data.len())
                     {
-                        return Err(ValidationError::UnknownData);
+                        return Err(ValidationError::unknown_data());
                     }
                 }
                 Instruction::MemoryCopy((dstidx, srcidx)) => {
@@ -1091,7 +1190,7 @@ impl Validator {
                         .elements
                         .as_ref()
                         .and_then(|elems| elems.get(*elemidx as usize))
-                        .ok_or(ValidationError::UnknownElement)?;
+                        .ok_or_else(|| ValidationError::unknown_element())?;
 
                     let elemtype = match elem.items {
                         ElementSegmentItems::Functions(_) => RefType::Func,
@@ -1099,7 +1198,7 @@ impl Validator {
                     };
 
                     if elemtype != tabletype.elemtype {
-                        return Err(ValidationError::TypeMismatch);
+                        return Err(ValidationError::type_mismatch());
                     }
                 }
                 Instruction::ElemDrop(idx) => {
@@ -1108,7 +1207,7 @@ impl Validator {
                         .as_ref()
                         .is_none_or(|elems| (*idx as usize) >= elems.len())
                     {
-                        return Err(ValidationError::UnknownElement);
+                        return Err(ValidationError::unknown_element());
                     }
                 }
                 Instruction::TableCopy((dstidx, srcidx)) => {
@@ -1121,7 +1220,7 @@ impl Validator {
                     let src_type = Self::table_type_at(module, *srcidx)?;
 
                     if src_type.elemtype != dst_type.elemtype {
-                        return Err(ValidationError::TypeMismatch);
+                        return Err(ValidationError::type_mismatch());
                     }
                 }
                 Instruction::TableGrow(idx) => {
@@ -1161,7 +1260,7 @@ impl Validator {
             let l = &t.tabletype.limit;
             l.max.is_some_and(|max| l.min > max)
         }) {
-            return Err(ValidationError::InvalidLimit);
+            return Err(ValidationError::invalid_limit());
         }
         Ok(())
     }
@@ -1173,11 +1272,11 @@ impl Validator {
 
         // Only one memory is allowed
         if memsec.len() > 1 {
-            return Err(ValidationError::MultipleMemories);
+            return Err(ValidationError::multiple_memories());
         }
 
         if !memsec.iter().all(MemType::is_valid) {
-            return Err(ValidationError::InvalidLimit);
+            return Err(ValidationError::invalid_limit());
         }
 
         Ok(())
@@ -1212,7 +1311,7 @@ impl Validator {
                 let table_type = Self::table_type_at(module, idx)?;
 
                 if table_type.elemtype != rt {
-                    return Err(ValidationError::TypeMismatch);
+                    return Err(ValidationError::type_mismatch());
                 }
 
                 Self::validate_const_expr(module, offset, &[ValueType::I32])?;
@@ -1232,16 +1331,16 @@ impl Validator {
             match &i.desc {
                 ImportDesc::Func(idx) => {
                     if *idx as usize >= types_len {
-                        return Err(ValidationError::UnknownType);
+                        return Err(ValidationError::unknown_type());
                     }
                 }
                 ImportDesc::Mem(memtype) => {
                     if !memtype.is_valid() {
-                        return Err(ValidationError::InvalidLimit);
+                        return Err(ValidationError::invalid_limit());
                     }
                     mems_count += 1;
                     if mems_count > 1 {
-                        return Err(ValidationError::MultipleMemories);
+                        return Err(ValidationError::multiple_memories());
                     }
                 }
                 _ => (),
@@ -1263,28 +1362,28 @@ impl Validator {
 
         for e in exportsec {
             if !names.insert(e.name.clone()) {
-                return Err(ValidationError::DuplicatExportName);
+                return Err(ValidationError::duplicate_export_name());
             }
             let idx = e.index as usize;
             match e.kind {
                 ExportKind::Func => {
                     if idx >= func_count {
-                        return Err(ValidationError::UnknownFunction);
+                        return Err(ValidationError::unknown_function());
                     }
                 }
                 ExportKind::Table => {
                     if idx >= table_count {
-                        return Err(ValidationError::UnknownTable);
+                        return Err(ValidationError::unknown_table());
                     }
                 }
                 ExportKind::Memory => {
                     if idx >= mem_count {
-                        return Err(ValidationError::UnknownMemory);
+                        return Err(ValidationError::unknown_memory());
                     }
                 }
                 ExportKind::Global => {
                     if idx >= global_count {
-                        return Err(ValidationError::UnknownGlobal);
+                        return Err(ValidationError::unknown_global());
                     }
                 }
             }
@@ -1302,7 +1401,7 @@ impl Validator {
         for d in datasec {
             if let DataSegmentMode::Active { mem_index, offset } = &d.mode {
                 if (*mem_index as usize) >= mem_count {
-                    return Err(ValidationError::UnknownMemory);
+                    return Err(ValidationError::unknown_memory());
                 }
                 Self::validate_const_expr(module, offset, &[ValueType::I32])?;
             }
@@ -1331,9 +1430,9 @@ impl Validator {
         let functype = Self::func_type_at(module, startsec.0)?;
 
         if !functype.params.is_empty() || !functype.results.is_empty() {
-            return Err(ValidationError::StartFunction);
+            return Err(ValidationError::start_function());
         }
-        return Ok(());
+        Ok(())
     }
 
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
@@ -1350,7 +1449,7 @@ impl Validator {
         let codesec = module.codes.as_deref().unwrap_or(&[]);
 
         if funcsec.len() != codesec.len() {
-            return Err(ValidationError::FunctionCodeMismatch);
+            return Err(ValidationError::function_code_mismatch());
         }
 
         funcsec
@@ -1362,7 +1461,7 @@ impl Validator {
                     .types
                     .as_ref()
                     .and_then(|t| t.get(idx))
-                    .ok_or(ValidationError::UnknownType)?;
+                    .ok_or_else(|| ValidationError::unknown_type())?;
                 Validator::default().validate_function(functype, entry, module)
             })
     }
