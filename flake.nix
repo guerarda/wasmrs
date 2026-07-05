@@ -31,6 +31,7 @@
             if [ -x /Library/Developer/CommandLineTools/usr/bin/lldb ]; then
               export PATH=/Library/Developer/CommandLineTools/usr/bin:$PATH
             fi
+            export LIBRARY_PATH="${pkgs.libiconv}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
           '';
         };
       });

@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
+default = ["debug-errors"]
 spec-tests = ["dep:wast"]
+debug-errors = ["dep:dbg_breakpoint"]
 
 [dependencies]
 anyhow = "1.0.100"
+dbg_breakpoint = { version = "0.1.1", optional = true }
 wast = { version = "223", optional = true }
 
 [dev-dependencies]
