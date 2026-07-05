@@ -1127,8 +1127,8 @@ impl Validator {
                 Instruction::TableGrow(idx) => {
                     // [t at] -> [at]
                     let tabletype = Self::table_type_at(module, *idx)?;
-                    self.pop_val_expect(tabletype.elemtype.into())?;
                     self.pop_val_expect(ValueType::I32)?;
+                    self.pop_val_expect(tabletype.elemtype.into())?;
 
                     self.push_val(ValueType::I32);
                 }
