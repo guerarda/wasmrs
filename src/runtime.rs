@@ -333,15 +333,10 @@ impl Runtime {
         // Execute start function after module registration so that
         // module instnace handle is valid
         if let Some(funcidx) = start_fn {
-            let mut value_stack = vec![];
             let mut call_stack = vec![];
 
-            let mut ctx = ExecutionContext::new(
-                &mut value_stack,
-                &mut call_stack,
-                &mut self.store,
-                &self.module_registry,
-            );
+            let mut ctx =
+                ExecutionContext::new(&[], &mut call_stack, &mut self.store, &self.module_registry);
             ctx.call(funcidx);
             ctx.execute()?;
         }
@@ -499,19 +494,21 @@ impl Runtime {
             .ok_or(RuntimeError::internal("export is not a function"))?;
         let arity = self.store.functions.get(funcaddr).ftype.results.len();
 
-        let mut value_stack = Vec::from(fn_args);
+        let mut value_stack;
         let mut call_stack = vec![];
 
         let result = {
             let mut ctx = ExecutionContext::new(
-                &mut value_stack,
+                &fn_args,
                 &mut call_stack,
                 &mut self.store,
                 &self.module_registry,
             );
 
             ctx.call(funcaddr);
-            ctx.execute()
+            let result = ctx.execute();
+            value_stack = ctx.into_value_stack();
+            result
         };
         result.map_err(|e| e.with_stacks(call_stack.clone(), value_stack.clone()))?;
 
