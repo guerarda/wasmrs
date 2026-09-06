@@ -138,7 +138,7 @@ macro_rules! trunc {
 macro_rules! load {
     ($self: expr, $module_inst: ident, $memarg: ident, $ty:ty, $variant: ident) => {{
         // Get the base address
-        let i = Self::pop_i32(&mut $self.value_stack)?;
+        let i = $self.value_stack.pop_i32();
 
         // Read memory
         let mem = Runtime::memory_get(&$self.store.memories, $module_inst, MemIndex::ZERO).unwrap();
@@ -162,7 +162,7 @@ macro_rules! store {
         };
 
         // Get the base address
-        let i = Self::pop_i32(&mut $self.value_stack)?;
+        let i = $self.value_stack.pop_i32();
 
         // Get memory
         let slice =
@@ -220,6 +220,26 @@ impl ValueStack {
         self.stack.truncate(len)
     }
 
+    fn unwind(&mut self, sp: usize, arity: u32) {
+        let arity = arity as usize;
+        let stack_len = self.stack.len();
+
+        assert!(
+            stack_len >= arity,
+            "unwinding {arity} value from stack with len {stack_len}",
+        );
+
+        let results_idx = stack_len - arity;
+        assert!(
+            results_idx >= sp,
+            "unwinding from idx={results_idx} past stack pointer sp={sp}"
+        );
+
+        // Rotate the results down to sp, then truncate
+        self.stack[sp..].rotate_left(results_idx - sp);
+        self.stack.truncate(sp + arity);
+    }
+
     fn pop(&mut self) -> Option<Value> {
         self.stack.pop()
     }
@@ -231,6 +251,16 @@ impl ValueStack {
         {
             Value::I32(v) => v != 0,
             _ => panic!("expected bool on the stack: operand type guaranteed by validation"),
+        }
+    }
+
+    fn pop_i32(&mut self) -> i32 {
+        match self
+            .pop()
+            .expect("value stack not empty: operand count guaranteed by validation")
+        {
+            Value::I32(v) => v,
+            _ => panic!("expected i32 on the stack: operand type guaranteed by validation"),
         }
     }
 
@@ -330,31 +360,6 @@ impl<'a> ExecutionContext<'a> {
         }
     }
 
-    fn unwind_value_stack(
-        value_stack: &mut ValueStack,
-        sp: usize,
-        arity: u32,
-    ) -> result::Result<(), RuntimeError> {
-        let arity = arity as usize;
-
-        let stack_len = value_stack.len();
-        if stack_len < arity {
-            return Err(RuntimeError::internal(
-                "unwinding {arity} value from stack with len {stack_len}",
-            ));
-        }
-
-        let results_idx = stack_len - arity;
-        if results_idx < sp {
-            return Err(RuntimeError::internal("unwinding past stack pointer"));
-        }
-        // Rotate the results down to sp, then truncate
-        value_stack.stack[sp..].rotate_left(results_idx - sp);
-        value_stack.truncate(sp + arity);
-
-        Ok(())
-    }
-
     fn branch(
         value_stack: &mut ValueStack,
         call_stack: &mut Vec<Frame>,
@@ -365,22 +370,15 @@ impl<'a> ExecutionContext<'a> {
 
         if n == frame.labels.len() {
             // function return
-            Self::unwind_value_stack(value_stack, frame.sp, frame.arity)?;
+            value_stack.unwind(frame.sp, frame.arity);
             call_stack.pop();
             return Ok(());
         }
 
         let label = frame.pop_nth_label(*label_idx);
-        Self::unwind_value_stack(value_stack, label.sp, label.br_arity)?;
+        value_stack.unwind(label.sp, label.br_arity);
         frame.pc = label.pc;
         Ok(())
-    }
-
-    fn pop_i32(value_stack: &mut ValueStack) -> result::Result<i32, RuntimeError> {
-        value_stack
-            .pop()
-            .and_then(Value::as_i32)
-            .ok_or_else(|| RuntimeError::internal("assert, i32 expected on the stack"))
     }
 
     pub(super) fn into_value_stack(self) -> Vec<Value> {
@@ -399,13 +397,11 @@ impl<'a> ExecutionContext<'a> {
                 let mut locals = vec![];
                 locals.extend_from_slice(self.value_stack.top_n(n_args));
 
-                //let mut locals: Vec<Value> = self.value_stack.split_off(sp);
                 locals.extend(wasm_fn.locals.clone().into_iter().map(Into::<Value>::into));
                 self.call_stack
                     .push(Frame::new(arity, funcaddr, locals, sp));
             }
             FuncBody::Host(f) => {
-                //let args = self.value_stack.split_off(sp);
                 let results = f(self.value_stack.top_n(n_args));
                 self.value_stack.truncate(sp);
                 self.value_stack.extend(results.unwrap());
@@ -483,10 +479,10 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::End => match frame.labels.pop() {
                         Some(Label { end_arity, sp, .. }) => {
-                            Self::unwind_value_stack(&mut self.value_stack, sp, end_arity)?;
+                            self.value_stack.unwind(sp, end_arity);
                         }
                         None => {
-                            Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity)?;
+                            self.value_stack.unwind(frame.sp, frame.arity);
                             self.call_stack.pop();
                         }
                     },
@@ -500,13 +496,13 @@ impl<'a> ExecutionContext<'a> {
                         }
                     }
                     Instruction::BrTable(br_idx) => {
-                        let i = Self::pop_i32(&mut self.value_stack)? as usize;
+                        let i = self.value_stack.pop_i32() as usize;
 
                         let label_idx = br_idx.labels.get(i).unwrap_or(&br_idx.default);
                         Self::branch(&mut self.value_stack, self.call_stack, label_idx)?;
                     }
                     Instruction::Return => {
-                        Self::unwind_value_stack(&mut self.value_stack, frame.sp, frame.arity)?;
+                        self.value_stack.unwind(frame.sp, frame.arity);
                         self.call_stack.pop();
                     }
                     Instruction::Call(idx) => {
@@ -518,7 +514,7 @@ impl<'a> ExecutionContext<'a> {
                             Runtime::table_get(&self.store.tables, module_inst, *table_idx)?;
                         let ft = &module_inst.types[*type_idx as usize];
 
-                        let i = Self::pop_i32(&mut self.value_stack)?;
+                        let i = self.value_stack.pop_i32();
 
                         let r = tab_inst
                             .refs
@@ -1097,9 +1093,9 @@ impl<'a> ExecutionContext<'a> {
                         self.store.data.drop(da);
                     }
                     Instruction::MemoryCopy((dst_idx, src_idx)) => {
-                        let n = Self::pop_i32(&mut self.value_stack)? as usize;
-                        let isrc = Self::pop_i32(&mut self.value_stack)?;
-                        let idst = Self::pop_i32(&mut self.value_stack)?;
+                        let n = self.value_stack.pop_i32() as usize;
+                        let isrc = self.value_stack.pop_i32();
+                        let idst = self.value_stack.pop_i32();
 
                         let data = {
                             let src =
@@ -1115,9 +1111,9 @@ impl<'a> ExecutionContext<'a> {
                         dst.slice_mut(idst, 0, n)?.copy_from_slice(&data);
                     }
                     Instruction::MemoryFill(idx) => {
-                        let n = Self::pop_i32(&mut self.value_stack)?;
-                        let val = Self::pop_i32(&mut self.value_stack)?;
-                        let i = Self::pop_i32(&mut self.value_stack)?;
+                        let n = self.value_stack.pop_i32();
+                        let val = self.value_stack.pop_i32();
+                        let i = self.value_stack.pop_i32();
 
                         let mem =
                             Runtime::memory_get_mut(&mut self.store.memories, module_inst, *idx)?;
@@ -1160,9 +1156,9 @@ impl<'a> ExecutionContext<'a> {
                         self.store.elements.drop(ea);
                     }
                     Instruction::TableCopy((dstidx, srcidx)) => {
-                        let n = Self::pop_i32(&mut self.value_stack)? as usize;
-                        let isrc = Self::pop_i32(&mut self.value_stack)?;
-                        let idst = Self::pop_i32(&mut self.value_stack)?;
+                        let n = self.value_stack.pop_i32() as usize;
+                        let isrc = self.value_stack.pop_i32();
+                        let idst = self.value_stack.pop_i32();
 
                         let data = {
                             let src = Runtime::table_get(&self.store.tables, module_inst, *srcidx)?;
@@ -1194,13 +1190,13 @@ impl<'a> ExecutionContext<'a> {
                         self.value_stack.push(Value::I32(ti.refs.len() as i32));
                     }
                     Instruction::TableFill(idx) => {
-                        let n = Self::pop_i32(&mut self.value_stack)? as usize;
+                        let n = self.value_stack.pop_i32() as usize;
                         let v = self
                             .value_stack
                             .pop()
                             .and_then(Value::into_ref)
                             .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
-                        let i = Self::pop_i32(&mut self.value_stack)?;
+                        let i = self.value_stack.pop_i32();
 
                         let ti = Runtime::table_get_mut(&mut self.store.tables, module_inst, *idx)?;
                         ti.slice_mut(i, n)?.fill(v);
