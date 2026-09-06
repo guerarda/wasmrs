@@ -18,7 +18,7 @@ use crate::{
 
 macro_rules! unary_op {
     ($self:expr, $variant:ident, $op:expr) => {{
-        let val = $self.value_stack.pop().unwrap();
+        let val = $self.value_stack.pop();
         let result = match val {
             Value::$variant(a) => Value::$variant($op(a).into()),
             _ => unreachable!(),
@@ -29,8 +29,8 @@ macro_rules! unary_op {
 
 macro_rules! binary_op {
     ($self:expr, $variant:ident, $op:expr) => {{
-        let rhs = $self.value_stack.pop().unwrap();
-        let lhs = $self.value_stack.pop().unwrap();
+        let rhs = $self.value_stack.pop();
+        let lhs = $self.value_stack.pop();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => $op(a, b),
             _ => unreachable!(),
@@ -38,8 +38,8 @@ macro_rules! binary_op {
         $self.value_stack.push(Value::$variant(res as _));
     }};
     ($self:expr, $ty:ty, $variant:ident, $op:expr) => {{
-        let rhs = $self.value_stack.pop().unwrap();
-        let lhs = $self.value_stack.pop().unwrap();
+        let rhs = $self.value_stack.pop();
+        let lhs = $self.value_stack.pop();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => $op(a as $ty, b as $ty),
             _ => unreachable!(),
@@ -50,8 +50,8 @@ macro_rules! binary_op {
 
 macro_rules! comp_op {
     ($self:expr, $variant:ident, $op:expr) => {{
-        let rhs = $self.value_stack.pop().unwrap();
-        let lhs = $self.value_stack.pop().unwrap();
+        let rhs = $self.value_stack.pop();
+        let lhs = $self.value_stack.pop();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => $op(a, b),
             _ => unreachable!(),
@@ -60,8 +60,8 @@ macro_rules! comp_op {
     }};
 
     ($self:expr, $ty:ty, $variant:ident, $op:expr) => {{
-        let rhs = $self.value_stack.pop().unwrap();
-        let lhs = $self.value_stack.pop().unwrap();
+        let rhs = $self.value_stack.pop();
+        let lhs = $self.value_stack.pop();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => $op(a as $ty, b as $ty),
             _ => unreachable!(),
@@ -72,8 +72,8 @@ macro_rules! comp_op {
 
 macro_rules! try_binary_op {
     ($self:expr, $variant:ident, $op:expr) => {{
-        let rhs = $self.value_stack.pop().unwrap();
-        let lhs = $self.value_stack.pop().unwrap();
+        let rhs = $self.value_stack.pop();
+        let lhs = $self.value_stack.pop();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => {
                 $op(a, b).ok_or(RuntimeError::internal(""))?
@@ -85,8 +85,8 @@ macro_rules! try_binary_op {
     }};
 
     ($self:expr, $ty:ty, $variant:ident, $op:expr) => {{
-        let rhs = $self.value_stack.pop().unwrap();
-        let lhs = $self.value_stack.pop().unwrap();
+        let rhs = $self.value_stack.pop();
+        let lhs = $self.value_stack.pop();
         let res = match (lhs, rhs) {
             (Value::$variant(a), Value::$variant(b)) => {
                 $op(a as $ty, b as $ty).ok_or(RuntimeError::internal(""))?
@@ -100,7 +100,7 @@ macro_rules! try_binary_op {
 
 macro_rules! conv_op {
     ($self:expr, $from_variant:ident, $to_variant:ident, $op:expr) => {{
-        let val = $self.value_stack.pop().unwrap();
+        let val = $self.value_stack.pop();
         let res = match (val) {
             Value::$from_variant(a) => $op(a),
             _ => unreachable!(),
@@ -111,7 +111,7 @@ macro_rules! conv_op {
 
 macro_rules! try_conv_op {
     ($self:expr, $from_variant:ident, $to_variant:ident, $op:expr) => {{
-        let val = $self.value_stack.pop().unwrap();
+        let val = $self.value_stack.pop();
         let res = match (val) {
             Value::$from_variant(a) => $op(a).ok_or(RuntimeError::internal(""))?,
             _ => unreachable!(),
@@ -156,7 +156,7 @@ macro_rules! load {
 macro_rules! store {
     ($self: expr, $module_inst: ident, $memarg: ident, $variant: ident, $ty:ty) => {{
         // Get the value
-        let v = match $self.value_stack.pop().unwrap() {
+        let v = match $self.value_stack.pop() {
             Value::$variant(val) => val as $ty,
             _ => unreachable!(),
         };
@@ -240,27 +240,34 @@ impl ValueStack {
         self.stack.truncate(sp + arity);
     }
 
-    fn pop(&mut self) -> Option<Value> {
-        self.stack.pop()
-    }
-
-    fn pop_bool(&mut self) -> bool {
-        match self
+    #[track_caller]
+    fn pop(&mut self) -> Value {
+        self.stack
             .pop()
             .expect("value stack not empty: operand count guaranteed by validation")
-        {
+    }
+
+    #[track_caller]
+    fn pop_bool(&mut self) -> bool {
+        match self.pop() {
             Value::I32(v) => v != 0,
             _ => panic!("expected bool on the stack: operand type guaranteed by validation"),
         }
     }
 
+    #[track_caller]
     fn pop_i32(&mut self) -> i32 {
-        match self
-            .pop()
-            .expect("value stack not empty: operand count guaranteed by validation")
-        {
+        match self.pop() {
             Value::I32(v) => v,
             _ => panic!("expected i32 on the stack: operand type guaranteed by validation"),
+        }
+    }
+
+    #[track_caller]
+    fn pop_ref(&mut self) -> Ref {
+        match self.pop() {
+            Value::Ref(v) => v,
+            _ => panic!("expected ref on the stack: operand type guaranteed by validation"),
         }
     }
 
@@ -539,8 +546,8 @@ impl<'a> ExecutionContext<'a> {
 
                     Instruction::Select | Instruction::SelectT(_) => {
                         let cond = self.value_stack.pop_bool();
-                        let val2 = self.value_stack.pop().unwrap();
-                        let val1 = self.value_stack.pop().unwrap();
+                        let val2 = self.value_stack.pop();
+                        let val1 = self.value_stack.pop();
 
                         if cond {
                             self.value_stack.push(val1);
@@ -557,9 +564,7 @@ impl<'a> ExecutionContext<'a> {
                         self.value_stack.push(*v)
                     }
                     Instruction::LocalSet(idx) => {
-                        let v = self.value_stack.pop().ok_or_else(|| {
-                            RuntimeError::internal("assert, value expected on the stack")
-                        })?;
+                        let v = self.value_stack.pop();
                         let idx = *idx as usize;
                         *frame
                             .locals
@@ -583,14 +588,11 @@ impl<'a> ExecutionContext<'a> {
                         self.value_stack.push(v);
                     }
                     Instruction::GlobalSet(idx) => {
-                        let v = self.value_stack.pop().unwrap();
+                        let v = self.value_stack.pop();
                         Runtime::global_set(&mut self.store.globals, module_inst, *idx, v)?;
                     }
                     Instruction::TableGet(table_idx) => {
-                        let i =
-                            self.value_stack.pop().unwrap().as_i32().ok_or(
-                                RuntimeError::internal("table.get, assert i32 on the stack"),
-                            )?;
+                        let i = self.value_stack.pop_i32();
                         let ti = Runtime::table_get(&self.store.tables, module_inst, *table_idx)?;
                         let r = ti
                             .refs
@@ -600,14 +602,8 @@ impl<'a> ExecutionContext<'a> {
                         self.value_stack.push(Value::Ref(*r));
                     }
                     Instruction::TableSet(table_idx) => {
-                        let rv =
-                            self.value_stack.pop().and_then(Value::into_ref).ok_or(
-                                RuntimeError::internal("table.set, assert ref on the stack"),
-                            )?;
-                        let i =
-                            self.value_stack.pop().unwrap().as_i32().ok_or(
-                                RuntimeError::internal("table.get, assert i32 on the stack"),
-                            )?;
+                        let rv = self.value_stack.pop_ref();
+                        let i = self.value_stack.pop_i32();
                         let ti = Runtime::table_get_mut(
                             &mut self.store.tables,
                             module_inst,
@@ -693,10 +689,7 @@ impl<'a> ExecutionContext<'a> {
                         self.value_stack.push(Value::I32(sz as i32));
                     }
                     Instruction::MemoryGrow(idx) => {
-                        let inc =
-                            self.value_stack.pop().and_then(Value::as_i32).ok_or(
-                                RuntimeError::internal("memory.grow, invalid argument type"),
-                            )?;
+                        let inc = self.value_stack.pop_i32();
                         let res =
                             Runtime::memory_get_mut(&mut self.store.memories, module_inst, *idx)
                                 .unwrap()
@@ -726,7 +719,7 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I32GeU => comp_op!(self, u32, I32, |a, b| a >= b),
 
                     Instruction::I64Eqz => {
-                        let val = self.value_stack.pop().unwrap();
+                        let val = self.value_stack.pop();
                         let result = match val {
                             Value::I64(a) => Value::I32((a == 0) as i32),
                             _ => unreachable!(),
@@ -1023,7 +1016,7 @@ impl<'a> ExecutionContext<'a> {
                     // Ref
                     Instruction::RefNull(rt) => self.value_stack.push(Value::Ref(Ref::Null(*rt))),
                     Instruction::RefIsNull => {
-                        let v = self.value_stack.pop().unwrap();
+                        let v = self.value_stack.pop();
                         match v {
                             Value::Ref(r) => self.value_stack.push(Value::I32(r.is_null() as i32)),
                             _ => unreachable!(),
@@ -1058,26 +1051,9 @@ impl<'a> ExecutionContext<'a> {
                         conv_op!(self, F64, I64, |a: f64| a as u64 as i64);
                     }
                     Instruction::MemoryInit((dataidx, memidx)) => {
-                        let n = self
-                            .value_stack
-                            .pop()
-                            .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::internal("uncaught validation"))?
-                            as usize;
-
-                        let j = self
-                            .value_stack
-                            .pop()
-                            .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::internal("uncaught validation"))?
-                            as usize;
-
-                        let i = self
-                            .value_stack
-                            .pop()
-                            .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::internal("uncaught validation"))?
-                            as usize;
+                        let n = self.value_stack.pop_i32() as usize;
+                        let j = self.value_stack.pop_i32() as usize;
+                        let i = self.value_stack.pop_i32() as usize;
 
                         let meminst = Runtime::memory_get_mut(
                             &mut self.store.memories,
@@ -1120,26 +1096,9 @@ impl<'a> ExecutionContext<'a> {
                         mem.slice_mut(i, 0, n as usize)?.fill(val as u8);
                     }
                     Instruction::TableInit((elem_idx, table_idx)) => {
-                        let n = self
-                            .value_stack
-                            .pop()
-                            .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::internal(""))?
-                            as usize;
-
-                        let j = self
-                            .value_stack
-                            .pop()
-                            .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::internal(""))?
-                            as usize;
-
-                        let i = self
-                            .value_stack
-                            .pop()
-                            .and_then(|v| v.as_i32())
-                            .ok_or(RuntimeError::internal(""))?
-                            as usize;
+                        let n = self.value_stack.pop_i32() as usize;
+                        let j = self.value_stack.pop_i32() as usize;
+                        let i = self.value_stack.pop_i32() as usize;
 
                         let ti = Runtime::table_get_mut(
                             &mut self.store.tables,
@@ -1170,14 +1129,8 @@ impl<'a> ExecutionContext<'a> {
                         dst.slice_mut(idst, n)?.copy_from_slice(&data);
                     }
                     Instruction::TableGrow(idx) => {
-                        let inc =
-                            self.value_stack.pop().and_then(Value::as_i32).ok_or(
-                                RuntimeError::internal("table.grow, invalid argument type"),
-                            )?;
-                        let val =
-                            self.value_stack.pop().and_then(Value::into_ref).ok_or(
-                                RuntimeError::internal("table.grow, invalid argument type"),
-                            )?;
+                        let inc = self.value_stack.pop_i32();
+                        let val = self.value_stack.pop_ref();
                         let res =
                             Runtime::table_get_mut(&mut self.store.tables, module_inst, *idx)?
                                 .grow(inc as u32, val)?
@@ -1191,11 +1144,7 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::TableFill(idx) => {
                         let n = self.value_stack.pop_i32() as usize;
-                        let v = self
-                            .value_stack
-                            .pop()
-                            .and_then(Value::into_ref)
-                            .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
+                        let v = self.value_stack.pop_ref();
                         let i = self.value_stack.pop_i32();
 
                         let ti = Runtime::table_get_mut(&mut self.store.tables, module_inst, *idx)?;
