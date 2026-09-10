@@ -203,8 +203,11 @@ impl ValueStack {
         self.stack.push(value)
     }
 
-    fn last(&self) -> Option<&Value> {
-        self.stack.last()
+    fn top(&self) -> &Value {
+        return self
+            .stack
+            .last()
+            .expect("value stack not empty: operand count guaranteed by validation");
     }
 
     fn extend(&mut self, values: Vec<Value>) {
@@ -573,9 +576,7 @@ impl<'a> ExecutionContext<'a> {
                             v;
                     }
                     Instruction::LocalTee(idx) => {
-                        let v = self.value_stack.last().ok_or_else(|| {
-                            RuntimeError::internal("assert, value expected on the stack")
-                        })?;
+                        let v = self.value_stack.top();
                         let idx = *idx as usize;
                         *frame
                             .locals
