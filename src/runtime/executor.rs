@@ -559,7 +559,7 @@ impl<'a> ExecutionContext<'a> {
                         let v = frame
                             .locals
                             .get(idx)
-                            .ok_or_else(|| RuntimeError::internal("local index out of bounds"))?;
+                            .expect("local index guaranteed by validation");
                         self.value_stack.push(*v)
                     }
                     Instruction::LocalSet(idx) => {
@@ -568,8 +568,7 @@ impl<'a> ExecutionContext<'a> {
                         *frame
                             .locals
                             .get_mut(idx)
-                            .ok_or_else(|| RuntimeError::internal("local index out of bounds"))? =
-                            v;
+                            .expect("local index guaranteed by validation") = v;
                     }
                     Instruction::LocalTee(idx) => {
                         let v = self.value_stack.top();
@@ -577,8 +576,7 @@ impl<'a> ExecutionContext<'a> {
                         *frame
                             .locals
                             .get_mut(idx)
-                            .ok_or_else(|| RuntimeError::internal("local index out of bounds"))? =
-                            *v;
+                            .expect("local index guaranteed by validation") = *v;
                     }
                     Instruction::GlobalGet(idx) => {
                         let v = Runtime::global_get(&self.store.globals, module_inst, *idx)?;
