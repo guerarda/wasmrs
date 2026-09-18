@@ -75,9 +75,7 @@ macro_rules! try_binary_op {
         let rhs = $self.value_stack.pop();
         let lhs = $self.value_stack.pop();
         let res = match (lhs, rhs) {
-            (Value::$variant(a), Value::$variant(b)) => {
-                $op(a, b).ok_or(RuntimeError::internal(""))?
-            }
+            (Value::$variant(a), Value::$variant(b)) => $op(a, b)?,
             _ => unreachable!(),
         };
         $self.value_stack.push(Value::$variant(res as _));
@@ -88,9 +86,7 @@ macro_rules! try_binary_op {
         let rhs = $self.value_stack.pop();
         let lhs = $self.value_stack.pop();
         let res = match (lhs, rhs) {
-            (Value::$variant(a), Value::$variant(b)) => {
-                $op(a as $ty, b as $ty).ok_or(RuntimeError::internal(""))?
-            }
+            (Value::$variant(a), Value::$variant(b)) => $op(a as $ty, b as $ty)?,
             _ => unreachable!(),
         };
         $self.value_stack.push(Value::$variant(res as _));
@@ -765,26 +761,27 @@ impl<'a> ExecutionContext<'a> {
                     Instruction::I32Add => binary_op!(self, I32, |a: i32, b| a.wrapping_add(b)),
                     Instruction::I32Sub => binary_op!(self, I32, |a: i32, b| a.wrapping_sub(b)),
                     Instruction::I32Mul => binary_op!(self, I32, |a: i32, b| a.wrapping_mul(b)),
-                    Instruction::I32DivS => {
-                        try_binary_op!(self, I32, |a: i32, b| a.checked_div(b))?
-                    }
+                    Instruction::I32DivS => try_binary_op!(self, I32, |a: i32, b| {
+                        if b == 0 {
+                            return Err(TrapErrorKind::DivisionByZero);
+                        }
+                        a.checked_div(b).ok_or(TrapErrorKind::IntegerOverflow)
+                    })?,
 
-                    Instruction::I32DivU => {
-                        try_binary_op!(self, u32, I32, |a: u32, b| a.checked_div(b))?
-                    }
+                    Instruction::I32DivU => try_binary_op!(self, u32, I32, |a: u32, b| {
+                        a.checked_div(b).ok_or(TrapErrorKind::DivisionByZero)
+                    })?,
                     Instruction::I32RemS => try_binary_op!(self, I32, |a: i32, b| {
                         if b == 0 {
-                            None
-                        } else {
-                            Some(a.wrapping_rem(b))
+                            return Err(TrapErrorKind::DivisionByZero);
                         }
+                        Ok(a.wrapping_rem(b))
                     })?,
                     Instruction::I32RemU => try_binary_op!(self, u32, I32, |a: u32, b| {
                         if b == 0 {
-                            None
-                        } else {
-                            Some(a.wrapping_rem(b))
+                            return Err(TrapErrorKind::DivisionByZero);
                         }
+                        Ok(a.wrapping_rem(b))
                     })?,
                     Instruction::I32And => binary_op!(self, I32, BitAnd::bitand),
                     Instruction::I32Or => binary_op!(self, I32, BitOr::bitor),
@@ -816,26 +813,27 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::I64Sub => binary_op!(self, I64, |a: i64, b| a.wrapping_sub(b)),
                     Instruction::I64Mul => binary_op!(self, I64, |a: i64, b| a.wrapping_mul(b)),
-                    Instruction::I64DivS => {
-                        try_binary_op!(self, I64, |a: i64, b| a.checked_div(b))?
-                    }
-                    Instruction::I64DivU => {
-                        try_binary_op!(self, u64, I64, |a: u64, b| a.checked_div(b))?
-                    }
+                    Instruction::I64DivS => try_binary_op!(self, I64, |a: i64, b| {
+                        if b == 0 {
+                            return Err(TrapErrorKind::DivisionByZero);
+                        }
+                        a.checked_div(b).ok_or(TrapErrorKind::IntegerOverflow)
+                    })?,
+                    Instruction::I64DivU => try_binary_op!(self, u64, I64, |a: u64, b| {
+                        a.checked_div(b).ok_or(TrapErrorKind::DivisionByZero)
+                    })?,
 
                     Instruction::I64RemS => try_binary_op!(self, I64, |a: i64, b| {
                         if b == 0 {
-                            None
-                        } else {
-                            Some(a.wrapping_rem(b))
+                            return Err(TrapErrorKind::DivisionByZero);
                         }
+                        Ok(a.wrapping_rem(b))
                     })?,
                     Instruction::I64RemU => try_binary_op!(self, u64, I64, |a: u64, b| {
                         if b == 0 {
-                            None
-                        } else {
-                            Some(a.wrapping_rem(b))
+                            return Err(TrapErrorKind::DivisionByZero);
                         }
+                        Ok(a.wrapping_rem(b))
                     })?,
                     Instruction::I64And => binary_op!(self, I64, BitAnd::bitand),
                     Instruction::I64Or => binary_op!(self, I64, BitOr::bitor),

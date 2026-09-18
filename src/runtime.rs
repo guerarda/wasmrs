@@ -779,6 +779,7 @@ impl From<TrapErrorKind> for RuntimeErrorKind {
 pub enum TrapErrorKind {
     Unreachable,
     DivisionByZero,
+    IntegerOverflow,
     CallStackExhausted,
     OutOfBoundsMemoryAccess,
     OutOfBoundsTableAccess,
@@ -797,6 +798,7 @@ impl fmt::Display for TrapErrorKind {
         match self {
             Self::Unreachable => write!(f, "unreachable"),
             Self::DivisionByZero => write!(f, "division by zero"),
+            Self::IntegerOverflow => write!(f, "integer overflow"),
             Self::CallStackExhausted => write!(f, "call stack exhausted"),
             Self::OutOfBoundsMemoryAccess => write!(f, "out of bounds memory access"),
             Self::OutOfBoundsTableAccess => write!(f, "out of bounds table access"),
