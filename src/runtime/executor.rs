@@ -109,7 +109,7 @@ macro_rules! try_conv_op {
     ($self:expr, $from_variant:ident, $to_variant:ident, $op:expr) => {{
         let val = $self.value_stack.pop();
         let res = match (val) {
-            Value::$from_variant(a) => $op(a).ok_or(RuntimeError::internal(""))?,
+            Value::$from_variant(a) => $op(a)?,
             _ => unreachable!(),
         };
         $self.value_stack.push(Value::$to_variant(res));
@@ -118,15 +118,15 @@ macro_rules! try_conv_op {
 
 macro_rules! trunc {
     ($from:ty, $to:ty, $val: ty) => {
-        |a: $from| -> Option<$val> {
+        |a: $from| -> Result<$val, TrapErrorKind> {
             if a.is_nan() {
-                return None;
+                return Err(TrapErrorKind::InvalidConversionToInteger);
             }
             let a = a.trunc();
             if a >= (<$to>::MAX as $from) + 1.0 || a < (<$to>::MIN as $from) {
-                return None;
+                return Err(TrapErrorKind::IntegerOverflow);
             }
-            Some(a as $to as $val)
+            Ok(a as $to as $val)
         }
     };
 }
