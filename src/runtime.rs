@@ -24,7 +24,7 @@ use crate::{
         stack::Frame,
         store::{
             Data, DataInstance, ElemInstance, Elements, FuncAddr, Globals, Memories,
-            MemoryInstance, Store, TableInstance, Tables,
+            MemoryInstance, Store,
         },
         value::{ExternVal, Ref, Value},
     },
@@ -373,30 +373,6 @@ impl Runtime {
         g.value = val;
 
         Ok(())
-    }
-
-    pub(super) fn table_get<'a>(
-        tables: &'a Tables,
-        module_inst: &ModuleInstance,
-        idx: TableIdx,
-    ) -> result::Result<&'a TableInstance, RuntimeError> {
-        let a = module_inst
-            .tables
-            .get(idx as usize)
-            .ok_or(RuntimeError::internal("undefined table"))?;
-        Ok(tables.get(*a))
-    }
-
-    pub(super) fn table_get_mut<'a>(
-        tables: &'a mut Tables,
-        module_inst: &ModuleInstance,
-        idx: TableIdx,
-    ) -> result::Result<&'a mut TableInstance, RuntimeError> {
-        let a = module_inst
-            .tables
-            .get(idx as usize)
-            .ok_or(RuntimeError::internal("undefined table"))?;
-        Ok(tables.get_mut(*a))
     }
 
     pub(super) fn element_get<'a>(

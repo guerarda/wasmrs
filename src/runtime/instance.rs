@@ -1,7 +1,7 @@
 use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
-    binary::types::FuncType,
+    binary::types::{FuncType, TableIdx},
     runtime::{
         store::{DataAddr, ElemAddr, FuncAddr, GlobalAddr, MemAddr, TableAddr},
         value::ExternVal,
@@ -18,6 +18,15 @@ pub struct ModuleInstance {
     pub funcs: Vec<FuncAddr>,
     pub datas: Vec<DataAddr>,
     pub elems: Vec<ElemAddr>,
+}
+
+impl ModuleInstance {
+    pub fn table_addr(&self, idx: TableIdx) -> TableAddr {
+        *self
+            .tables
+            .get(idx as usize)
+            .expect("table index in bounds: guaranteed by validation")
+    }
 }
 
 #[derive(Debug)]

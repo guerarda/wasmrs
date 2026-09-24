@@ -354,11 +354,15 @@ impl Tables {
     }
 
     pub fn get(&self, addr: TableAddr) -> &TableInstance {
-        self.0.get(addr.0).unwrap()
+        self.0
+            .get(addr.0)
+            .expect("table address must refer to an allocated table")
     }
 
     pub fn get_mut(&mut self, addr: TableAddr) -> &mut TableInstance {
-        self.0.get_mut(addr.0).unwrap()
+        self.0
+            .get_mut(addr.0)
+            .expect("table adress must refer to an allocated table")
     }
 }
 

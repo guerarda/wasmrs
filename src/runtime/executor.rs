@@ -516,13 +516,13 @@ impl<'a> ExecutionContext<'a> {
                         self.call(funcaddr);
                     }
                     Instruction::CallIndirect((type_idx, table_idx)) => {
-                        let tab_inst =
-                            Runtime::table_get(&self.store.tables, module_inst, *table_idx)?;
-                        let ft = &module_inst.types[*type_idx as usize];
-
                         let i = self.value_stack.pop_i32();
 
-                        let r = tab_inst
+                        let table_addr = module_inst.table_addr(*table_idx);
+                        let r = self
+                            .store
+                            .tables
+                            .get(table_addr)
                             .refs
                             .get(i as usize)
                             .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
@@ -534,6 +534,7 @@ impl<'a> ExecutionContext<'a> {
                         let func_addr = r
                             .as_funcref()
                             .ok_or(RuntimeError::internal("assert: expected func ref"))?;
+                        let ft = &module_inst.types[*type_idx as usize];
                         if self.store.functions.get(func_addr).ftype != *ft {
                             return Err(TrapErrorKind::IndirectCallTypeMismatch.into());
                         }
@@ -588,24 +589,27 @@ impl<'a> ExecutionContext<'a> {
                     }
                     Instruction::TableGet(table_idx) => {
                         let i = self.value_stack.pop_i32();
-                        let ti = Runtime::table_get(&self.store.tables, module_inst, *table_idx)?;
-                        let r = ti
+                        let table_addr = module_inst.table_addr(*table_idx);
+                        let r = self
+                            .store
+                            .tables
+                            .get(table_addr)
                             .refs
                             .get(i as usize)
                             .ok_or(TrapErrorKind::OutOfBoundsTableAccess)?;
 
                         self.value_stack.push(Value::Ref(*r));
                     }
-                    Instruction::TableSet(table_idx) => {
+                    Instruction::TableSet(idx) => {
                         let rv = self.value_stack.pop_ref();
                         let i = self.value_stack.pop_i32();
-                        let ti = Runtime::table_get_mut(
-                            &mut self.store.tables,
-                            module_inst,
-                            *table_idx,
-                        )?;
 
-                        *ti.refs
+                        let table_addr = module_inst.table_addr(*idx);
+                        *self
+                            .store
+                            .tables
+                            .get_mut(table_addr)
+                            .refs
                             .get_mut(i as usize)
                             .ok_or(TrapErrorKind::OutOfBoundsTableAccess)? = rv;
                     }
@@ -1097,15 +1101,11 @@ impl<'a> ExecutionContext<'a> {
                         let j = self.value_stack.pop_i32() as usize;
                         let i = self.value_stack.pop_i32() as usize;
 
-                        let ti = Runtime::table_get_mut(
-                            &mut self.store.tables,
-                            module_inst,
-                            *table_idx,
-                        )?;
+                        let table_addr = module_inst.table_addr(*table_idx);
+                        let table_inst = self.store.tables.get_mut(table_addr);
                         let ei =
                             Runtime::element_get(&self.store.elements, module_inst, *elem_idx)?;
-
-                        ti.init(i, j, n, ei)?;
+                        table_inst.init(i, j, n, ei)?;
                     }
                     Instruction::ElemDrop(idx) => {
                         let ea = module_inst.elems[*idx as usize];
@@ -1117,35 +1117,48 @@ impl<'a> ExecutionContext<'a> {
                         let idst = self.value_stack.pop_i32();
 
                         let data = {
-                            let src = Runtime::table_get(&self.store.tables, module_inst, *srcidx)?;
-                            src.slice(isrc, n)?.to_vec()
+                            let src_addr = module_inst.table_addr(*srcidx);
+                            self.store.tables.get(src_addr).slice(isrc, n)?.to_vec()
                         };
-                        let dst =
-                            Runtime::table_get_mut(&mut self.store.tables, module_inst, *dstidx)?;
-
-                        dst.slice_mut(idst, n)?.copy_from_slice(&data);
+                        let dst_addr = module_inst.table_addr(*dstidx);
+                        self.store
+                            .tables
+                            .get_mut(dst_addr)
+                            .slice_mut(idst, n)?
+                            .copy_from_slice(&data);
                     }
                     Instruction::TableGrow(idx) => {
                         let inc = self.value_stack.pop_i32();
                         let val = self.value_stack.pop_ref();
-                        let res =
-                            Runtime::table_get_mut(&mut self.store.tables, module_inst, *idx)?
-                                .grow(inc as u32, val)?
-                                .map(|v| v as i32)
-                                .unwrap_or(-1);
+
+                        let table_addr = module_inst.table_addr(*idx);
+                        let res = self
+                            .store
+                            .tables
+                            .get_mut(table_addr)
+                            .grow(inc as u32, val)?
+                            .map(|v| v as i32)
+                            .unwrap_or(-1);
                         self.value_stack.push(Value::I32(res));
                     }
                     Instruction::TableSize(idx) => {
-                        let ti = Runtime::table_get(&self.store.tables, module_inst, *idx)?;
-                        self.value_stack.push(Value::I32(ti.refs.len() as i32));
+                        let table_addr = module_inst.table_addr(*idx);
+                        let table_inst = self.store.tables.get(table_addr);
+
+                        self.value_stack
+                            .push(Value::I32(table_inst.refs.len() as i32));
                     }
                     Instruction::TableFill(idx) => {
                         let n = self.value_stack.pop_i32() as usize;
                         let v = self.value_stack.pop_ref();
                         let i = self.value_stack.pop_i32();
 
-                        let ti = Runtime::table_get_mut(&mut self.store.tables, module_inst, *idx)?;
-                        ti.slice_mut(i, n)?.fill(v);
+                        let table_addr = module_inst.table_addr(*idx);
+                        self.store
+                            .tables
+                            .get_mut(table_addr)
+                            .slice_mut(i, n)?
+                            .fill(v);
                     }
                 }
             }
