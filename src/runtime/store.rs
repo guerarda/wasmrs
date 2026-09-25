@@ -439,8 +439,10 @@ impl Data {
         DataAddr(self.0.len() - 1)
     }
 
-    pub fn get(&mut self, addr: DataAddr) -> &mut DataInstance {
-        (self.0.get_mut(addr.0).unwrap()) as _
+    pub fn get(&self, addr: DataAddr) -> &DataInstance {
+        self.0
+            .get(addr.0)
+            .expect("data address must refer to an allocated data segment")
     }
 
     pub fn drop(&mut self, addr: DataAddr) {

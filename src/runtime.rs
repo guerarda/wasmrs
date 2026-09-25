@@ -13,19 +13,14 @@ use crate::{
             memory::MemType,
             table::TableType,
         },
-        types::{
-            ConstExpression, DataIdx, ElemIdx, FuncType, GlobalIdx, MemIndex, RefType, TableIdx,
-        },
+        types::{ConstExpression, ElemIdx, FuncType, GlobalIdx, MemIndex, RefType, TableIdx},
     },
     instructions::Instruction,
     runtime::{
         executor::ExecutionContext,
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
-        store::{
-            Data, DataInstance, ElemInstance, Elements, FuncAddr, Globals, Memories,
-            MemoryInstance, Store,
-        },
+        store::{ElemInstance, Elements, FuncAddr, Globals, Memories, MemoryInstance, Store},
         value::{ExternVal, Ref, Value},
     },
     validation,
@@ -409,18 +404,6 @@ impl Runtime {
             .get(idx.0 as usize)
             .ok_or(RuntimeError::internal("undefined memory"))?;
         Ok(memories.get_mut(*a))
-    }
-
-    pub(super) fn data_get<'a>(
-        datas: &'a mut Data,
-        module_inst: &ModuleInstance,
-        idx: DataIdx,
-    ) -> result::Result<&'a DataInstance, RuntimeError> {
-        let a = module_inst
-            .datas
-            .get(idx as usize)
-            .ok_or(RuntimeError::internal("undefined data"))?;
-        Ok(datas.get(*a))
     }
 
     /// Evaluate a constant expression (e.g. element or data segment)

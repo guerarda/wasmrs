@@ -1061,13 +1061,14 @@ impl<'a> ExecutionContext<'a> {
                             module_inst,
                             *memidx,
                         )?;
-                        let di = Runtime::data_get(&mut self.store.data, module_inst, *dataidx)?;
+                        let data_addr = module_inst.data_addr(*dataidx);
+                        let data_inst = self.store.data.get(data_addr);
 
-                        meminst.init(i, j, n, di)?;
+                        meminst.init(i, j, n, data_inst)?;
                     }
                     Instruction::DataDrop(idx) => {
-                        let da = module_inst.datas[*idx as usize];
-                        self.store.data.drop(da);
+                        let data_addr = module_inst.data_addr(*idx);
+                        self.store.data.drop(data_addr);
                     }
                     Instruction::MemoryCopy((dst_idx, src_idx)) => {
                         let n = self.value_stack.pop_i32() as usize;

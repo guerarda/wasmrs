@@ -1,7 +1,7 @@
 use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
-    binary::types::{FuncType, TableIdx},
+    binary::types::{DataIdx, FuncType, TableIdx},
     runtime::{
         store::{DataAddr, ElemAddr, FuncAddr, GlobalAddr, MemAddr, TableAddr},
         value::ExternVal,
@@ -26,6 +26,13 @@ impl ModuleInstance {
             .tables
             .get(idx as usize)
             .expect("table index in bounds: guaranteed by validation")
+    }
+
+    pub fn data_addr(&self, idx: DataIdx) -> DataAddr {
+        *self
+            .datas
+            .get(idx as usize)
+            .expect("data index in bounds: guaranteed by validation")
     }
 }
 
