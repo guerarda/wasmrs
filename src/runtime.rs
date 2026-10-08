@@ -13,14 +13,14 @@ use crate::{
             memory::MemType,
             table::TableType,
         },
-        types::{ConstExpression, ElemIdx, FuncType, GlobalIdx, MemIndex, RefType, TableIdx},
+        types::{ConstExpression, FuncType, GlobalIdx, MemIndex, RefType, TableIdx},
     },
     instructions::Instruction,
     runtime::{
         executor::ExecutionContext,
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
-        store::{ElemInstance, Elements, FuncAddr, Globals, Memories, MemoryInstance, Store},
+        store::{FuncAddr, Globals, Store},
         value::{ExternVal, Ref, Value},
     },
     validation,
@@ -368,42 +368,6 @@ impl Runtime {
         g.value = val;
 
         Ok(())
-    }
-
-    pub(super) fn element_get<'a>(
-        elements: &'a Elements,
-        module_inst: &ModuleInstance,
-        idx: ElemIdx,
-    ) -> result::Result<&'a ElemInstance, RuntimeError> {
-        let a = module_inst
-            .elems
-            .get(idx as usize)
-            .ok_or(RuntimeError::internal("undefined element"))?;
-        Ok(elements.get(*a))
-    }
-
-    pub(super) fn memory_get<'a>(
-        memories: &'a Memories,
-        module_inst: &ModuleInstance,
-        idx: MemIndex,
-    ) -> result::Result<&'a MemoryInstance, RuntimeError> {
-        let a = module_inst
-            .mems
-            .get(idx.0 as usize)
-            .ok_or(RuntimeError::internal("undefined memory"))?;
-        Ok(memories.get(*a))
-    }
-
-    pub(super) fn memory_get_mut<'a>(
-        memories: &'a mut Memories,
-        module_inst: &ModuleInstance,
-        idx: MemIndex,
-    ) -> result::Result<&'a mut MemoryInstance, RuntimeError> {
-        let a = module_inst
-            .mems
-            .get(idx.0 as usize)
-            .ok_or(RuntimeError::internal("undefined memory"))?;
-        Ok(memories.get_mut(*a))
     }
 
     /// Evaluate a constant expression (e.g. element or data segment)

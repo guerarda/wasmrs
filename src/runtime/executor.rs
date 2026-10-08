@@ -137,9 +137,11 @@ macro_rules! load {
         let i = $self.value_stack.pop_i32();
 
         // Read memory
-        let mem = Runtime::memory_get(&$self.store.memories, $module_inst, MemIndex::ZERO).unwrap();
+        let mem_addr = $module_inst.mem_addr(MemIndex::ZERO);
+        let mem_inst = &$self.store.memories.get(mem_addr);
         let v = <$ty>::from_le_bytes(
-            mem.slice(i, $memarg.offset, std::mem::size_of::<$ty>())?
+            mem_inst
+                .slice(i, $memarg.offset, std::mem::size_of::<$ty>())?
                 .try_into()
                 .unwrap(),
         );
@@ -161,10 +163,12 @@ macro_rules! store {
         let i = $self.value_stack.pop_i32();
 
         // Get memory
-        let slice =
-            Runtime::memory_get_mut(&mut $self.store.memories, $module_inst, MemIndex::ZERO)
-                .unwrap()
-                .slice_mut(i, $memarg.offset, std::mem::size_of::<$ty>())?;
+        let mem_addr = $module_inst.mem_addr(MemIndex::ZERO);
+        let slice = &mut $self.store.memories.get_mut(mem_addr).slice_mut(
+            i,
+            $memarg.offset,
+            std::mem::size_of::<$ty>(),
+        )?;
 
         // Store
         slice.copy_from_slice(&v.to_le_bytes());
@@ -682,19 +686,21 @@ impl<'a> ExecutionContext<'a> {
                         store!(self, module_inst, memarg, I64, u32);
                     }
                     Instruction::MemorySize(idx) => {
-                        let mem =
-                            Runtime::memory_get(&self.store.memories, module_inst, *idx).unwrap();
-                        let sz = mem.size();
+                        let mem_addr = module_inst.mem_addr(*idx);
+                        let mem_inst = self.store.memories.get(mem_addr);
+                        let sz = mem_inst.size();
                         self.value_stack.push(Value::I32(sz as i32));
                     }
                     Instruction::MemoryGrow(idx) => {
                         let inc = self.value_stack.pop_i32();
-                        let res =
-                            Runtime::memory_get_mut(&mut self.store.memories, module_inst, *idx)
-                                .unwrap()
-                                .grow(inc as u32)?
-                                .map(|v| v as i32)
-                                .unwrap_or(-1);
+                        let mem_addr = module_inst.mem_addr(*idx);
+                        let res = self
+                            .store
+                            .memories
+                            .get_mut(mem_addr)
+                            .grow(inc as u32)?
+                            .map(|v| v as i32)
+                            .unwrap_or(-1);
                         self.value_stack.push(Value::I32(res));
                     }
 
@@ -1056,15 +1062,13 @@ impl<'a> ExecutionContext<'a> {
                         let j = self.value_stack.pop_i32() as usize;
                         let i = self.value_stack.pop_i32() as usize;
 
-                        let meminst = Runtime::memory_get_mut(
-                            &mut self.store.memories,
-                            module_inst,
-                            *memidx,
-                        )?;
+                        let mem_addr = module_inst.mem_addr(*memidx);
+                        let mem_inst = self.store.memories.get_mut(mem_addr);
+
                         let data_addr = module_inst.data_addr(*dataidx);
                         let data_inst = self.store.data.get(data_addr);
 
-                        meminst.init(i, j, n, data_inst)?;
+                        mem_inst.init(i, j, n, data_inst)?;
                     }
                     Instruction::DataDrop(idx) => {
                         let data_addr = module_inst.data_addr(*idx);
@@ -1076,15 +1080,13 @@ impl<'a> ExecutionContext<'a> {
                         let idst = self.value_stack.pop_i32();
 
                         let data = {
-                            let src =
-                                Runtime::memory_get(&self.store.memories, module_inst, *src_idx)?;
+                            let mem_addr = module_inst.mem_addr(*src_idx);
+                            let src = self.store.memories.get(mem_addr);
+
                             src.slice(isrc, 0, n)?.to_vec()
                         };
-                        let dst = Runtime::memory_get_mut(
-                            &mut self.store.memories,
-                            module_inst,
-                            *dst_idx,
-                        )?;
+                        let mem_addr = module_inst.mem_addr(*dst_idx);
+                        let dst = self.store.memories.get_mut(mem_addr);
 
                         dst.slice_mut(idst, 0, n)?.copy_from_slice(&data);
                     }
@@ -1093,9 +1095,9 @@ impl<'a> ExecutionContext<'a> {
                         let val = self.value_stack.pop_i32();
                         let i = self.value_stack.pop_i32();
 
-                        let mem =
-                            Runtime::memory_get_mut(&mut self.store.memories, module_inst, *idx)?;
-                        mem.slice_mut(i, 0, n as usize)?.fill(val as u8);
+                        let mem_addr = module_inst.mem_addr(*idx);
+                        let mem_inst = self.store.memories.get_mut(mem_addr);
+                        mem_inst.slice_mut(i, 0, n as usize)?.fill(val as u8);
                     }
                     Instruction::TableInit((elem_idx, table_idx)) => {
                         let n = self.value_stack.pop_i32() as usize;
@@ -1104,9 +1106,11 @@ impl<'a> ExecutionContext<'a> {
 
                         let table_addr = module_inst.table_addr(*table_idx);
                         let table_inst = self.store.tables.get_mut(table_addr);
-                        let ei =
-                            Runtime::element_get(&self.store.elements, module_inst, *elem_idx)?;
-                        table_inst.init(i, j, n, ei)?;
+
+                        let elem_addr = module_inst.elem_addr(*elem_idx);
+                        let elem_inst = self.store.elements.get(elem_addr);
+
+                        table_inst.init(i, j, n, elem_inst)?;
                     }
                     Instruction::ElemDrop(idx) => {
                         let ea = module_inst.elems[*idx as usize];

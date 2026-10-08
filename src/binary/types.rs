@@ -21,7 +21,7 @@ pub type LabelIdx = u32;
 pub struct FuncIndex(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MemIndex(pub u32); // TODO Make private
+pub struct MemIndex(pub(crate) u32);
 
 impl MemIndex {
     pub const ZERO: Self = Self(0);
