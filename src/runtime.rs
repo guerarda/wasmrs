@@ -391,7 +391,7 @@ impl Runtime {
 
         let result = {
             let mut ctx = ExecutionContext::new(
-                &fn_args,
+                fn_args,
                 &mut call_stack,
                 &mut self.store,
                 &self.module_registry,

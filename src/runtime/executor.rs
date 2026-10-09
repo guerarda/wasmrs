@@ -204,10 +204,10 @@ impl ValueStack {
     }
 
     fn top(&self) -> &Value {
-        return self
+        self
             .stack
             .last()
-            .expect("value stack not empty: operand count guaranteed by validation");
+            .expect("value stack not empty: operand count guaranteed by validation")
     }
 
     fn extend(&mut self, values: Vec<Value>) {

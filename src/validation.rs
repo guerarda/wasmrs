@@ -316,7 +316,7 @@ impl Validator {
         let frame = self
             .ctrls
             .last()
-            .ok_or_else(|| ValidationError::control_stack_underflow())?;
+            .ok_or_else(ValidationError::control_stack_underflow)?;
         let height = frame.height;
 
         // need to clone here because pop_vals_expect below
@@ -352,7 +352,7 @@ impl Validator {
                 let types = &module
                     .types
                     .as_ref()
-                    .ok_or_else(|| ValidationError::unknown_type())?;
+                    .ok_or_else(ValidationError::unknown_type)?;
 
                 let t = &types[*idx as usize];
                 (
@@ -369,7 +369,7 @@ impl Validator {
             .types
             .as_ref()
             .and_then(|types| types.get(type_idx as usize))
-            .ok_or_else(|| ValidationError::unknown_type())
+            .ok_or_else(ValidationError::unknown_type)
     }
 
     /// Returns the type for an idx in the Function Section.
@@ -388,7 +388,7 @@ impl Validator {
         let type_idx = imported
             .chain(defined)
             .nth(func_idx as usize)
-            .ok_or_else(|| ValidationError::unknown_function())?;
+            .ok_or_else(ValidationError::unknown_function)?;
 
         Self::type_at(module, type_idx)
     }
@@ -412,7 +412,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(table_idx as usize)
-            .ok_or_else(|| ValidationError::unknown_table())
+            .ok_or_else(ValidationError::unknown_table)
     }
 
     /// Returns the global type at the given index
@@ -435,7 +435,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(idx.0 as usize)
-            .ok_or_else(|| ValidationError::unknown_global())
+            .ok_or_else(ValidationError::unknown_global)
     }
 
     fn mem_type_at(
@@ -455,7 +455,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(mem_idx.0 as usize)
-            .ok_or_else(|| ValidationError::unknown_memory())
+            .ok_or_else(ValidationError::unknown_memory)
     }
 
     /// Return the type of the function local at the given index
@@ -603,7 +603,7 @@ impl Validator {
                     stack.push(ValueType::Ref(RefType::Func))
                 }
                 Instruction::GlobalGet(idx) => {
-                    let idx = (*idx).0 as usize;
+                    let idx = idx.0 as usize;
 
                     if idx >= module.imported_global_count() {
                         return Err(ValidationError::unknown_global());
@@ -617,7 +617,7 @@ impl Validator {
                                 .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
                                 .nth(idx)
                         })
-                        .ok_or_else(|| ValidationError::unknown_global())?;
+                        .ok_or_else(ValidationError::unknown_global)?;
 
                     let ImportDesc::Global(gt) = &import.desc else {
                         unreachable!()
@@ -1190,7 +1190,7 @@ impl Validator {
                         .elements
                         .as_ref()
                         .and_then(|elems| elems.get(*elemidx as usize))
-                        .ok_or_else(|| ValidationError::unknown_element())?;
+                        .ok_or_else(ValidationError::unknown_element)?;
 
                     let elemtype = match elem.items {
                         ElementSegmentItems::Functions(_) => RefType::Func,
@@ -1473,7 +1473,7 @@ impl Validator {
                     .types
                     .as_ref()
                     .and_then(|t| t.get(idx))
-                    .ok_or_else(|| ValidationError::unknown_type())?;
+                    .ok_or_else(ValidationError::unknown_type)?;
                 Validator::default().validate_function(functype, entry, module)
             })
     }
