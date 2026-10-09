@@ -1256,11 +1256,23 @@ impl Validator {
         let Some(ref tablesec) = module.tables else {
             return Ok(());
         };
-        if tablesec.iter().any(|t| {
-            let l = &t.tabletype.limit;
-            l.max.is_some_and(|max| l.min > max)
-        }) {
-            return Err(ValidationError::invalid_limit());
+
+        for table in tablesec {
+            // Validate the table limit
+            let l = &table.tabletype.limit;
+            if l.max.is_some_and(|max| l.min > max) {
+                return Err(ValidationError::invalid_limit());
+            }
+
+            // Validate that the expression, if present is a valid const
+            // expression and evaluate to the table's declared type
+            if let Some(expr) = &table.expr {
+                Self::validate_const_expr(
+                    module,
+                    expr,
+                    &[ValueType::from(table.tabletype.elemtype)],
+                )?;
+            }
         }
         Ok(())
     }
