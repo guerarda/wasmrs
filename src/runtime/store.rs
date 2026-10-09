@@ -221,6 +221,15 @@ impl GlobalInstance {
             value,
         }
     }
+
+    pub fn set(&mut self, val: Value) {
+        assert_eq!(
+            val.valtype(),
+            self.globaltype.type_,
+            "global value must match its declared type"
+        );
+        self.value = val;
+    }
 }
 
 impl Globals {

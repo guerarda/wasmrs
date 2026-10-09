@@ -584,12 +584,15 @@ impl<'a> ExecutionContext<'a> {
                             .expect("local index guaranteed by validation") = *v;
                     }
                     Instruction::GlobalGet(idx) => {
-                        let v = Runtime::global_get(&self.store.globals, module_inst, *idx)?;
-                        self.value_stack.push(v);
+                        let ga = module_inst.global_addr(*idx);
+                        let gi = self.store.globals.get(ga);
+                        self.value_stack.push(gi.value);
                     }
                     Instruction::GlobalSet(idx) => {
                         let v = self.value_stack.pop();
-                        Runtime::global_set(&mut self.store.globals, module_inst, *idx, v)?;
+                        let ga = module_inst.global_addr(*idx);
+                        let gi = self.store.globals.get_mut(ga);
+                        gi.set(v);
                     }
                     Instruction::TableGet(table_idx) => {
                         let i = self.value_stack.pop_i32();

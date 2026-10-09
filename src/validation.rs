@@ -1427,7 +1427,7 @@ impl Validator {
         };
 
         for global in globalsec.iter() {
-            // Validate expression
+            // Const expression must produce the global declared type
             Self::validate_const_expr(module, &global.body, &[ValueType::from(global.gt.type_)])?;
         }
         Ok(())

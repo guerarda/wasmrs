@@ -13,14 +13,14 @@ use crate::{
             memory::MemType,
             table::TableType,
         },
-        types::{ConstExpression, FuncType, GlobalIdx, MemIndex, RefType, TableIdx},
+        types::{ConstExpression, FuncType, MemIndex, RefType, TableIdx},
     },
     instructions::Instruction,
     runtime::{
         executor::ExecutionContext,
         instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
         stack::Frame,
-        store::{FuncAddr, Globals, Store},
+        store::{FuncAddr, Store},
         value::{ExternVal, Ref, Value},
     },
     validation,
@@ -338,38 +338,6 @@ impl Runtime {
         Ok(h)
     }
 
-    pub(super) fn global_get(
-        globals: &Globals,
-        module_inst: &ModuleInstance,
-        idx: GlobalIdx,
-    ) -> result::Result<Value, RuntimeError> {
-        let a = module_inst
-            .globals
-            .get(idx as usize)
-            .ok_or(RuntimeError::internal("undefined global"))?;
-        let g = globals.get(*a);
-
-        Ok(g.value)
-    }
-
-    pub(super) fn global_set(
-        globals: &mut Globals,
-        module_inst: &ModuleInstance,
-        idx: GlobalIdx,
-        val: Value,
-    ) -> result::Result<(), RuntimeError> {
-        let a = module_inst
-            .globals
-            .get(idx as usize)
-            .ok_or(RuntimeError::internal("undefined global"))?;
-        let g = globals.get_mut(*a);
-
-        // TODO Assert on type
-        g.value = val;
-
-        Ok(())
-    }
-
     /// Evaluate a constant expression (e.g. element or data segment)
     fn eval_expression(
         store: &Store,
@@ -386,8 +354,9 @@ impl Runtime {
                 Instruction::F32Const(v) => value_stack.push(Value::F32(*v)),
                 Instruction::F64Const(v) => value_stack.push(Value::F64(*v)),
                 Instruction::GlobalGet(idx) => {
-                    let v = Runtime::global_get(&store.globals, module, *idx)?;
-                    value_stack.push(v);
+                    let ga = module.global_addr(*idx);
+                    let gi = store.globals.get(ga);
+                    value_stack.push(gi.value);
                 }
                 Instruction::RefNull(rt) => value_stack.push(Value::Ref(Ref::Null(*rt))),
                 Instruction::RefFunc(fi) => {

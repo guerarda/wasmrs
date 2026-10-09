@@ -1,7 +1,7 @@
 use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
-    binary::types::{DataIdx, ElemIdx, FuncType, MemIndex, TableIdx},
+    binary::types::{DataIdx, ElemIdx, FuncType, GlobalIdx, MemIndex, TableIdx},
     runtime::{
         store::{DataAddr, ElemAddr, FuncAddr, GlobalAddr, MemAddr, TableAddr},
         value::ExternVal,
@@ -21,6 +21,20 @@ pub struct ModuleInstance {
 }
 
 impl ModuleInstance {
+    pub fn global_addr(&self, idx: GlobalIdx) -> GlobalAddr {
+        *self
+            .globals
+            .get(idx as usize)
+            .expect("global index in bounds: guaranteed by validation")
+    }
+
+    pub fn mem_addr(&self, idx: MemIndex) -> MemAddr {
+        *self
+            .mems
+            .get(idx.0 as usize)
+            .expect("memory index in bounds: guaranteed by validation")
+    }
+
     pub fn table_addr(&self, idx: TableIdx) -> TableAddr {
         *self
             .tables

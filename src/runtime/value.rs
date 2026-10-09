@@ -86,6 +86,18 @@ impl From<ValType> for Value {
 }
 
 impl Value {
+    pub fn valtype(&self) -> ValType {
+        match self {
+            Self::I32(_) => ValType::I32,
+            Self::I64(_) => ValType::I64,
+            Self::F32(_) => ValType::F32,
+            Self::F64(_) => ValType::F64,
+            Self::Ref(Ref::Null(rt)) => ValType::Ref(*rt),
+            Self::Ref(Ref::Func(_)) => ValType::Ref(RefType::Func),
+            Self::Ref(Ref::Extern(_)) => ValType::Ref(RefType::Extern),
+        }
+    }
+
     pub fn into_ref(self) -> Option<Ref> {
         match self {
             Value::Ref(r) => Some(r),
