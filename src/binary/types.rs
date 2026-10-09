@@ -13,12 +13,13 @@ pub type FuncIdx = u32;
 pub type TableIdx = u32;
 pub type ElemIdx = u32;
 pub type DataIdx = u32;
-// pub type LocalIdx = u32;
 pub type LabelIdx = u32;
 
+/// Func Index
 #[derive(Debug)]
 pub struct FuncIndex(pub u32);
 
+/// Mem Index
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MemIndex(pub(crate) u32);
 
@@ -52,6 +53,7 @@ impl<'a> FromReader<'a> for MemIndex {
     }
 }
 
+/// Global Index
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GlobalIndex(pub(crate) u32);
 
