@@ -14,7 +14,7 @@ use crate::{
             table::TableType,
         },
         types::{
-            BlockType, ConstExpression, FuncType, GlobalIdx, MemArg, MemIndex, RefType, ValType,
+            BlockType, ConstExpression, FuncType, GlobalIndex, MemArg, MemIndex, RefType, ValType,
         },
     },
     instructions::Instruction,
@@ -419,7 +419,7 @@ impl Validator {
     // TODO cache the function index array with imports at the module level
     fn global_type_at(
         module: &Module,
-        idx: GlobalIdx,
+        idx: GlobalIndex,
     ) -> result::Result<&GlobalType, ValidationError> {
         let imported = module
             .imports
@@ -434,7 +434,7 @@ impl Validator {
 
         imported
             .chain(defined)
-            .nth(idx as usize)
+            .nth(idx.0 as usize)
             .ok_or_else(|| ValidationError::unknown_global())
     }
 
@@ -603,7 +603,7 @@ impl Validator {
                     stack.push(ValueType::Ref(RefType::Func))
                 }
                 Instruction::GlobalGet(idx) => {
-                    let idx = *idx as usize;
+                    let idx = (*idx).0 as usize;
 
                     if idx >= module.imported_global_count() {
                         return Err(ValidationError::unknown_global());

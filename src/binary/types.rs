@@ -11,7 +11,6 @@ use crate::{
 pub type TypeIdx = u32;
 pub type FuncIdx = u32;
 pub type TableIdx = u32;
-pub type GlobalIdx = u32;
 pub type ElemIdx = u32;
 pub type DataIdx = u32;
 // pub type LocalIdx = u32;
@@ -50,6 +49,17 @@ impl<'a> FromReader<'a> for MemIndex {
         (reader.read_u8()? as u32)
             .try_into()
             .map_err(|e| ReadError::at_offset(e, pos))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GlobalIndex(pub(crate) u32);
+
+impl<'a> FromReader<'a> for GlobalIndex {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map(GlobalIndex)
     }
 }
 

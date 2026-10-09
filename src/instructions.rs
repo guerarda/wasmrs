@@ -1,7 +1,7 @@
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
     types::{
-        BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIdx, GlobalIdx,
+        BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIdx, GlobalIndex,
         LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx, ValType,
     },
 };
@@ -116,8 +116,8 @@ instructions! {
     LocalGet(u32) : 0x20 : "local.get",
     LocalSet(u32) : 0x21 : "local.set",
     LocalTee(u32) : 0x22 : "local.tee",
-    GlobalGet(GlobalIdx) : 0x23 : "global.get",
-    GlobalSet(GlobalIdx) : 0x24 : "global.set",
+    GlobalGet(GlobalIndex) : 0x23 : "global.get",
+    GlobalSet(GlobalIndex) : 0x24 : "global.set",
     TableGet(TableIdx) : 0x25 : "table.get",
     TableSet(TableIdx) : 0x26 : "table.set",
 
