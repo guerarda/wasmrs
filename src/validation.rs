@@ -713,6 +713,7 @@ impl Validator {
                 Instruction::BrTable(idx) => {
                     self.pop_val_expect(ValueType::I32)?;
 
+                    // Verify the default target exists and get its arity
                     let m = idx.default as usize;
                     if self.ctrls.len() <= m {
                         return Err(ValidationError::control_stack_underflow());
@@ -721,6 +722,9 @@ impl Validator {
                     let arity = m_types.len();
 
                     for n in &idx.labels {
+                        // For each possible target, verify the arity matches
+                        // the default target's. And that its types are
+                        // compatible with what's currently on the stack.
                         let n = *n as usize;
                         if self.ctrls.len() <= n {
                             return Err(ValidationError::control_stack_underflow());
@@ -729,7 +733,9 @@ impl Validator {
                         if n_types.len() != arity {
                             return Err(ValidationError::type_mismatch());
                         }
-                        self.push_vals(&n_types);
+                        let mut actual = self.pop_vals_expect(&n_types)?;
+                        actual.reverse();
+                        self.push_vals(&actual);
                     }
 
                     self.pop_vals_expect(&m_types)?;
@@ -1643,6 +1649,35 @@ mod tests {
         assert!(
             result.is_err(),
             "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_br_table_operand_type_mismatch() -> anyhow::Result<()> {
+        // (module
+        //   (func (result i32)
+        //     i64.const 42
+        //     i32.const 0
+        //     br_table 0 0))
+        // Both targets expect i32, but the actual branch operand is i64.
+        // Pushing target types without checking operands hides this mismatch.
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32)
+            b"\x01\x05\x01\x60\x00\x01\x7f",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // code section: no locals, i64.const 42, i32.const 0, br_table 0 0, end
+            b"\x0a\x0c\x01\x0a\x00\x42\x2a\x41\x00\x0e\x01\x00\x00\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error for i64 branch operand targeting i32, got: {:?}",
             result
         );
         Ok(())
