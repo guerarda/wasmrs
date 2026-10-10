@@ -14,7 +14,8 @@ use crate::{
             table::TableType,
         },
         types::{
-            BlockType, ConstExpression, FuncType, GlobalIndex, MemArg, MemIndex, RefType, ValType,
+            BlockType, ConstExpression, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex,
+            RefType, ValType,
         },
     },
     instructions::Instruction,
@@ -103,6 +104,7 @@ pub enum ValidationError {
     TypeMismatch,
     TableTypeMismatch,
     ElseWithoutMatchingIf,
+    UndeclaredFunctionReference,
     UnknownLocal,
     UnknownGlobal,
     UnknownType,
@@ -137,6 +139,7 @@ impl fmt::Display for ValidationError {
             Self::TypeMismatch => write!(f, "type mismatch"),
             Self::TableTypeMismatch => write!(f, "table type mismatch"),
             Self::ElseWithoutMatchingIf => write!(f, "else without matching if"),
+            Self::UndeclaredFunctionReference => write!(f, "undeclared function reference"),
             Self::UnknownLocal => write!(f, "unknown local"),
             Self::UnknownGlobal => write!(f, "unknown global"),
             Self::UnknownType => write!(f, "unknown type"),
@@ -184,6 +187,10 @@ impl ValidationError {
 
     fn else_without_matching_if() -> Self {
         Self::mint(ValidationError::ElseWithoutMatchingIf)
+    }
+
+    fn undeclared_function_reference() -> Self {
+        Self::mint(ValidationError::UndeclaredFunctionReference)
     }
 
     fn unknown_local() -> Self {
@@ -645,6 +652,7 @@ impl Validator {
         functype: &FuncType,
         entry: &CodeEntry,
         module: &Module,
+        declared_refs: &[FuncIndex],
     ) -> result::Result<(), ValidationError> {
         let end_types: Vec<ValueType> = functype.results.iter().map(ValueType::from).collect();
         self.push_ctrl(Instruction::Call(0), vec![], end_types);
@@ -1122,7 +1130,19 @@ impl Validator {
                     }
                     self.push_val(ValueType::I32);
                 }
-                Instruction::RefFunc(_) => self.push_val(ValueType::Ref(RefType::Func)),
+                Instruction::RefFunc(idx) => {
+                    // Check that the function index is valid in this module
+                    if *idx as usize >= module.func_count() {
+                        return Err(ValidationError::UnknownFunction);
+                    }
+                    // Check that the function index has been declared for use
+                    // as reference.
+                    if !declared_refs.contains(&FuncIndex(*idx)) {
+                        return Err(ValidationError::undeclared_function_reference());
+                    }
+
+                    self.push_val(ValueType::Ref(RefType::Func))
+                }
 
                 Instruction::I32TruncSatF32S | Instruction::I32TruncSatF32U => {
                     self.validate_convop(ValType::F32, ValType::I32)?
@@ -1453,6 +1473,62 @@ impl Validator {
         Ok(())
     }
 
+    // Gather the indeices that have been declared for reference
+    fn collect_declared_function_refs(module: &Module) -> Vec<FuncIndex> {
+        // Scan exports, element segments and global, table initializers
+        let mut refs = vec![];
+
+        if let Some(ref exportsec) = module.exports {
+            for e in exportsec {
+                if matches!(e.kind, ExportKind::Func) {
+                    refs.push(FuncIndex(e.index));
+                }
+            }
+        }
+        if let Some(ref elemsec) = module.elements {
+            for e in elemsec {
+                match &e.items {
+                    ElementSegmentItems::Functions(items) => {
+                        for i in items {
+                            refs.push(*i);
+                        }
+                    }
+                    ElementSegmentItems::Expressions(_, exprs) => {
+                        for expr in exprs {
+                            for inst in &expr.0 {
+                                if let Instruction::RefFunc(idx) = inst {
+                                    refs.push(FuncIndex(*idx));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(ref tablesec) = module.tables {
+            for t in tablesec {
+                if let Some(expr) = &t.expr {
+                    for inst in &expr.0 {
+                        if let Instruction::RefFunc(idx) = inst {
+                            refs.push(FuncIndex(*idx));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(ref globalsec) = module.globals {
+            for g in globalsec {
+                for inst in &g.body.0 {
+                    if let Instruction::RefFunc(idx) = inst {
+                        refs.push(FuncIndex(*idx));
+                    }
+                }
+            }
+        }
+
+        refs
+    }
+
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
         Self::validate_table_section(module)?;
         Self::validate_memory_section(module)?;
@@ -1470,6 +1546,8 @@ impl Validator {
             return Err(ValidationError::function_code_mismatch());
         }
 
+        let declared_refs = Self::collect_declared_function_refs(module);
+
         funcsec
             .iter()
             .zip(codesec.iter())
@@ -1480,7 +1558,7 @@ impl Validator {
                     .as_ref()
                     .and_then(|t| t.get(idx))
                     .ok_or_else(ValidationError::unknown_type)?;
-                Validator::default().validate_function(functype, entry, module)
+                Validator::default().validate_function(functype, entry, module, &declared_refs)
             })
     }
 }

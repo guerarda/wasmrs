@@ -16,7 +16,7 @@ pub type DataIdx = u32;
 pub type LabelIdx = u32;
 
 /// Func Index
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FuncIndex(pub u32);
 
 /// Mem Index
