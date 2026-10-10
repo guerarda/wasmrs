@@ -1180,6 +1180,7 @@ impl Runtime {}
 #[cfg(test)]
 mod tests {
     use crate::runtime::{Runtime, value::Value};
+    use crate::{GlobalType, MutabilityFlag, ValType};
 
     #[test]
     fn test_memory_size() -> anyhow::Result<()> {
@@ -1442,6 +1443,53 @@ mod tests {
             "expected 42 from init expr, got {r:?}",
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_get_imported_and_defined_globals() -> anyhow::Result<()> {
+        // (module
+        //   (import "env" "g" (global i32))
+        //   (global i64 (i64.const 42))
+        //   (func (export "get") (result i32 i64)
+        //     global.get 0
+        //     global.get 1))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> (i32, i64)
+            b"\x01\x06\x01\x60\x00\x02\x7f\x7e",
+            // import section: "env"."g" global i32 const, global index 0
+            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x67\x03\x7f\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // global section: i64 const, init=i64.const 42, global index 1
+            b"\x06\x06\x01\x7e\x00\x42\x2a\x0b",
+            // export section: "get" -> func 0
+            b"\x07\x07\x01\x03\x67\x65\x74\x00\x00",
+            // code section: global.get 0, global.get 1, end
+            b"\x0a\x08\x01\x06\x00\x23\x00\x23\x01\x0b",
+        ]
+        .concat();
+
+        let mut runtime = Runtime::default();
+        // Allocate an unrelated global first so module indices differ from store addresses.
+        for (name, value) in [("unused", -1), ("g", 17)] {
+            runtime.register_host_global(
+                "env",
+                name,
+                GlobalType {
+                    type_: ValType::I32,
+                    mutflag: MutabilityFlag::Const,
+                },
+                Value::I32(value),
+            )?;
+        }
+        let mh = runtime.load_module(&bytes)?;
+        let r = runtime.invoke(mh, "get", &[])?;
+        assert!(
+            matches!(r.as_slice(), [Value::I32(17), Value::I64(42)]),
+            "expected imported 17 followed by defined 42, got {r:?}",
+        );
         Ok(())
     }
 
