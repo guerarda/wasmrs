@@ -1495,6 +1495,107 @@ mod tests {
     use crate::binary::module::decode_bytes;
 
     #[test]
+    fn test_ref_func_undeclared() -> anyhow::Result<()> {
+        // (module
+        //   (func $f
+        //     ref.func $f
+        //     drop))
+        // Function 0 exists, but is not declared for reference use.
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> ()
+            b"\x01\x04\x01\x60\x00\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // code section: no locals, ref.func 0, drop, end
+            b"\x0a\x07\x01\x05\x00\xd2\x00\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error for undeclared function reference, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_ref_func_declared() -> anyhow::Result<()> {
+        // (module
+        //   (elem declare func $f)
+        //   (func $f
+        //     ref.func $f
+        //     drop))
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> ()
+            b"\x01\x04\x01\x60\x00\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // element section: 1 declarative segment containing function 0
+            b"\x09\x05\x01\x03\x00\x01\x00",
+            // code section: no locals, ref.func 0, drop, end
+            b"\x0a\x07\x01\x05\x00\xd2\x00\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        validate_module(&m)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_ref_func_declared_by_global_initializer() -> anyhow::Result<()> {
+        // (module
+        //   (global funcref (ref.func $f))
+        //   (func $f
+        //     ref.func $f
+        //     drop))
+        // The global initializer is the only declaration of the reference.
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> ()
+            b"\x01\x04\x01\x60\x00\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // global section: immutable funcref initialized with ref.func 0
+            b"\x06\x06\x01\x70\x00\xd2\x00\x0b",
+            // code section: no locals, ref.func 0, drop, end
+            b"\x0a\x07\x01\x05\x00\xd2\x00\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        validate_module(&m)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_ref_func_declared_by_table_initializer() -> anyhow::Result<()> {
+        // (module
+        //   (table 1 funcref (ref.func $f))
+        //   (func $f
+        //     ref.func $f
+        //     drop))
+        // The table initializer is the only declaration of the reference.
+        let bytes = [
+            b"\x00asm\x01\x00\x00\x00" as &[u8],
+            // type section: 1 type, () -> ()
+            b"\x01\x04\x01\x60\x00\x00",
+            // function section: 1 func, type 0
+            b"\x03\x02\x01\x00",
+            // table section: explicit initializer, funcref, min=1, ref.func 0
+            b"\x04\x09\x01\x40\x00\x70\x00\x01\xd2\x00\x0b",
+            // code section: no locals, ref.func 0, drop, end
+            b"\x0a\x07\x01\x05\x00\xd2\x00\x1a\x0b",
+        ]
+        .concat();
+        let m = decode_bytes(bytes)?;
+        validate_module(&m)?;
+        Ok(())
+    }
+
+    #[test]
     fn test_type_unary_operand_empty() -> anyhow::Result<()> {
         // (func (i32.eqz) (drop))
         let bytes = [
