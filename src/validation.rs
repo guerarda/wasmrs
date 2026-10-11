@@ -2132,4 +2132,54 @@ mod tests {
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
         Ok(())
     }
+
+    #[test]
+    fn test_valid_unreached_add() -> anyhow::Result<()> {
+        let wat = r#"
+            (func (result i32)
+                (i32.const 1)
+                (unreachable)
+                (i32.add)
+            )"#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
+
+    #[test]
+    fn test_valid_unreached_ref_isnull() -> anyhow::Result<()> {
+        let wat = r#"
+            (func (result i32)
+                (i32.const 1)
+                (unreachable)
+                (ref.is_null)
+            )"#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
+
+    #[test]
+    fn test_invalid_unreached_type_mismatch() -> anyhow::Result<()> {
+        let wat = r#"
+            (func (result i32)
+                (i32.const 1)
+                (unreachable)
+                (i64.const 2)
+                (i32.add)
+            )"#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(result, Err(ValidationError::TypeMismatch)),
+            "expected TypeMismatch, got: {:?}",
+            result
+        );
+        Ok(())
+    }
 }
