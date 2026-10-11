@@ -34,19 +34,15 @@ pub enum ValueType {
 
 impl ValueType {
     fn is_num(&self) -> bool {
-        matches!(
-            self,
-            Self::I32 | Self::I64 | Self::F32 | Self::F64 | Self::Unknown
-        )
+        matches!(self, Self::I32 | Self::I64 | Self::F32 | Self::F64)
     }
 
     fn is_vec(&self) -> bool {
-        matches!(self, Self::V128 | Self::Unknown)
+        matches!(self, Self::V128)
     }
 
-    #[allow(dead_code)]
     fn is_ref(&self) -> bool {
-        matches!(self, Self::Ref(_) | Self::Unknown)
+        matches!(self, Self::Ref(_))
     }
 }
 
@@ -302,6 +298,14 @@ impl Validator {
     ) -> result::Result<ValueType, ValidationError> {
         let actual = self.pop_val()?;
         if actual != expected && actual != ValueType::Unknown && expected != ValueType::Unknown {
+            return Err(ValidationError::type_mismatch());
+        }
+        Ok(actual)
+    }
+
+    fn pop_ref(&mut self) -> result::Result<ValueType, ValidationError> {
+        let actual = self.pop_val()?;
+        if actual != ValueType::Unknown && !actual.is_ref() {
             return Err(ValidationError::type_mismatch());
         }
         Ok(actual)
@@ -810,7 +814,10 @@ impl Validator {
                     let t1 = self.pop_val()?;
                     let t2 = self.pop_val()?;
 
-                    if !((t1.is_num() && t2.is_num()) || (t1.is_vec() && t2.is_vec())) {
+                    let is_num_or_vec =
+                        |t: &ValueType| t.is_num() || t.is_vec() || *t == ValueType::Unknown;
+
+                    if !is_num_or_vec(&t1) || !is_num_or_vec(&t2) {
                         return Err(ValidationError::type_mismatch());
                     }
 
@@ -818,11 +825,7 @@ impl Validator {
                         return Err(ValidationError::type_mismatch());
                     }
 
-                    if matches!(t1, ValueType::Unknown) {
-                        self.push_val(t2);
-                    } else {
-                        self.push_val(t1);
-                    }
+                    self.push_val(if t1 == ValueType::Unknown { t2 } else { t1 });
                 }
                 Instruction::SelectT(vt) => {
                     // [t t i32] -> [t]
@@ -1124,10 +1127,7 @@ impl Validator {
 
                 Instruction::RefNull(rt) => self.push_val(ValueType::Ref(*rt)),
                 Instruction::RefIsNull => {
-                    let v = self.pop_val()?;
-                    if !matches!(v, ValueType::Ref(_)) {
-                        return Err(ValidationError::type_mismatch());
-                    }
+                    self.pop_ref()?;
                     self.push_val(ValueType::I32);
                 }
                 Instruction::RefFunc(idx) => {
