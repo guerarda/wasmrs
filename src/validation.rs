@@ -1555,21 +1555,14 @@ mod tests {
 
     #[test]
     fn test_ref_func_undeclared() -> anyhow::Result<()> {
-        // (module
-        //   (func $f
-        //     ref.func $f
-        //     drop))
         // Function 0 exists, but is not declared for reference use.
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> ()
-            b"\x01\x04\x01\x60\x00\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // code section: no locals, ref.func 0, drop, end
-            b"\x0a\x07\x01\x05\x00\xd2\x00\x1a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (func $f
+                    ref.func $f
+                    drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1582,23 +1575,14 @@ mod tests {
 
     #[test]
     fn test_ref_func_declared() -> anyhow::Result<()> {
-        // (module
-        //   (elem declare func $f)
-        //   (func $f
-        //     ref.func $f
-        //     drop))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> ()
-            b"\x01\x04\x01\x60\x00\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // element section: 1 declarative segment containing function 0
-            b"\x09\x05\x01\x03\x00\x01\x00",
-            // code section: no locals, ref.func 0, drop, end
-            b"\x0a\x07\x01\x05\x00\xd2\x00\x1a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (elem declare func $f)
+                (func $f
+                    ref.func $f
+                    drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         validate_module(&m)?;
         Ok(())
@@ -1606,24 +1590,15 @@ mod tests {
 
     #[test]
     fn test_ref_func_declared_by_global_initializer() -> anyhow::Result<()> {
-        // (module
-        //   (global funcref (ref.func $f))
-        //   (func $f
-        //     ref.func $f
-        //     drop))
         // The global initializer is the only declaration of the reference.
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> ()
-            b"\x01\x04\x01\x60\x00\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // global section: immutable funcref initialized with ref.func 0
-            b"\x06\x06\x01\x70\x00\xd2\x00\x0b",
-            // code section: no locals, ref.func 0, drop, end
-            b"\x0a\x07\x01\x05\x00\xd2\x00\x1a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (global funcref (ref.func $f))
+                (func $f
+                    ref.func $f
+                    drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         validate_module(&m)?;
         Ok(())
@@ -1631,24 +1606,15 @@ mod tests {
 
     #[test]
     fn test_ref_func_declared_by_table_initializer() -> anyhow::Result<()> {
-        // (module
-        //   (table 1 funcref (ref.func $f))
-        //   (func $f
-        //     ref.func $f
-        //     drop))
         // The table initializer is the only declaration of the reference.
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> ()
-            b"\x01\x04\x01\x60\x00\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // table section: explicit initializer, funcref, min=1, ref.func 0
-            b"\x04\x09\x01\x40\x00\x70\x00\x01\xd2\x00\x0b",
-            // code section: no locals, ref.func 0, drop, end
-            b"\x0a\x07\x01\x05\x00\xd2\x00\x1a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (table 1 funcref (ref.func $f))
+                (func $f
+                    ref.func $f
+                    drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         validate_module(&m)?;
         Ok(())
@@ -1656,14 +1622,10 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty() -> anyhow::Result<()> {
-        // (func (i32.eqz) (drop))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x06\x01\x04\x00\x45\x1a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func (i32.eqz) (drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1676,14 +1638,14 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_block() -> anyhow::Result<()> {
-        // (func (i32.const 0) (block (i32.eqz) (drop)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x0b\x01\x09\x00\x41\x00\x02\x40\x45\x1a\x0b\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func
+                (i32.const 0)
+                (block
+                    (i32.eqz)
+                    (drop)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1696,14 +1658,14 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_loop() -> anyhow::Result<()> {
-        // (func (i32.const 0) (loop (i32.eqz) (drop)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x0b\x01\x09\x00\x41\x00\x03\x40\x45\x1a\x0b\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func
+                (i32.const 0)
+                (loop
+                    (i32.eqz)
+                    (drop)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1716,14 +1678,16 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_if() -> anyhow::Result<()> {
-        // (func (i32.const 0) (i32.const 0) (if (then (i32.eqz) (drop))))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x0d\x01\x0b\x00\x41\x00\x41\x00\x04\x40\x45\x1a\x0b\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func
+                (i32.const 0)
+                (i32.const 0)
+                (if
+                    (then
+                        (i32.eqz)
+                        (drop))))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1736,14 +1700,16 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_else() -> anyhow::Result<()> {
-        // (func (i32.const 0) (i32.const 0) (if (result i32) (then (i32.const 0)) (else (i32.eqz))) (drop))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x10\x01\x0e\x00\x41\x00\x41\x00\x04\x7f\x41\x00\x05\x45\x0b\x1a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func
+                (i32.const 0)
+                (i32.const 0)
+                (if (result i32)
+                    (then (i32.const 0))
+                    (else (i32.eqz)))
+                (drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1756,14 +1722,14 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_br() -> anyhow::Result<()> {
-        // (func (i32.const 0) (block (br 0 (i32.eqz)) (drop)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x0d\x01\x0b\x00\x41\x00\x02\x40\x45\x0c\x00\x1a\x0b\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func
+                (i32.const 0)
+                (block
+                    (br 0 (i32.eqz))
+                    (drop)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1776,14 +1742,14 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_br_if() -> anyhow::Result<()> {
-        // (func (i32.const 0) (block (br_if 0 (i32.eqz) (i32.const 1)) (drop)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x0f\x01\x0d\x00\x41\x00\x02\x40\x45\x41\x01\x0d\x00\x1a\x0b\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func
+                (i32.const 0)
+                (block
+                    (br_if 0 (i32.eqz) (i32.const 1))
+                    (drop)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1796,14 +1762,14 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_br_table() -> anyhow::Result<()> {
-        // (func (i32.const 0) (block (br_table 0 (i32.eqz)) (drop)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x0e\x01\x0c\x00\x41\x00\x02\x40\x45\x0e\x00\x00\x1a\x0b\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func
+                (i32.const 0)
+                (block
+                    (br_table 0 (i32.eqz))
+                    (drop)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1816,23 +1782,16 @@ mod tests {
 
     #[test]
     fn test_br_table_operand_type_mismatch() -> anyhow::Result<()> {
-        // (module
-        //   (func (result i32)
-        //     i64.const 42
-        //     i32.const 0
-        //     br_table 0 0))
         // Both targets expect i32, but the actual branch operand is i64.
         // Pushing target types without checking operands hides this mismatch.
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // code section: no locals, i64.const 42, i32.const 0, br_table 0 0, end
-            b"\x0a\x0c\x01\x0a\x00\x42\x2a\x41\x00\x0e\x01\x00\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (func (result i32)
+                    i64.const 42
+                    i32.const 0
+                    br_table 0 0))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1845,14 +1804,10 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_return() -> anyhow::Result<()> {
-        // (func (return (i32.eqz)) (drop))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x07\x01\x05\x00\x45\x0f\x1a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func (return (i32.eqz)) (drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1865,17 +1820,10 @@ mod tests {
 
     #[test]
     fn test_br_if_unbound_label() -> anyhow::Result<()> {
-        // (module (func $unbound-label (br_if 1 (i32.const 1))))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> ()
-            b"\x01\x04\x01\x60\x00\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // code section: i32.const 1, br_if 1, end
-            b"\x0a\x08\x01\x06\x00\x41\x01\x0d\x01\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module (func $unbound-label (br_if 1 (i32.const 1))))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1888,14 +1836,12 @@ mod tests {
 
     #[test]
     fn test_type_unary_operand_empty_in_select() -> anyhow::Result<()> {
-        // (func (select (i32.eqz) (i32.const 1) (i32.const 2)) (drop))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x04\x01\x60\x00\x00",
-            b"\x03\x02\x01\x00",
-            b"\x0a\x0b\x01\x09\x00\x45\x41\x01\x41\x02\x1b\x1a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (func
+                (select (i32.eqz) (i32.const 1) (i32.const 2))
+                (drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1908,17 +1854,12 @@ mod tests {
 
     #[test]
     fn test_data_segment_imported_memory() -> anyhow::Result<()> {
-        // (module
-        //   (import "env" "mem" (memory 1))
-        //   (data (i32.const 0) "hi"))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: 1 import, "env"."mem" memory min=1
-            b"\x02\x0c\x01\x03\x65\x6e\x76\x03\x6d\x65\x6d\x02\x00\x01",
-            // data section: 1 active segment, mem_index=0, offset=i32.const 0, "hi"
-            b"\x0b\x08\x01\x00\x41\x00\x0b\x02\x68\x69",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (import "env" "mem" (memory 1))
+                (data (i32.const 0) "hi"))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -1927,14 +1868,13 @@ mod tests {
 
     #[test]
     fn test_data_segment_unknown_memory() -> anyhow::Result<()> {
-        // Same imported memory module but data segment refers to mem_index=1 (out of range).
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            b"\x02\x0c\x01\x03\x65\x6e\x76\x03\x6d\x65\x6d\x02\x00\x01",
-            // data section: flag=0x02 (active w/ explicit memidx), memidx=1, offset=i32.const 0, "hi"
-            b"\x0b\x09\x01\x02\x01\x41\x00\x0b\x02\x68\x69",
-        ]
-        .concat();
+        // The data segment refers to memory index 1, which is out of range.
+        let wat = r#"
+            (module
+                (import "env" "mem" (memory 1))
+                (data (memory 1) (i32.const 0) "hi"))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1947,14 +1887,11 @@ mod tests {
 
     #[test]
     fn test_global_ref_func_out_of_bounds() -> anyhow::Result<()> {
-        // (module (global funcref (ref.func 5)))
         // no functions defined, so index 5 is out of bounds
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // global section: 1 entry, funcref, const, ref.func 5, end
-            b"\x06\x06\x01\x70\x00\xd2\x05\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module (global funcref (ref.func 5)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -1967,13 +1904,10 @@ mod tests {
 
     #[test]
     fn test_global_valid_i32_const() -> anyhow::Result<()> {
-        // (module (global i32 (i32.const 0)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // global section: 1 entry, i32, const, i32.const 0, end
-            b"\x06\x06\x01\x7f\x00\x41\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module (global i32 (i32.const 0)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -1982,13 +1916,10 @@ mod tests {
 
     #[test]
     fn test_global_type_mismatch() -> anyhow::Result<()> {
-        // (module (global i32 (f32.const 0)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // global section: 1 entry, i32, const, f32.const 0.0, end
-            b"\x06\x09\x01\x7f\x00\x43\x00\x00\x00\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module (global i32 (f32.const 0)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -2001,13 +1932,10 @@ mod tests {
 
     #[test]
     fn test_global_non_const_instruction() -> anyhow::Result<()> {
-        // (module (global f32 (f32.const 0) (f32.neg)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // global section: 1 entry, f32, const, f32.const 0.0, f32.neg, end
-            b"\x06\x0a\x01\x7d\x00\x43\x00\x00\x00\x00\x8c\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module (global f32 (f32.const 0) (f32.neg)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -2020,15 +1948,12 @@ mod tests {
 
     #[test]
     fn test_global_get_imported_immutable() -> anyhow::Result<()> {
-        // (module (import "e" "g" (global i32)) (global i32 (global.get 0)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "e"."g" global i32 const
-            b"\x02\x08\x01\x01\x65\x01\x67\x03\x7f\x00",
-            // global section: 1 entry, i32, const, global.get 0, end
-            b"\x06\x06\x01\x7f\x00\x23\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (import "e" "g" (global i32))
+                (global i32 (global.get 0)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -2037,14 +1962,13 @@ mod tests {
 
     #[test]
     fn test_global_get_locally_defined() -> anyhow::Result<()> {
-        // (module (global i32 (i32.const 0)) (global i32 (global.get 0)))
         // global.get referencing a locally defined global is not allowed in const expr
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // global section: 2 entries
-            b"\x06\x0b\x02\x7f\x00\x41\x00\x0b\x7f\x00\x23\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (global i32 (i32.const 0))
+                (global i32 (global.get 0)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
@@ -2057,21 +1981,12 @@ mod tests {
 
     #[test]
     fn test_table_size_imported_table() -> anyhow::Result<()> {
-        // (module
-        //   (import "e" "t" (table 1 funcref))
-        //   (func (result i32) table.size))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // import section: "e"."t" table funcref min=1
-            b"\x02\x09\x01\x01\x65\x01\x74\x01\x70\x00\x01",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // code section: table.size 0, end
-            b"\x0a\x07\x01\x05\x00\xfc\x10\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (import "e" "t" (table 1 funcref))
+                (func (result i32) table.size))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -2080,21 +1995,12 @@ mod tests {
 
     #[test]
     fn test_global_get_imported_global_in_function() -> anyhow::Result<()> {
-        // (module
-        //   (import "e" "g" (global i32))
-        //   (func (result i32) global.get 0))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // import section: "e"."g" global i32 const
-            b"\x02\x08\x01\x01\x65\x01\x67\x03\x7f\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // code section: global.get 0, end
-            b"\x0a\x06\x01\x04\x00\x23\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (import "e" "g" (global i32))
+                (func (result i32) global.get 0))
+        "#;
+        let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -2103,28 +2009,15 @@ mod tests {
 
     #[test]
     fn test_global_get_imported_and_defined_globals() -> anyhow::Result<()> {
-        // (module
-        //   (import "env" "g" (global i32))
-        //   (global i64 (i64.const 42))
-        //   (func (export "get") (result i32 i64)
-        //     global.get 0
-        //     global.get 1))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32, i64)
-            b"\x01\x06\x01\x60\x00\x02\x7f\x7e",
-            // import section: "env"."g" global i32 const, global index 0
-            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x67\x03\x7f\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // global section: i64 const, init=i64.const 42, global index 1
-            b"\x06\x06\x01\x7e\x00\x42\x2a\x0b",
-            // export section: "get" -> func 0
-            b"\x07\x07\x01\x03\x67\x65\x74\x00\x00",
-            // code section: global.get 0, global.get 1, end
-            b"\x0a\x08\x01\x06\x00\x23\x00\x23\x01\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (import "env" "g" (global i32))
+                (global i64 (i64.const 42))
+                (func (export "get") (result i32 i64)
+                    global.get 0
+                    global.get 1))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         // Distinct types ensure each index resolves to the correct global.
         let m = decode_bytes(bytes)?;
