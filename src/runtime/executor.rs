@@ -1184,23 +1184,12 @@ mod tests {
 
     #[test]
     fn test_memory_size() -> anyhow::Result<()> {
-        // (module
-        //   (memory 1)
-        //   (func (export "size") (result i32) memory.size))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // memory section: 1 memory, min=1 page
-            b"\x05\x03\x01\x00\x01",
-            // export section: "size" -> func 0
-            b"\x07\x08\x01\x04size\x00\x00",
-            // code section: memory.size 0, end
-            b"\x0a\x06\x01\x04\x00\x3f\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (memory 1)
+                (func (export "size") (result i32) memory.size))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1214,28 +1203,15 @@ mod tests {
 
     #[test]
     fn test_memory_grow() -> anyhow::Result<()> {
-        // (module
-        //   (memory 1)
-        //   (func (export "grow") (param i32) (result i32) local.get 0 memory.grow)
-        //   (func (export "size") (result i32) memory.size))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 2 types
-            //   type 0: (i32) -> (i32)
-            //   type 1: () -> (i32)
-            b"\x01\x0a\x02\x60\x01\x7f\x01\x7f\x60\x00\x01\x7f",
-            // function section: 2 funcs, type 0 and type 1
-            b"\x03\x03\x02\x00\x01",
-            // memory section: 1 memory, min=1 page
-            b"\x05\x03\x01\x00\x01",
-            // export section: "grow" -> func 0, "size" -> func 1
-            b"\x07\x0f\x02\x04grow\x00\x00\x04size\x00\x01",
-            // code section: 2 entries
-            //   func 0: local.get 0, memory.grow 0, end
-            //   func 1: memory.size 0, end
-            b"\x0a\x0d\x02\x06\x00\x20\x00\x40\x00\x0b\x04\x00\x3f\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (memory 1)
+                (func (export "grow") (param i32) (result i32)
+                    local.get 0
+                    memory.grow)
+                (func (export "size") (result i32) memory.size))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1260,28 +1236,18 @@ mod tests {
 
     #[test]
     fn test_i32_store_load() -> anyhow::Result<()> {
-        // (module
-        //   (memory 1)
-        //   (func (export "store") (param i32 i32) local.get 0 local.get 1 i32.store)
-        //   (func (export "load") (param i32) (result i32) local.get 0 i32.load))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 2 types
-            //   type 0: (i32 i32) -> ()
-            //   type 1: (i32) -> (i32)
-            b"\x01\x0b\x02\x60\x02\x7f\x7f\x00\x60\x01\x7f\x01\x7f",
-            // function section: 2 funcs, type 0 and type 1
-            b"\x03\x03\x02\x00\x01",
-            // memory section: 1 memory, min=1 page
-            b"\x05\x03\x01\x00\x01",
-            // export section: "store" -> func 0, "load" -> func 1
-            b"\x07\x10\x02\x05store\x00\x00\x04load\x00\x01",
-            // code section: 2 entries
-            //   func 0: local.get 0, local.get 1, i32.store align=2 offset=0, end
-            //   func 1: local.get 0, i32.load align=2 offset=0, end
-            b"\x0a\x13\x02\x09\x00\x20\x00\x20\x01\x36\x02\x00\x0b\x07\x00\x20\x00\x28\x02\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (memory 1)
+                (func (export "store") (param i32 i32)
+                    local.get 0
+                    local.get 1
+                    i32.store)
+                (func (export "load") (param i32) (result i32)
+                    local.get 0
+                    i32.load))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1306,42 +1272,24 @@ mod tests {
 
     #[test]
     fn test_if_param() -> anyhow::Result<()> {
-        // (module
-        //   (func (export "param") (param i32) (result i32)
-        //     (i32.const 1)
-        //     (if (param i32) (result i32) (local.get 0)
-        //       (then (i32.const 2) (i32.add))
-        //       (else (i32.const -2) (i32.add))))
-        //   (func (export "params") (param i32) (result i32)
-        //     (i32.const 1) (i32.const 2)
-        //     (if (param i32 i32) (result i32) (local.get 0)
-        //       (then (i32.add))
-        //       (else (i32.sub))))
-        //   (func (export "params-id") (param i32) (result i32)
-        //     (i32.const 1) (i32.const 2)
-        //     (if (param i32 i32) (result i32 i32) (local.get 0) (then))
-        //     (i32.add)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 3 types
-            //   type 0: (i32) -> (i32)
-            //   type 1: (i32 i32) -> (i32)
-            //   type 2: (i32 i32) -> (i32 i32)
-            b"\x01\x13\x03\x60\x01\x7f\x01\x7f\x60\x02\x7f\x7f\x01\x7f\x60\x02\x7f\x7f\x02\x7f\x7f",
-            // function section: 3 funcs, all type 0
-            b"\x03\x04\x03\x00\x00\x00",
-            // export section: "param" -> func 0, "params" -> func 1, "params-id" -> func 2
-            b"\x07\x1e\x03\x05param\x00\x00\x06params\x00\x01\x09params-id\x00\x02",
-            // code section: 3 entries
-            b"\x0a\x2e\x03",
-            // func 0: i32.const 1, local.get 0, if(type 0), i32.const 2, i32.add, else, i32.const -2, i32.add, end, end
-            b"\x10\x00\x41\x01\x20\x00\x04\x00\x41\x02\x6a\x05\x41\x7e\x6a\x0b\x0b",
-            // func 1: i32.const 1, i32.const 2, local.get 0, if(type 1), i32.add, else, i32.sub, end, end
-            b"\x0e\x00\x41\x01\x41\x02\x20\x00\x04\x01\x6a\x05\x6b\x0b\x0b",
-            // func 2: i32.const 1, i32.const 2, local.get 0, if(type 2), end, i32.add, end
-            b"\x0c\x00\x41\x01\x41\x02\x20\x00\x04\x02\x0b\x6a\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (func (export "param") (param i32) (result i32)
+                    (i32.const 1)
+                    (if (param i32) (result i32) (local.get 0)
+                        (then (i32.const 2) (i32.add))
+                        (else (i32.const -2) (i32.add))))
+                (func (export "params") (param i32) (result i32)
+                    (i32.const 1) (i32.const 2)
+                    (if (param i32 i32) (result i32) (local.get 0)
+                        (then (i32.add))
+                        (else (i32.sub))))
+                (func (export "params-id") (param i32) (result i32)
+                    (i32.const 1) (i32.const 2)
+                    (if (param i32 i32) (result i32 i32) (local.get 0) (then))
+                    (i32.add)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1368,30 +1316,20 @@ mod tests {
 
     #[test]
     fn test_call_indirect() -> anyhow::Result<()> {
-        // (module
-        //   (type $t (func (param i32 i32) (result i32)))
-        //   (table 2 funcref)
-        //   (elem (i32.const 0) func $add $sub)
-        //   (func $add (type $t) local.get 0 local.get 1 i32.add)
-        //   (func $sub (type $t) local.get 0 local.get 1 i32.sub)
-        //   (func (export "call") (param i32 i32 i32) (result i32)
-        //     local.get 0 local.get 1 local.get 2 call_indirect (type $t)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 2 types — (i32,i32)->(i32) and (i32,i32,i32)->(i32)
-            b"\x01\x0e\x02\x60\x02\x7f\x7f\x01\x7f\x60\x03\x7f\x7f\x7f\x01\x7f",
-            // function section: 3 funcs — type 0, type 0, type 1
-            b"\x03\x04\x03\x00\x00\x01",
-            // table section: 1 table, funcref, min=2
-            b"\x04\x04\x01\x70\x00\x02",
-            // export section: "call" -> func 2
-            b"\x07\x08\x01\x04\x63\x61\x6c\x6c\x00\x02",
-            // element section: active, table 0, offset=0, 2 funcs [0, 1]
-            b"\x09\x08\x01\x00\x41\x00\x0b\x02\x00\x01",
-            // code section: 3 funcs
-            b"\x0a\x1d\x03\x07\x00\x20\x00\x20\x01\x6a\x0b\x07\x00\x20\x00\x20\x01\x6b\x0b\x0b\x00\x20\x00\x20\x01\x20\x02\x11\x00\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (type $t (func (param i32 i32) (result i32)))
+                (table 2 funcref)
+                (elem (i32.const 0) func $add $sub)
+                (func $add (type $t) local.get 0 local.get 1 i32.add)
+                (func $sub (type $t) local.get 0 local.get 1 i32.sub)
+                (func (export "call") (param i32 i32 i32) (result i32)
+                    local.get 0
+                    local.get 1
+                    local.get 2
+                    call_indirect (type $t)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1415,23 +1353,12 @@ mod tests {
 
     #[test]
     fn test_global_get() -> anyhow::Result<()> {
-        // (module
-        //   (global $g (mut i32) (i32.const 42))
-        //   (func (export "get") (result i32) global.get $g))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // global section: 1 global, i32 mut, init=i32.const 42
-            b"\x06\x06\x01\x7f\x01\x41\x2a\x0b",
-            // export section: "get" -> func 0
-            b"\x07\x07\x01\x03\x67\x65\x74\x00\x00",
-            // code section: global.get 0, end
-            b"\x0a\x06\x01\x04\x00\x23\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (global $g (mut i32) (i32.const 42))
+                (func (export "get") (result i32) global.get $g))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1448,28 +1375,15 @@ mod tests {
 
     #[test]
     fn test_global_get_imported_and_defined_globals() -> anyhow::Result<()> {
-        // (module
-        //   (import "env" "g" (global i32))
-        //   (global i64 (i64.const 42))
-        //   (func (export "get") (result i32 i64)
-        //     global.get 0
-        //     global.get 1))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32, i64)
-            b"\x01\x06\x01\x60\x00\x02\x7f\x7e",
-            // import section: "env"."g" global i32 const, global index 0
-            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x67\x03\x7f\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // global section: i64 const, init=i64.const 42, global index 1
-            b"\x06\x06\x01\x7e\x00\x42\x2a\x0b",
-            // export section: "get" -> func 0
-            b"\x07\x07\x01\x03\x67\x65\x74\x00\x00",
-            // code section: global.get 0, global.get 1, end
-            b"\x0a\x08\x01\x06\x00\x23\x00\x23\x01\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (import "env" "g" (global i32))
+                (global i64 (i64.const 42))
+                (func (export "get") (result i32 i64)
+                    global.get 0
+                    global.get 1))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         // Allocate an unrelated global first so module indices differ from store addresses.
@@ -1495,25 +1409,16 @@ mod tests {
 
     #[test]
     fn test_br_to_function_return() -> anyhow::Result<()> {
-        // (module
-        //   (func (export "test") (result i32)
-        //     (loop
-        //       (i32.const 42)
-        //       (br 1)
-        //     )
-        //     (unreachable)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // export section: "test" -> func 0
-            b"\x07\x08\x01\x04\x74\x65\x73\x74\x00\x00",
-            // code section: loop, i32.const 42, br 1, end, unreachable, end
-            b"\x0a\x0c\x01\x0a\x00\x03\x40\x41\x2a\x0c\x01\x0b\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (func (export "test") (result i32)
+                    (loop
+                        (i32.const 42)
+                        (br 1)
+                    )
+                    (unreachable)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1529,23 +1434,14 @@ mod tests {
 
     #[test]
     fn test_loop_result_arity() -> anyhow::Result<()> {
-        // (module
-        //   (func (export "test") (result i32)
-        //     (loop (result i32)
-        //       (i32.const 42)
-        //     )))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // export section: "test" -> func 0
-            b"\x07\x08\x01\x04\x74\x65\x73\x74\x00\x00",
-            // code section: loop (result i32), i32.const 42, end, end
-            b"\x0a\x09\x01\x07\x00\x03\x7f\x41\x2a\x0b\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (func (export "test") (result i32)
+                    (loop (result i32)
+                        (i32.const 42)
+                    )))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1561,31 +1457,22 @@ mod tests {
 
     #[test]
     fn test_loop_br_reentry() -> anyhow::Result<()> {
-        // (module
-        //   (func (export "test") (result i32)
-        //     (local $i i32)
-        //     (block $exit (result i32)
-        //       (loop $cont (result i32)
-        //         (local.set $i (i32.add (local.get $i) (i32.const 1)))
-        //         (if (i32.eq (local.get $i) (i32.const 3))
-        //           (then (br $exit (local.get $i)))
-        //         )
-        //         (br $cont)
-        //       )
-        //     )
-        //   ))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // export section: "test" -> func 0
-            b"\x07\x08\x01\x04test\x00\x00",
-            // code section
-            b"\x0a\x21\x01\x1f\x01\x01\x7f\x02\x7f\x03\x7f\x20\x00\x41\x01\x6a\x21\x00\x20\x00\x41\x03\x46\x04\x40\x20\x00\x0c\x02\x0b\x0c\x00\x0b\x0b\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (func (export "test") (result i32)
+                    (local $i i32)
+                    (block $exit (result i32)
+                        (loop $cont (result i32)
+                            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+                            (if (i32.eq (local.get $i) (i32.const 3))
+                                (then (br $exit (local.get $i)))
+                            )
+                            (br $cont)
+                        )
+                    )
+                ))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;
@@ -1601,24 +1488,13 @@ mod tests {
 
     #[test]
     fn test_global_set() -> anyhow::Result<()> {
-        // (module
-        //   (global $g (mut i32) (i32.const 10))
-        //   (func (export "set") (param i32) local.get 0 global.set $g)
-        //   (func (export "get") (result i32) global.get $g))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 2 types — (i32)->() and ()->(i32)
-            b"\x01\x09\x02\x60\x01\x7f\x00\x60\x00\x01\x7f",
-            // function section: 2 funcs, type 0 and type 1
-            b"\x03\x03\x02\x00\x01",
-            // global section: 1 global, i32 mut, init=i32.const 10
-            b"\x06\x06\x01\x7f\x01\x41\x0a\x0b",
-            // export section: "set" -> func 0, "get" -> func 1
-            b"\x07\x0d\x02\x03\x73\x65\x74\x00\x00\x03\x67\x65\x74\x00\x01",
-            // code section: 2 funcs
-            b"\x0a\x0d\x02\x06\x00\x20\x00\x24\x00\x0b\x04\x00\x23\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (global $g (mut i32) (i32.const 10))
+                (func (export "set") (param i32) local.get 0 global.set $g)
+                (func (export "get") (result i32) global.get $g))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         let mh = runtime.load_module(&bytes)?;

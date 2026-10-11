@@ -775,24 +775,15 @@ mod tests {
 
     #[test]
     fn test_host_fn_import() -> anyhow::Result<()> {
-        // (module
-        //   (import "env" "add" (func $add (param i32 i32) (result i32)))
-        //   (func (export "call_add") (param i32 i32) (result i32)
-        //     local.get 0 local.get 1 call 0))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, (i32 i32) -> (i32)
-            b"\x01\x07\x01\x60\x02\x7f\x7f\x01\x7f",
-            // import section: "env"."add" -> func type 0
-            b"\x02\x0b\x01\x03\x65\x6e\x76\x03\x61\x64\x64\x00\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // export section: "call_add" -> func 1
-            b"\x07\x0c\x01\x08\x63\x61\x6c\x6c\x5f\x61\x64\x64\x00\x01",
-            // code section: local.get 0, local.get 1, call 0, end
-            b"\x0a\x0a\x01\x08\x00\x20\x00\x20\x01\x10\x00\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (import "env" "add" (func $add (param i32 i32) (result i32)))
+                (func (export "call_add") (param i32 i32) (result i32)
+                    local.get 0
+                    local.get 1
+                    call $add))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
 
@@ -827,25 +818,16 @@ mod tests {
 
     #[test]
     fn test_host_fn_multiple_imports() -> anyhow::Result<()> {
-        // (module
-        //   (import "math" "double" (func $double (param i32) (result i32)))
-        //   (import "math" "negate" (func $negate (param i32) (result i32)))
-        //   (func (export "double_negate") (param i32) (result i32)
-        //     local.get 0 call 0 call 1))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, (i32) -> (i32)
-            b"\x01\x06\x01\x60\x01\x7f\x01\x7f",
-            // import section: "math"."double" type 0, "math"."negate" type 0
-            b"\x02\x1d\x02\x04\x6d\x61\x74\x68\x06\x64\x6f\x75\x62\x6c\x65\x00\x00\x04\x6d\x61\x74\x68\x06\x6e\x65\x67\x61\x74\x65\x00\x00",
-            // function section: 1 func, type 0
-            b"\x03\x02\x01\x00",
-            // export section: "double_negate" -> func 2
-            b"\x07\x11\x01\x0d\x64\x6f\x75\x62\x6c\x65\x5f\x6e\x65\x67\x61\x74\x65\x00\x02",
-            // code section: local.get 0, call 0, call 1, end
-            b"\x0a\x0a\x01\x08\x00\x20\x00\x10\x00\x10\x01\x0b",
-        ]
-        .concat();
+        let wat = r#"
+            (module
+                (import "math" "double" (func $double (param i32) (result i32)))
+                (import "math" "negate" (func $negate (param i32) (result i32)))
+                (func (export "double_negate") (param i32) (result i32)
+                    local.get 0
+                    call $double
+                    call $negate))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
 
@@ -892,15 +874,10 @@ mod tests {
 
     #[test]
     fn test_import_func_type_mismatch_params() -> anyhow::Result<()> {
-        // (module (import "env" "f" (func (param i32) (result i32))))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, (i32) -> (i32)
-            b"\x01\x06\x01\x60\x01\x7f\x01\x7f",
-            // import section: "env"."f" -> func type 0
-            b"\x02\x09\x01\x03\x65\x6e\x76\x01\x66\x00\x00",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "f" (func (param i32) (result i32))))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_fn(
@@ -926,15 +903,10 @@ mod tests {
 
     #[test]
     fn test_import_func_type_mismatch_results() -> anyhow::Result<()> {
-        // (module (import "env" "f" (func (param i32) (result i32))))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, (i32) -> (i32)
-            b"\x01\x06\x01\x60\x01\x7f\x01\x7f",
-            // import section: "env"."f" -> func type 0
-            b"\x02\x09\x01\x03\x65\x6e\x76\x01\x66\x00\x00",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "f" (func (param i32) (result i32))))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_fn(
@@ -960,15 +932,10 @@ mod tests {
 
     #[test]
     fn test_import_func_kind_mismatch() -> anyhow::Result<()> {
-        // (module (import "env" "x" (func (result i32))))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // type section: 1 type, () -> (i32)
-            b"\x01\x05\x01\x60\x00\x01\x7f",
-            // import section: "env"."x" -> func type 0
-            b"\x02\x09\x01\x03\x65\x6e\x76\x01\x78\x00\x00",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "x" (func (result i32))))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_global(
@@ -994,13 +961,10 @@ mod tests {
 
     #[test]
     fn test_import_table_elemtype_mismatch() -> anyhow::Result<()> {
-        // (module (import "env" "t" (table 1 funcref)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."t" -> table funcref, {min: 1}
-            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x00\x01",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "t" (table 1 funcref)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_table(
@@ -1026,13 +990,10 @@ mod tests {
 
     #[test]
     fn test_import_table_min_too_small() -> anyhow::Result<()> {
-        // (module (import "env" "t" (table 5 funcref)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."t" -> table funcref, {min: 5}
-            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x00\x05",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "t" (table 5 funcref)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_table(
@@ -1058,13 +1019,10 @@ mod tests {
 
     #[test]
     fn test_import_table_max_required_but_absent() -> anyhow::Result<()> {
-        // (module (import "env" "t" (table 1 10 funcref)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."t" -> table funcref, {min: 1, max: 10}
-            b"\x02\x0c\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x01\x01\x0a",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "t" (table 1 10 funcref)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_table(
@@ -1090,13 +1048,10 @@ mod tests {
 
     #[test]
     fn test_import_table_max_too_large() -> anyhow::Result<()> {
-        // (module (import "env" "t" (table 1 5 funcref)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."t" -> table funcref, {min: 1, max: 5}
-            b"\x02\x0c\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x01\x01\x05",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "t" (table 1 5 funcref)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_table(
@@ -1125,13 +1080,10 @@ mod tests {
 
     #[test]
     fn test_import_memory_min_too_small() -> anyhow::Result<()> {
-        // (module (import "env" "m" (memory 4)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."m" -> memory {min: 4}
-            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x6d\x02\x00\x04",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "m" (memory 4)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_memory("env", "m", MemType(Limit { min: 1, max: None }))?;
@@ -1149,13 +1101,10 @@ mod tests {
 
     #[test]
     fn test_import_memory_max_required_but_absent() -> anyhow::Result<()> {
-        // (module (import "env" "m" (memory 1 8)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."m" -> memory {min: 1, max: 8}
-            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x6d\x02\x01\x01\x08",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "m" (memory 1 8)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_memory("env", "m", MemType(Limit { min: 1, max: None }))?;
@@ -1173,13 +1122,10 @@ mod tests {
 
     #[test]
     fn test_import_memory_max_too_large() -> anyhow::Result<()> {
-        // (module (import "env" "m" (memory 1 4)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."m" -> memory {min: 1, max: 4}
-            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x6d\x02\x01\x01\x04",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "m" (memory 1 4)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_memory(
@@ -1204,13 +1150,10 @@ mod tests {
 
     #[test]
     fn test_import_global_type_mismatch() -> anyhow::Result<()> {
-        // (module (import "env" "g" (global i32)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."g" -> global i32 const
-            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x67\x03\x7f\x00",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "g" (global i32)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_global(
@@ -1236,13 +1179,10 @@ mod tests {
 
     #[test]
     fn test_import_global_mut_mismatch() -> anyhow::Result<()> {
-        // (module (import "env" "g" (global (mut i32))))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."g" -> global i32 var
-            b"\x02\x0a\x01\x03\x65\x6e\x76\x01\x67\x03\x7f\x01",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "g" (global (mut i32))))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_global(
@@ -1268,13 +1208,10 @@ mod tests {
 
     #[test]
     fn test_import_table_wider_min_ok() -> anyhow::Result<()> {
-        // (module (import "env" "t" (table 1 funcref)))
-        let bytes = [
-            b"\x00asm\x01\x00\x00\x00" as &[u8],
-            // import section: "env"."t" -> table funcref, {min: 1}
-            b"\x02\x0b\x01\x03\x65\x6e\x76\x01\x74\x01\x70\x00\x01",
-        ]
-        .concat();
+        let wat = r#"
+            (module (import "env" "t" (table 1 funcref)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
 
         let mut runtime = Runtime::default();
         runtime.register_host_table(
