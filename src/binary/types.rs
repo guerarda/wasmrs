@@ -232,6 +232,16 @@ pub enum ConstExpressionReadError {
     MissingEnd,
 }
 
+impl ConstExpression {
+    /// Returns an iterator over the function references of this const expression.
+    pub fn function_refs(&self) -> impl Iterator<Item = FuncIndex> {
+        self.0.iter().filter_map(|inst| match inst {
+            Instruction::RefFunc(idx) => Some(FuncIndex(*idx)),
+            _ => None,
+        })
+    }
+}
+
 impl std::error::Error for ConstExpressionReadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {

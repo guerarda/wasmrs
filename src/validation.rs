@@ -1488,42 +1488,23 @@ impl Validator {
         if let Some(ref elemsec) = module.elements {
             for e in elemsec {
                 match &e.items {
-                    ElementSegmentItems::Functions(items) => {
-                        for i in items {
-                            refs.push(*i);
-                        }
-                    }
+                    ElementSegmentItems::Functions(items) => refs.extend(items.iter().copied()),
                     ElementSegmentItems::Expressions(_, exprs) => {
-                        for expr in exprs {
-                            for inst in &expr.0 {
-                                if let Instruction::RefFunc(idx) = inst {
-                                    refs.push(FuncIndex(*idx));
-                                }
-                            }
-                        }
+                        refs.extend(exprs.iter().flat_map(|expr| expr.function_refs()))
                     }
                 }
             }
         }
         if let Some(ref tablesec) = module.tables {
-            for t in tablesec {
-                if let Some(expr) = &t.expr {
-                    for inst in &expr.0 {
-                        if let Instruction::RefFunc(idx) = inst {
-                            refs.push(FuncIndex(*idx));
-                        }
-                    }
-                }
-            }
+            refs.extend(
+                tablesec
+                    .iter()
+                    .filter_map(|t| t.expr.as_ref())
+                    .flat_map(|expr| expr.function_refs()),
+            );
         }
         if let Some(ref globalsec) = module.globals {
-            for g in globalsec {
-                for inst in &g.body.0 {
-                    if let Instruction::RefFunc(idx) = inst {
-                        refs.push(FuncIndex(*idx));
-                    }
-                }
-            }
+            refs.extend(globalsec.iter().flat_map(|g| g.body.function_refs()));
         }
 
         refs
