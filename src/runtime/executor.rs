@@ -143,7 +143,7 @@ macro_rules! load {
             mem_inst
                 .slice(i, $memarg.offset, std::mem::size_of::<$ty>())?
                 .try_into()
-                .unwrap(),
+                .expect("slice length matches the load type's width guaranteed by validation"),
         );
 
         // Push value
@@ -204,8 +204,7 @@ impl ValueStack {
     }
 
     fn top(&self) -> &Value {
-        self
-            .stack
+        self.stack
             .last()
             .expect("value stack not empty: operand count guaranteed by validation")
     }
