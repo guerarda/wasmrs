@@ -15,6 +15,7 @@ wast = { version = "223", optional = true }
 
 [dev-dependencies]
 libtest-mimic = "0.8.1"
+wat = "1.261.0"
 
 [[bin]]
 name = "wast_debug"
