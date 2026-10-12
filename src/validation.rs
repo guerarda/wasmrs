@@ -385,7 +385,10 @@ impl Validator {
 
     /// Returns the type for an idx in the Function Section.
     // TODO cache the function index array with imports at the module level
-    fn func_type_at(module: &Module, func_idx: u32) -> result::Result<&FuncType, ValidationError> {
+    fn func_type_at(
+        module: &Module,
+        func_idx: FuncIndex,
+    ) -> result::Result<&FuncType, ValidationError> {
         let imported = module
             .imports
             .iter()
@@ -398,7 +401,7 @@ impl Validator {
 
         let type_idx = imported
             .chain(defined)
-            .nth(func_idx as usize)
+            .nth(func_idx.as_usize())
             .ok_or_else(ValidationError::unknown_function)?;
 
         Self::type_at(module, type_idx)
@@ -608,7 +611,7 @@ impl Validator {
                 Instruction::F64Const(_) => stack.push(ValueType::F64),
                 Instruction::RefNull(rt) => stack.push(ValueType::Ref(*rt)),
                 Instruction::RefFunc(idx) => {
-                    if *idx as usize >= module.func_count() {
+                    if idx.as_usize() >= module.func_count() {
                         return Err(ValidationError::unknown_function());
                     }
                     stack.push(ValueType::Ref(RefType::Func))
@@ -659,7 +662,7 @@ impl Validator {
         declared_refs: &[FuncIndex],
     ) -> result::Result<(), ValidationError> {
         let end_types: Vec<ValueType> = functype.results.iter().map(ValueType::from).collect();
-        self.push_ctrl(Instruction::Call(0), vec![], end_types);
+        self.push_ctrl(Instruction::Call(FuncIndex(0)), vec![], end_types);
 
         for inst in &entry.body {
             match inst {
@@ -1132,12 +1135,12 @@ impl Validator {
                 }
                 Instruction::RefFunc(idx) => {
                     // Check that the function index is valid in this module
-                    if *idx as usize >= module.func_count() {
+                    if idx.as_usize() >= module.func_count() {
                         return Err(ValidationError::UnknownFunction);
                     }
                     // Check that the function index has been declared for use
                     // as reference.
-                    if !declared_refs.contains(&FuncIndex(*idx)) {
+                    if !declared_refs.contains(idx) {
                         return Err(ValidationError::undeclared_function_reference());
                     }
 
@@ -1328,7 +1331,7 @@ impl Validator {
             let rt = match &e.items {
                 ElementSegmentItems::Functions(funcs) => {
                     for f in funcs {
-                        Self::func_type_at(module, f.0)?;
+                        Self::func_type_at(module, *f)?;
                     }
                     RefType::Func
                 }

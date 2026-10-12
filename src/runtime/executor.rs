@@ -515,7 +515,7 @@ impl<'a> ExecutionContext<'a> {
                         self.call_stack.pop();
                     }
                     Instruction::Call(idx) => {
-                        let funcaddr = module_inst.funcs[*idx as usize];
+                        let funcaddr = module_inst.funcs[idx.as_usize()];
                         self.call(funcaddr);
                     }
                     Instruction::CallIndirect((type_idx, table_idx)) => {
@@ -1032,7 +1032,7 @@ impl<'a> ExecutionContext<'a> {
                         }
                     }
                     Instruction::RefFunc(fi) => {
-                        let addr = module_inst.funcs[*fi as usize];
+                        let addr = module_inst.funcs[(*fi).0 as usize];
                         self.value_stack.push(Value::Ref(Ref::Func(addr)))
                     }
                     Instruction::I32TruncSatF32S => {

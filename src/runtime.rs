@@ -323,7 +323,7 @@ impl Runtime {
 
         // Get start function
         let mi = self.module_registry.get_instance(h).unwrap();
-        let start_fn = module.start.as_ref().map(|s| mi.funcs[s.0 as usize]);
+        let start_fn = module.start.as_ref().map(|s| mi.funcs[s.0.as_usize()]);
 
         // Execute start function after module registration so that
         // module instnace handle is valid
@@ -360,7 +360,7 @@ impl Runtime {
                 }
                 Instruction::RefNull(rt) => value_stack.push(Value::Ref(Ref::Null(*rt))),
                 Instruction::RefFunc(fi) => {
-                    value_stack.push(Value::Ref(Ref::Func(module.funcs[*fi as usize])))
+                    value_stack.push(Value::Ref(Ref::Func(module.funcs[fi.as_usize()])))
                 }
                 _ => return Err(RuntimeError::internal("invalid const expression")),
             }

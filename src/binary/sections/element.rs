@@ -40,14 +40,6 @@ impl<'a> FromReader<'a> for ElementKindMarker {
     }
 }
 
-impl<'a> FromReader<'a> for FuncIndex {
-    type Error = ReadError;
-
-    fn from_reader(reader: &mut Reader<'a>) -> result::Result<Self, Self::Error> {
-        reader.read().map(FuncIndex)
-    }
-}
-
 #[derive(Debug)]
 pub enum ElementSegmentItems {
     Functions(Vec<FuncIndex>),

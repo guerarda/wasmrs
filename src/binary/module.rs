@@ -381,6 +381,8 @@ pub fn decode_bytes(bytes: Vec<u8>) -> std::result::Result<Module, MalformedErro
 
 #[cfg(test)]
 mod tests {
+    use crate::binary::types::FuncIndex;
+
     use super::*;
 
     #[test]
@@ -521,7 +523,7 @@ mod tests {
 
         let m = decode_bytes(bytes)?;
         assert!(m.start.is_some());
-        assert_eq!(m.start.unwrap().0, 0);
+        assert_eq!(m.start.unwrap().0, FuncIndex(0));
 
         Ok(())
     }

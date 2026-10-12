@@ -9,7 +9,6 @@ use crate::{
 
 /// Indices​
 pub type TypeIdx = u32;
-pub type FuncIdx = u32;
 pub type TableIdx = u32;
 pub type ElemIdx = u32;
 pub type DataIdx = u32;
@@ -18,6 +17,20 @@ pub type LabelIdx = u32;
 /// Func Index
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FuncIndex(pub u32);
+
+impl FuncIndex {
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl<'a> FromReader<'a> for FuncIndex {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map(FuncIndex)
+    }
+}
 
 /// Mem Index
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -236,7 +249,7 @@ impl ConstExpression {
     /// Returns an iterator over the function references of this const expression.
     pub fn function_refs(&self) -> impl Iterator<Item = FuncIndex> {
         self.0.iter().filter_map(|inst| match inst {
-            Instruction::RefFunc(idx) => Some(FuncIndex(*idx)),
+            Instruction::RefFunc(idx) => Some(*idx),
             _ => None,
         })
     }

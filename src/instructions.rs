@@ -1,8 +1,9 @@
 use crate::binary::{
     reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
     types::{
-        BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIdx, GlobalIndex,
-        LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx, ValType,
+        BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIndex,
+        GlobalIndex, LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx,
+        ValType,
     },
 };
 
@@ -109,7 +110,7 @@ instructions! {
     BrIf(LabelIdx) : 0x0d : "br_if",
     BrTable(BranchTableIdx) : 0x0e : "br_table",
     Return : 0x0f : "return",
-    Call(u32) : 0x10 : "call",
+    Call(FuncIndex) : 0x10 : "call",
     CallIndirect((TypeIdx, TableIdx)) : 0x11 : "call_indirect",
 
     // Variable
@@ -304,7 +305,7 @@ instructions! {
     // Reference
     RefNull(RefType) : 0xd0 : "ref.null",
     RefIsNull : 0xd1 : "ref.is_null",
-    RefFunc(FuncIdx) : 0xd2 : "ref.func",
+    RefFunc(FuncIndex) : 0xd2 : "ref.func",
 
     @prefix 0xfc {
         I32TruncSatF32S : 0x00 : "i32_trunc_sat_f32_s",
@@ -621,13 +622,13 @@ mod tests {
         let mut reader = Reader::from_bytes(&[0x10, 0x00], 0);
         assert_eq!(
             decode_instruction(&mut reader).unwrap(),
-            Instruction::Call(0)
+            Instruction::Call(FuncIndex(0))
         );
 
         let mut reader = Reader::from_bytes(&[0x10, 0x0a], 0);
         assert_eq!(
             decode_instruction(&mut reader).unwrap(),
-            Instruction::Call(10)
+            Instruction::Call(FuncIndex(10))
         );
     }
 

@@ -1,12 +1,12 @@
 use crate::binary::{
     reader::Reader,
     sections::{SectionError, SectionErrorKind, SectionInfo},
-    types::FuncIdx,
+    types::FuncIndex,
 };
 
 /// Start Section
 #[derive(Debug)]
-pub struct StartSection(pub FuncIdx);
+pub struct StartSection(pub FuncIndex);
 
 pub fn decode_start_section(
     reader: &mut Reader,
@@ -17,5 +17,5 @@ pub fn decode_start_section(
         info,
         idx: None,
     })?;
-    Ok(StartSection(count))
+    Ok(StartSection(FuncIndex(count)))
 }
