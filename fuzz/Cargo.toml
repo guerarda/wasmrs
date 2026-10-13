@@ -1,0 +1,35 @@
+[package]
+name = "wasmrs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.wasmrs]
+path = ".."
+
+[[bin]]
+name = "fuzz_target_1"
+path = "fuzz_targets/fuzz_target_1.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_validate"
+path = "fuzz_targets/decode_validate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
