@@ -48,33 +48,58 @@ impl SectionEntry for CodeEntry {
             .filter(|&n| n <= MAX_WASM_FUNCTION_LOCALS)
             .ok_or(CodeSectionReadError::TooManyLocals)?;
 
-        let mut body = Vec::new();
-        let mut depth: u32 = 1; // The function itself is a block, closed by the final END.
+        enum CtrlFrame {
+            Function,
+            Block,
+            Loop,
+            If(bool),
+        }
+        let mut stack: Vec<CtrlFrame> = vec![CtrlFrame::Function];
+        let mut body = vec![];
 
-        while !reader.is_exhausted() {
+        while !reader.is_exhausted() && !stack.is_empty() {
             let instr =
                 decode_instruction(&mut reader).map_err(CodeSectionReadError::FunctionBody)?;
 
             match instr {
-                Instruction::Block(_) | Instruction::Loop(_) | Instruction::If(_) => {
-                    depth += 1;
+                Instruction::Block(_) => stack.push(CtrlFrame::Block),
+                Instruction::Loop(_) => stack.push(CtrlFrame::Loop),
+                Instruction::If(_) => stack.push(CtrlFrame::If(false)),
+                Instruction::Else => {
+                    let top = stack
+                        .last_mut()
+                        .ok_or(CodeSectionReadError::ElseOutsideIfBlock)?;
+                    match &top {
+                        CtrlFrame::If(false) => {
+                            *top = CtrlFrame::If(true);
+                        }
+                        _ => return Err(CodeSectionReadError::ElseOutsideIfBlock.into()),
+                    }
                 }
                 Instruction::End => {
-                    depth -= 1;
+                    let _ = stack.pop();
                 }
                 _ => (),
             }
             body.push(instr);
         }
-        if depth == 0 {
-            Ok(CodeEntry {
-                size: size as usize,
-                locals,
-                body,
-            })
-        } else {
-            Err(CodeSectionReadError::MissingEnd.into())
+
+        if !stack.is_empty() {
+            return Err(CodeSectionReadError::MissingEnd.into());
         }
+
+        if !reader.is_exhausted() {
+            return Err(SectionErrorKind::SectionSizeMismatch {
+                end: reader.position() as usize,
+                expected: reader.end() as usize,
+            });
+        }
+
+        Ok(CodeEntry {
+            size: size as usize,
+            locals,
+            body,
+        })
     }
 }
 
@@ -98,6 +123,7 @@ pub enum CodeSectionReadError {
     TooManyLocals,
     FunctionBody(InstructionError),
     MissingEnd,
+    ElseOutsideIfBlock,
 }
 
 impl error::Error for CodeSectionReadError {
@@ -108,6 +134,7 @@ impl error::Error for CodeSectionReadError {
             Self::TooManyLocals => None,
             Self::FunctionLocals(e) => Some(e),
             Self::MissingEnd => None,
+            Self::ElseOutsideIfBlock => None,
         }
     }
 }
@@ -120,6 +147,7 @@ impl fmt::Display for CodeSectionReadError {
             Self::TooManyLocals => write!(f, "checking function locals count"),
             Self::FunctionBody(_) => write!(f, "reading function body"),
             Self::MissingEnd => write!(f, "missing end instruction (0x0b)"),
+            Self::ElseOutsideIfBlock => write!(f, "else outside if block"),
         }
     }
 }
@@ -127,5 +155,94 @@ impl fmt::Display for CodeSectionReadError {
 impl From<CodeSectionReadError> for SectionErrorKind {
     fn from(value: CodeSectionReadError) -> Self {
         SectionErrorKind::CodeSection(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_else_outside_if_block() -> anyhow::Result<()> {
+        // Body size: 3 bytes; no locals, else, end.
+        let bytes = b"\x03\x00\x05\x0b";
+        let mut reader = Reader::from_bytes(bytes, 0);
+
+        let result = CodeEntry::decode(&mut reader);
+        assert!(
+            matches!(
+                &result,
+                Err(SectionErrorKind::CodeSection(
+                    CodeSectionReadError::ElseOutsideIfBlock
+                ))
+            ),
+            "expected else outside if block error, got: {result:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_duplicate_else() -> anyhow::Result<()> {
+        // Body size: 9 bytes; no locals, i32.const 1, if (empty type),
+        // else, duplicate else, end of if, end of function.
+        let bytes = b"\x09\x00\x41\x01\x04\x40\x05\x05\x0b\x0b";
+        let mut reader = Reader::from_bytes(bytes, 0);
+
+        let result = CodeEntry::decode(&mut reader);
+        assert!(
+            matches!(
+                &result,
+                Err(SectionErrorKind::CodeSection(
+                    CodeSectionReadError::ElseOutsideIfBlock
+                ))
+            ),
+            "expected error for duplicate else, got: {:?}",
+            result
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_else_inside_block_or_loop_nested_in_if() -> anyhow::Result<()> {
+        // Each body is 11 bytes: no locals, i32.const 1, if (empty type),
+        // block/loop (empty type), misplaced else, then three ends.
+        let cases = [
+            ("block", b"\x0b\x00\x41\x01\x04\x40\x02\x40\x05\x0b\x0b\x0b"),
+            ("loop", b"\x0b\x00\x41\x01\x04\x40\x03\x40\x05\x0b\x0b\x0b"),
+        ];
+
+        for (name, bytes) in cases {
+            let mut reader = Reader::from_bytes(bytes, 0);
+            let result = CodeEntry::decode(&mut reader);
+            assert!(
+                matches!(
+                    &result,
+                    Err(SectionErrorKind::CodeSection(
+                        CodeSectionReadError::ElseOutsideIfBlock
+                    ))
+                ),
+                "expected error for else inside nested {name}, got: {:?}",
+                result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_instruction_after_function_end() -> anyhow::Result<()> {
+        // Body size: 3 bytes; no locals, end, trailing nop.
+        let bytes = b"\x03\x00\x0b\x01";
+        let mut reader = Reader::from_bytes(bytes, 0);
+
+        let result = CodeEntry::decode(&mut reader);
+        assert!(
+            matches!(&result, Err(SectionErrorKind::SectionSizeMismatch { .. })),
+            "expected section size mismatch for instruction after function end, got: {result:?}"
+        );
+
+        Ok(())
     }
 }

@@ -81,6 +81,10 @@ impl<'a> Reader<'a> {
         self.cursor.position()
     }
 
+    pub fn end(&self) -> u64 {
+        self.range.end
+    }
+
     pub fn is_exhausted(&self) -> bool {
         self.position() >= self.range.end
     }
