@@ -440,7 +440,7 @@ mod tests {
     fn test_section_size_exceeds_remaining_bytes() -> anyhow::Result<()> {
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
-            b"\x01\x06", // Type section: 6 bytes declared
+            b"\x01\x06",     // Type section: 6 bytes declared
             b"\x01\x60\x01", // Only 3 payload bytes remain
         ]
         .concat();
@@ -463,7 +463,7 @@ mod tests {
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
             b"\x01\xff\xff\xff\xff\x0f", // Type section: u32::MAX size in LEB128
-            b"\x00", // Only 1 payload byte remains
+            b"\x00",                     // Only 1 payload byte remains
         ]
         .concat();
 
