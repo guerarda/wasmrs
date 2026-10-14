@@ -317,7 +317,13 @@ impl fmt::Display for ReadError {
                 )
             }
             ReadErrorKind::OutOfRange { size, remaining } => {
-                write!(f, "requested {} bytes, only {} available", size, remaining)
+                write!(
+                    f,
+                    "at offset {a:#0x}, requested {b} bytes, only {c} available",
+                    a = self.offset,
+                    b = size,
+                    c = remaining
+                )
             }
             ReadErrorKind::UnexpectedValue { value, expected } => {
                 write!(

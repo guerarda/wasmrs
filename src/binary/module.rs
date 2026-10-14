@@ -109,7 +109,6 @@ impl From<ReadError> for MalformedError {
 }
 
 use std::collections::HashMap;
-use std::io::{Seek, SeekFrom};
 
 const WASM_MAGIC: [u8; 4] = *b"\0asm";
 const WASM_VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
@@ -218,18 +217,25 @@ impl<'a> ModuleReader<'a> {
             }
 
             let size = self.reader.read_u32()?;
+            let start = self.reader.position();
+            let end = start + size as u64;
 
             let info = SectionInfo {
                 offset,
                 id,
-                start: self.reader.position(),
-                end: self
-                    .reader
-                    .cursor
-                    .seek(SeekFrom::Current(size as i64))
-                    .unwrap(),
+                start,
+                end,
                 size,
             };
+
+            if let Err(e) = self.reader.scoped(size) {
+                return Err(MalformedError::Section(SectionError {
+                    kind: Box::new(SectionErrorKind::SectionSize(e)),
+                    info,
+                    idx: None,
+                }));
+            }
+
             if let Some(prev) = v.last()
                 && prev.id != SectionId::Custom
                 && info.id != SectionId::Custom
@@ -405,6 +411,71 @@ mod tests {
 
         let m = decode_bytes(bytes);
         assert!(m.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_section_missing_payload() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x06", // Type section: 6 bytes declared, no payload
+        ]
+        .concat();
+
+        let result = decode_bytes(bytes);
+        assert!(
+            matches!(
+                &result,
+                Err(MalformedError::Section(error))
+                    if matches!(error.kind.as_ref(), SectionErrorKind::SectionSize(_))
+            ),
+            "expected section size error, got: {result:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_section_size_exceeds_remaining_bytes() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\x06", // Type section: 6 bytes declared
+            b"\x01\x60\x01", // Only 3 payload bytes remain
+        ]
+        .concat();
+
+        let result = decode_bytes(bytes);
+        assert!(
+            matches!(
+                &result,
+                Err(MalformedError::Section(error))
+                    if matches!(error.kind.as_ref(), SectionErrorKind::SectionSize(_))
+            ),
+            "expected section size error, got: {result:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_section_size_u32_max() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x01\xff\xff\xff\xff\x0f", // Type section: u32::MAX size in LEB128
+            b"\x00", // Only 1 payload byte remains
+        ]
+        .concat();
+
+        let result = decode_bytes(bytes);
+        assert!(
+            matches!(
+                &result,
+                Err(MalformedError::Section(error))
+                    if matches!(error.kind.as_ref(), SectionErrorKind::SectionSize(_))
+            ),
+            "expected section size error, got: {result:?}"
+        );
 
         Ok(())
     }
