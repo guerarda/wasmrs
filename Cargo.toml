@@ -23,6 +23,10 @@ path = "tools/wast_debug.rs"
 required-features = ["spec-tests"]
 
 [[test]]
+name = "regression_runner"
+harness = false
+
+[[test]]
 name = "wast_runner"
 harness = false
 required-features = ["spec-tests"]

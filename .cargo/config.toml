@@ -1,3 +1,4 @@
 [alias]
 spec-test = "test --test wast_runner --features spec-tests --"
+regression-test = "test --test regression_runner --"
 wast_debug = "run --quiet --features spec-tests --bin wast_debug --"
