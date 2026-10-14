@@ -1032,7 +1032,7 @@ impl<'a> ExecutionContext<'a> {
                         }
                     }
                     Instruction::RefFunc(fi) => {
-                        let addr = module_inst.funcs[(*fi).0 as usize];
+                        let addr = module_inst.funcs[fi.0 as usize];
                         self.value_stack.push(Value::Ref(Ref::Func(addr)))
                     }
                     Instruction::I32TruncSatF32S => {
