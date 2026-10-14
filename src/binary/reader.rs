@@ -44,18 +44,11 @@ impl<'a> Reader<'a> {
     }
 
     pub fn scoped(&mut self, size: u32) -> Result<Reader<'a>> {
-        let start = self.position();
-        let end = start + size as u64;
-
-        if end > self.range.end {
-            let remaining = self.range.end.saturating_sub(start);
-            return Err(ReadError {
-                offset: start as usize,
-                kind: ReadErrorKind::OutOfRange { size, remaining },
-            });
-        }
+        self.ensure(size)?;
 
         // Advance past the requested range
+        let start = self.position();
+        let end = start + size as u64;
         self.cursor.set_position(end);
         let mut sub = Reader {
             cursor: io::Cursor::new(self.cursor.get_ref()),
@@ -87,6 +80,21 @@ impl<'a> Reader<'a> {
 
     pub fn is_exhausted(&self) -> bool {
         self.position() >= self.range.end
+    }
+
+    pub fn ensure(&self, remaining: u32) -> std::result::Result<(), ReadError> {
+        let pos = self.position();
+        let actual = self.range.end.saturating_sub(pos);
+        if remaining as u64 > actual {
+            return Err(ReadError {
+                offset: pos as usize,
+                kind: ReadErrorKind::OutOfRange {
+                    size: remaining,
+                    remaining: actual,
+                },
+            });
+        }
+        Ok(())
     }
 
     pub fn peek(&mut self) -> Result<u8> {
@@ -169,6 +177,8 @@ impl<'a> Reader<'a> {
         let offset = self.position() as usize;
 
         let len = self.read_u32()?;
+        self.ensure(len)?;
+
         let mut bytes = vec![0u8; len as usize];
         self.read_exact(&mut bytes)?;
 

@@ -481,6 +481,24 @@ mod tests {
     }
 
     #[test]
+    fn test_name_length_exceeds_remaining_bytes() -> anyhow::Result<()> {
+        let bytes = [
+            b"\0asm\x01\x00\x00\x00" as &[u8],
+            b"\x00\x0f",             // Custom section: 15 payload bytes
+            b"\xff\xff\xff\xff\x0b", // Name length: 0xbfffffff in unsigned LEB128
+            b"\x00\x0a\x1e\x01\x1c\x00\x20\x00\xbf\x47", // Only 10 bytes remain
+        ]
+        .concat();
+
+        let result = decode_bytes(bytes);
+        assert!(
+            result.is_err(),
+            "expected decoding error for oversized custom section name, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn test_decode_type_section() -> anyhow::Result<()> {
         let bytes = [
             b"\0asm\x01\x00\x00\x00" as &[u8],
