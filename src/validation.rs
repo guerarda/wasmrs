@@ -93,8 +93,35 @@ struct Validator {
 }
 
 #[derive(Debug)]
-#[non_exhaustive]
 pub enum ValidationError {
+    Module(ValidationErrorKind),
+}
+
+impl error::Error for ValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match &self {
+            Self::Module(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Self::Module(_) => write!(f, "invalid module"),
+        }
+    }
+}
+
+impl From<ValidationErrorKind> for ValidationError {
+    fn from(value: ValidationErrorKind) -> Self {
+        ValidationError::Module(value)
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ValidationErrorKind {
     ControlStackUnderflow,
     ValueStackUnderflow,
     TypeMismatch,
@@ -121,13 +148,13 @@ pub enum ValidationError {
     StartFunction,
 }
 
-impl error::Error for ValidationError {
+impl error::Error for ValidationErrorKind {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }
 }
 
-impl fmt::Display for ValidationError {
+impl fmt::Display for ValidationErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ControlStackUnderflow => write!(f, "control stack underflow"),
@@ -158,103 +185,103 @@ impl fmt::Display for ValidationError {
     }
 }
 
-impl ValidationError {
-    fn mint(e: ValidationError) -> ValidationError {
+impl ValidationErrorKind {
+    fn mint(e: ValidationErrorKind) -> ValidationErrorKind {
         #[cfg(feature = "debug-errors")]
         dbg_breakpoint::breakpoint_if_debugging();
         e
     }
 
     fn type_mismatch() -> Self {
-        Self::mint(ValidationError::TypeMismatch)
+        Self::mint(ValidationErrorKind::TypeMismatch)
     }
 
     fn value_stack_underflow() -> Self {
-        Self::mint(ValidationError::ValueStackUnderflow)
+        Self::mint(ValidationErrorKind::ValueStackUnderflow)
     }
 
     fn control_stack_underflow() -> Self {
-        Self::mint(ValidationError::ControlStackUnderflow)
+        Self::mint(ValidationErrorKind::ControlStackUnderflow)
     }
 
     fn table_type_mismatch() -> Self {
-        Self::mint(ValidationError::TableTypeMismatch)
+        Self::mint(ValidationErrorKind::TableTypeMismatch)
     }
 
     fn else_without_matching_if() -> Self {
-        Self::mint(ValidationError::ElseWithoutMatchingIf)
+        Self::mint(ValidationErrorKind::ElseWithoutMatchingIf)
     }
 
     fn undeclared_function_reference() -> Self {
-        Self::mint(ValidationError::UndeclaredFunctionReference)
+        Self::mint(ValidationErrorKind::UndeclaredFunctionReference)
     }
 
     fn unknown_local() -> Self {
-        Self::mint(ValidationError::UnknownLocal)
+        Self::mint(ValidationErrorKind::UnknownLocal)
     }
 
     fn unknown_global() -> Self {
-        Self::mint(ValidationError::UnknownGlobal)
+        Self::mint(ValidationErrorKind::UnknownGlobal)
     }
 
     fn unknown_type() -> Self {
-        Self::mint(ValidationError::UnknownType)
+        Self::mint(ValidationErrorKind::UnknownType)
     }
 
     fn unknown_table() -> Self {
-        Self::mint(ValidationError::UnknownTable)
+        Self::mint(ValidationErrorKind::UnknownTable)
     }
 
     fn unknown_function() -> Self {
-        Self::mint(ValidationError::UnknownFunction)
+        Self::mint(ValidationErrorKind::UnknownFunction)
     }
 
     fn unknown_memory() -> Self {
-        Self::mint(ValidationError::UnknownMemory)
+        Self::mint(ValidationErrorKind::UnknownMemory)
     }
 
     fn unknown_data() -> Self {
-        Self::mint(ValidationError::UnknownData)
+        Self::mint(ValidationErrorKind::UnknownData)
     }
 
     fn unknown_element() -> Self {
-        Self::mint(ValidationError::UnknownElement)
+        Self::mint(ValidationErrorKind::UnknownElement)
     }
 
     fn immutable_global() -> Self {
-        Self::mint(ValidationError::ImmutableGlobal)
+        Self::mint(ValidationErrorKind::ImmutableGlobal)
     }
 
     fn invalid_select_types() -> Self {
-        Self::mint(ValidationError::InvalidSelectTypes)
+        Self::mint(ValidationErrorKind::InvalidSelectTypes)
     }
 
     fn invalid_mem_alignment() -> Self {
-        Self::mint(ValidationError::InvalidMemAlignment)
+        Self::mint(ValidationErrorKind::InvalidMemAlignment)
     }
 
     fn invalid_limit() -> Self {
-        Self::mint(ValidationError::InvalidLimit)
+        Self::mint(ValidationErrorKind::InvalidLimit)
     }
 
     fn multiple_memories() -> Self {
-        Self::mint(ValidationError::MultipleMemories)
+        Self::mint(ValidationErrorKind::MultipleMemories)
     }
 
     fn constant_expression_required() -> Self {
-        Self::mint(ValidationError::ConstantExpressionRequired)
+        Self::mint(ValidationErrorKind::ConstantExpressionRequired)
     }
 
     fn duplicate_export_name() -> Self {
-        Self::mint(ValidationError::DuplicatExportName)
+        Self::mint(ValidationErrorKind::DuplicatExportName)
     }
 
     fn function_code_mismatch() -> Self {
-        Self::mint(ValidationError::FunctionCodeMismatch)
+        Self::mint(ValidationErrorKind::FunctionCodeMismatch)
     }
 
     fn start_function() -> Self {
-        Self::mint(ValidationError::StartFunction)
+        Self::mint(ValidationErrorKind::StartFunction)
     }
 }
 
@@ -270,7 +297,7 @@ impl Validator {
     fn pop_vals_expect(
         &mut self,
         expected: &[ValueType],
-    ) -> result::Result<Vec<ValueType>, ValidationError> {
+    ) -> result::Result<Vec<ValueType>, ValidationErrorKind> {
         let mut res = vec![];
         for t in expected.iter().rev() {
             res.push(self.pop_val_expect(*t)?);
@@ -279,14 +306,14 @@ impl Validator {
         Ok(res)
     }
 
-    fn pop_val(&mut self) -> result::Result<ValueType, ValidationError> {
+    fn pop_val(&mut self) -> result::Result<ValueType, ValidationErrorKind> {
         let last = self.ctrls.last().expect("unexpected empty control stack");
         if self.vals.len() == last.height && last.unreachable {
             return Ok(ValueType::Unknown);
         }
 
         if self.vals.len() == last.height {
-            return Err(ValidationError::value_stack_underflow());
+            return Err(ValidationErrorKind::value_stack_underflow());
         }
 
         Ok(self.vals.pop().expect("unexpected empty value stack"))
@@ -295,18 +322,18 @@ impl Validator {
     fn pop_val_expect(
         &mut self,
         expected: ValueType,
-    ) -> result::Result<ValueType, ValidationError> {
+    ) -> result::Result<ValueType, ValidationErrorKind> {
         let actual = self.pop_val()?;
         if actual != expected && actual != ValueType::Unknown && expected != ValueType::Unknown {
-            return Err(ValidationError::type_mismatch());
+            return Err(ValidationErrorKind::type_mismatch());
         }
         Ok(actual)
     }
 
-    fn pop_ref(&mut self) -> result::Result<ValueType, ValidationError> {
+    fn pop_ref(&mut self) -> result::Result<ValueType, ValidationErrorKind> {
         let actual = self.pop_val()?;
         if actual != ValueType::Unknown && !actual.is_ref() {
-            return Err(ValidationError::type_mismatch());
+            return Err(ValidationErrorKind::type_mismatch());
         }
         Ok(actual)
     }
@@ -323,11 +350,11 @@ impl Validator {
         });
     }
 
-    fn pop_ctrl(&mut self) -> result::Result<CtrlFrame, ValidationError> {
+    fn pop_ctrl(&mut self) -> result::Result<CtrlFrame, ValidationErrorKind> {
         let frame = self
             .ctrls
             .last()
-            .ok_or_else(ValidationError::control_stack_underflow)?;
+            .ok_or_else(ValidationErrorKind::control_stack_underflow)?;
         let height = frame.height;
 
         // need to clone here because pop_vals_expect below
@@ -336,7 +363,7 @@ impl Validator {
 
         let _ = self.pop_vals_expect(&end_types)?;
         if self.vals.len() != height {
-            return Err(ValidationError::type_mismatch());
+            return Err(ValidationErrorKind::type_mismatch());
         }
         Ok(self.ctrls.pop().expect("unexpected empty control stack"))
     }
@@ -355,7 +382,7 @@ impl Validator {
     fn block_type(
         bt: &BlockType,
         module: &Module,
-    ) -> result::Result<(Vec<ValueType>, Vec<ValueType>), ValidationError> {
+    ) -> result::Result<(Vec<ValueType>, Vec<ValueType>), ValidationErrorKind> {
         Ok(match bt {
             BlockType::Empty => (vec![], vec![]),
             BlockType::Value(vt) => (vec![], vec![vt.into()]),
@@ -363,11 +390,11 @@ impl Validator {
                 let types = &module
                     .types
                     .as_ref()
-                    .ok_or_else(ValidationError::unknown_type)?;
+                    .ok_or_else(ValidationErrorKind::unknown_type)?;
 
                 let t = types
                     .get(*idx as usize)
-                    .ok_or(ValidationError::UnknownType)?;
+                    .ok_or(ValidationErrorKind::UnknownType)?;
                 (
                     t.params.iter().copied().map(|v| (&v).into()).collect(),
                     t.results.iter().copied().map(|v| (&v).into()).collect(),
@@ -377,12 +404,12 @@ impl Validator {
     }
 
     /// Returns the function type at the given type index (not function index)
-    fn type_at(module: &Module, type_idx: u32) -> result::Result<&FuncType, ValidationError> {
+    fn type_at(module: &Module, type_idx: u32) -> result::Result<&FuncType, ValidationErrorKind> {
         module
             .types
             .as_ref()
             .and_then(|types| types.get(type_idx as usize))
-            .ok_or_else(ValidationError::unknown_type)
+            .ok_or_else(ValidationErrorKind::unknown_type)
     }
 
     /// Returns the type for an idx in the Function Section.
@@ -390,7 +417,7 @@ impl Validator {
     fn func_type_at(
         module: &Module,
         func_idx: FuncIndex,
-    ) -> result::Result<&FuncType, ValidationError> {
+    ) -> result::Result<&FuncType, ValidationErrorKind> {
         let imported = module
             .imports
             .iter()
@@ -404,7 +431,7 @@ impl Validator {
         let type_idx = imported
             .chain(defined)
             .nth(func_idx.as_usize())
-            .ok_or_else(ValidationError::unknown_function)?;
+            .ok_or_else(ValidationErrorKind::unknown_function)?;
 
         Self::type_at(module, type_idx)
     }
@@ -414,7 +441,7 @@ impl Validator {
     fn table_type_at(
         module: &Module,
         table_idx: u32,
-    ) -> result::Result<&TableType, ValidationError> {
+    ) -> result::Result<&TableType, ValidationErrorKind> {
         let imported = module
             .imports
             .iter()
@@ -428,7 +455,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(table_idx as usize)
-            .ok_or_else(ValidationError::unknown_table)
+            .ok_or_else(ValidationErrorKind::unknown_table)
     }
 
     /// Returns the global type at the given index
@@ -436,7 +463,7 @@ impl Validator {
     fn global_type_at(
         module: &Module,
         idx: GlobalIndex,
-    ) -> result::Result<&GlobalType, ValidationError> {
+    ) -> result::Result<&GlobalType, ValidationErrorKind> {
         let imported = module
             .imports
             .iter()
@@ -451,13 +478,13 @@ impl Validator {
         imported
             .chain(defined)
             .nth(idx.0 as usize)
-            .ok_or_else(ValidationError::unknown_global)
+            .ok_or_else(ValidationErrorKind::unknown_global)
     }
 
     fn mem_type_at(
         module: &Module,
         mem_idx: MemIndex,
-    ) -> result::Result<&MemType, ValidationError> {
+    ) -> result::Result<&MemType, ValidationErrorKind> {
         let imported = module
             .imports
             .iter()
@@ -471,7 +498,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(mem_idx.0 as usize)
-            .ok_or_else(ValidationError::unknown_memory)
+            .ok_or_else(ValidationErrorKind::unknown_memory)
     }
 
     /// Return the type of the function local at the given index
@@ -479,7 +506,7 @@ impl Validator {
         functype: &FuncType,
         locals: &[FuncLocal],
         idx: u32,
-    ) -> result::Result<ValueType, ValidationError> {
+    ) -> result::Result<ValueType, ValidationErrorKind> {
         if let Some(param) = functype.params.get(idx as usize) {
             return Ok(param.into());
         }
@@ -492,7 +519,7 @@ impl Validator {
             }
             count += local.count;
         }
-        Err(ValidationError::unknown_local())
+        Err(ValidationErrorKind::unknown_local())
     }
 
     /// Returns the label_types for the nth frame from the top
@@ -510,15 +537,15 @@ impl Validator {
     fn validate_mem_alignment(
         memarg: &MemArg,
         byte_size: u32,
-    ) -> result::Result<(), ValidationError> {
+    ) -> result::Result<(), ValidationErrorKind> {
         if (1 << memarg.align) > byte_size {
-            Err(ValidationError::invalid_mem_alignment())
+            Err(ValidationErrorKind::invalid_mem_alignment())
         } else {
             Ok(())
         }
     }
 
-    fn validate_binop(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+    fn validate_binop(&mut self, valtype: ValType) -> result::Result<(), ValidationErrorKind> {
         // [t t] -> [t]
         let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
@@ -527,7 +554,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_unop(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+    fn validate_unop(&mut self, valtype: ValType) -> result::Result<(), ValidationErrorKind> {
         // [t] -> [t]
         let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
@@ -539,7 +566,7 @@ impl Validator {
         &mut self,
         from_valtype: ValType,
         to_valtype: ValType,
-    ) -> result::Result<(), ValidationError> {
+    ) -> result::Result<(), ValidationErrorKind> {
         // [t1] -> [t2]
         let from_valtype = from_valtype.into();
         let to_valtype = to_valtype.into();
@@ -548,7 +575,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_compop(&mut self, valtype: ValType) -> result::Result<(), ValidationError> {
+    fn validate_compop(&mut self, valtype: ValType) -> result::Result<(), ValidationErrorKind> {
         // [t t] -> [i32]
         let valtype = valtype.into();
         self.pop_val_expect(valtype)?;
@@ -563,7 +590,7 @@ impl Validator {
         memarg: &MemArg,
         byte_size: u32,
         valuetype: ValType,
-    ) -> result::Result<(), ValidationError> {
+    ) -> result::Result<(), ValidationErrorKind> {
         // mems[0] is defined in the context
         let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
 
@@ -582,7 +609,7 @@ impl Validator {
         memarg: &MemArg,
         byte_size: u32,
         valuetype: ValType,
-    ) -> result::Result<(), ValidationError> {
+    ) -> result::Result<(), ValidationErrorKind> {
         // mems[0] is defined in the context
         let _ = Self::mem_type_at(module, MemIndex::ZERO)?;
 
@@ -603,7 +630,7 @@ impl Validator {
         module: &Module,
         expr: &ConstExpression,
         expected: &[ValueType],
-    ) -> result::Result<(), ValidationError> {
+    ) -> result::Result<(), ValidationErrorKind> {
         let mut stack = vec![];
         for inst in &expr.0 {
             match inst {
@@ -614,7 +641,7 @@ impl Validator {
                 Instruction::RefNull(rt) => stack.push(ValueType::Ref(*rt)),
                 Instruction::RefFunc(idx) => {
                     if idx.as_usize() >= module.func_count() {
-                        return Err(ValidationError::unknown_function());
+                        return Err(ValidationErrorKind::unknown_function());
                     }
                     stack.push(ValueType::Ref(RefType::Func))
                 }
@@ -622,7 +649,7 @@ impl Validator {
                     let idx = idx.0 as usize;
 
                     if idx >= module.imported_global_count() {
-                        return Err(ValidationError::unknown_global());
+                        return Err(ValidationErrorKind::unknown_global());
                     }
 
                     let import = module
@@ -633,7 +660,7 @@ impl Validator {
                                 .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
                                 .nth(idx)
                         })
-                        .ok_or_else(ValidationError::unknown_global)?;
+                        .ok_or_else(ValidationErrorKind::unknown_global)?;
 
                     let ImportDesc::Global(gt) = &import.desc else {
                         unreachable!()
@@ -642,17 +669,17 @@ impl Validator {
                     if matches!(gt.mutflag, MutabilityFlag::Const) {
                         stack.push(ValueType::from(gt.type_));
                     } else {
-                        return Err(ValidationError::constant_expression_required());
+                        return Err(ValidationErrorKind::constant_expression_required());
                     }
                 }
                 Instruction::End => break,
-                _ => return Err(ValidationError::constant_expression_required()),
+                _ => return Err(ValidationErrorKind::constant_expression_required()),
             }
         }
         if stack == expected {
             Ok(())
         } else {
-            Err(ValidationError::type_mismatch())
+            Err(ValidationErrorKind::type_mismatch())
         }
     }
 
@@ -662,7 +689,7 @@ impl Validator {
         entry: &CodeEntry,
         module: &Module,
         declared_refs: &[FuncIndex],
-    ) -> result::Result<(), ValidationError> {
+    ) -> result::Result<(), ValidationErrorKind> {
         let end_types: Vec<ValueType> = functype.results.iter().map(ValueType::from).collect();
         self.push_ctrl(Instruction::Call(FuncIndex(0)), vec![], end_types);
 
@@ -679,7 +706,7 @@ impl Validator {
         entry: &CodeEntry,
         module: &Module,
         declared_refs: &[FuncIndex],
-    ) -> result::Result<(), ValidationError> {
+    ) -> result::Result<(), ValidationErrorKind> {
         match instruction {
             Instruction::Unreachable => self.unreachable(),
             Instruction::Nop => (),
@@ -705,7 +732,7 @@ impl Validator {
             Instruction::Else => {
                 let frame = self.pop_ctrl()?;
                 if !matches!(frame.opcode, Instruction::If(_)) {
-                    return Err(ValidationError::else_without_matching_if());
+                    return Err(ValidationErrorKind::else_without_matching_if());
                 }
                 self.push_ctrl(Instruction::Else, frame.start_types, frame.end_types)
             }
@@ -714,14 +741,14 @@ impl Validator {
                 if matches!(frame.opcode, Instruction::If(_))
                     && frame.start_types != frame.end_types
                 {
-                    return Err(ValidationError::type_mismatch());
+                    return Err(ValidationErrorKind::type_mismatch());
                 }
                 self.push_vals(&frame.end_types);
             }
             Instruction::Br(n) => {
                 let n = *n as usize;
                 if self.ctrls.len() <= n {
-                    return Err(ValidationError::control_stack_underflow());
+                    return Err(ValidationErrorKind::control_stack_underflow());
                 }
                 // FIXME Avoid Copy. pop_vals must be in ValueStack impl
                 let lt = Self::label_types(n, &self.ctrls).to_vec();
@@ -731,7 +758,7 @@ impl Validator {
             Instruction::BrIf(n) => {
                 let n = *n as usize;
                 if self.ctrls.len() <= n {
-                    return Err(ValidationError::control_stack_underflow());
+                    return Err(ValidationErrorKind::control_stack_underflow());
                 }
                 self.pop_val_expect(ValueType::I32)?;
 
@@ -746,7 +773,7 @@ impl Validator {
                 // Verify the default target exists and get its arity
                 let m = idx.default as usize;
                 if self.ctrls.len() <= m {
-                    return Err(ValidationError::control_stack_underflow());
+                    return Err(ValidationErrorKind::control_stack_underflow());
                 }
                 let m_types = Self::label_types(m, &self.ctrls).to_vec();
                 let arity = m_types.len();
@@ -757,11 +784,11 @@ impl Validator {
                     // compatible with what's currently on the stack.
                     let n = *n as usize;
                     if self.ctrls.len() <= n {
-                        return Err(ValidationError::control_stack_underflow());
+                        return Err(ValidationErrorKind::control_stack_underflow());
                     }
                     let n_types = Self::label_types(n, &self.ctrls).to_vec();
                     if n_types.len() != arity {
-                        return Err(ValidationError::type_mismatch());
+                        return Err(ValidationErrorKind::type_mismatch());
                     }
                     let mut actual = self.pop_vals_expect(&n_types)?;
                     actual.reverse();
@@ -802,7 +829,7 @@ impl Validator {
                 // [t1* i32] -> [t2*]
                 let table_type = Self::table_type_at(module, *table_idx)?;
                 if !matches!(table_type.elemtype, RefType::Func) {
-                    return Err(ValidationError::table_type_mismatch());
+                    return Err(ValidationErrorKind::table_type_mismatch());
                 }
 
                 self.pop_val_expect(ValueType::I32)?;
@@ -836,11 +863,11 @@ impl Validator {
                     |t: &ValueType| t.is_num() || t.is_vec() || *t == ValueType::Unknown;
 
                 if !is_num_or_vec(&t1) || !is_num_or_vec(&t2) {
-                    return Err(ValidationError::type_mismatch());
+                    return Err(ValidationErrorKind::type_mismatch());
                 }
 
                 if t1 != t2 && t1 != ValueType::Unknown && t2 != ValueType::Unknown {
-                    return Err(ValidationError::type_mismatch());
+                    return Err(ValidationErrorKind::type_mismatch());
                 }
 
                 self.push_val(if t1 == ValueType::Unknown { t2 } else { t1 });
@@ -848,7 +875,7 @@ impl Validator {
             Instruction::SelectT(vt) => {
                 // [t t i32] -> [t]
                 let [t] = vt.as_slice() else {
-                    return Err(ValidationError::invalid_select_types());
+                    return Err(ValidationErrorKind::invalid_select_types());
                 };
 
                 let t = t.into();
@@ -882,7 +909,7 @@ impl Validator {
                 // [t] -> []
                 let gt = Self::global_type_at(module, *idx)?;
                 if matches!(gt.mutflag, MutabilityFlag::Const) {
-                    return Err(ValidationError::immutable_global());
+                    return Err(ValidationErrorKind::immutable_global());
                 }
                 self.pop_val_expect(gt.into())?;
             }
@@ -1143,12 +1170,12 @@ impl Validator {
             Instruction::RefFunc(idx) => {
                 // Check that the function index is valid in this module
                 if idx.as_usize() >= module.func_count() {
-                    return Err(ValidationError::UnknownFunction);
+                    return Err(ValidationErrorKind::UnknownFunction);
                 }
                 // Check that the function index has been declared for use
                 // as reference.
                 if !declared_refs.contains(idx) {
-                    return Err(ValidationError::undeclared_function_reference());
+                    return Err(ValidationErrorKind::undeclared_function_reference());
                 }
 
                 self.push_val(ValueType::Ref(RefType::Func))
@@ -1181,7 +1208,7 @@ impl Validator {
                     .as_ref()
                     .is_none_or(|data| (*dataidx as usize) >= data.len())
                 {
-                    return Err(ValidationError::unknown_data());
+                    return Err(ValidationErrorKind::unknown_data());
                 }
             }
             Instruction::DataDrop(idx) => {
@@ -1190,7 +1217,7 @@ impl Validator {
                     .as_ref()
                     .is_none_or(|data| (*idx as usize) >= data.len())
                 {
-                    return Err(ValidationError::unknown_data());
+                    return Err(ValidationErrorKind::unknown_data());
                 }
             }
             Instruction::MemoryCopy((dstidx, srcidx)) => {
@@ -1226,7 +1253,7 @@ impl Validator {
                     .elements
                     .as_ref()
                     .and_then(|elems| elems.get(*elemidx as usize))
-                    .ok_or_else(ValidationError::unknown_element)?;
+                    .ok_or_else(ValidationErrorKind::unknown_element)?;
 
                 let elemtype = match elem.items {
                     ElementSegmentItems::Functions(_) => RefType::Func,
@@ -1234,7 +1261,7 @@ impl Validator {
                 };
 
                 if elemtype != tabletype.elemtype {
-                    return Err(ValidationError::type_mismatch());
+                    return Err(ValidationErrorKind::type_mismatch());
                 }
             }
             Instruction::ElemDrop(idx) => {
@@ -1243,7 +1270,7 @@ impl Validator {
                     .as_ref()
                     .is_none_or(|elems| (*idx as usize) >= elems.len())
                 {
-                    return Err(ValidationError::unknown_element());
+                    return Err(ValidationErrorKind::unknown_element());
                 }
             }
             Instruction::TableCopy((dstidx, srcidx)) => {
@@ -1256,7 +1283,7 @@ impl Validator {
                 let src_type = Self::table_type_at(module, *srcidx)?;
 
                 if src_type.elemtype != dst_type.elemtype {
-                    return Err(ValidationError::type_mismatch());
+                    return Err(ValidationErrorKind::type_mismatch());
                 }
             }
             Instruction::TableGrow(idx) => {
@@ -1287,7 +1314,7 @@ impl Validator {
     }
 
     // Section validation
-    fn validate_table_section(module: &Module) -> result::Result<(), ValidationError> {
+    fn validate_table_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref tablesec) = module.tables else {
             return Ok(());
         };
@@ -1296,7 +1323,7 @@ impl Validator {
             // Validate the table limit
             let l = &table.tabletype.limit;
             if l.max.is_some_and(|max| l.min > max) {
-                return Err(ValidationError::invalid_limit());
+                return Err(ValidationErrorKind::invalid_limit());
             }
 
             // Validate that the expression, if present is a valid const
@@ -1312,24 +1339,24 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_memory_section(module: &Module) -> result::Result<(), ValidationError> {
+    fn validate_memory_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref memsec) = module.memories else {
             return Ok(());
         };
 
         // Only one memory is allowed
         if memsec.len() > 1 {
-            return Err(ValidationError::multiple_memories());
+            return Err(ValidationErrorKind::multiple_memories());
         }
 
         if !memsec.iter().all(MemType::is_valid) {
-            return Err(ValidationError::invalid_limit());
+            return Err(ValidationErrorKind::invalid_limit());
         }
 
         Ok(())
     }
 
-    fn validate_element_section(module: &Module) -> result::Result<(), ValidationError> {
+    fn validate_element_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref elemsec) = module.elements else {
             return Ok(());
         };
@@ -1358,7 +1385,7 @@ impl Validator {
                 let table_type = Self::table_type_at(module, idx)?;
 
                 if table_type.elemtype != rt {
-                    return Err(ValidationError::type_mismatch());
+                    return Err(ValidationErrorKind::type_mismatch());
                 }
 
                 Self::validate_const_expr(module, offset, &[ValueType::I32])?;
@@ -1367,7 +1394,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_imports_section(module: &Module) -> result::Result<(), ValidationError> {
+    fn validate_imports_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref importsec) = module.imports else {
             return Ok(());
         };
@@ -1378,16 +1405,16 @@ impl Validator {
             match &i.desc {
                 ImportDesc::Func(idx) => {
                     if *idx as usize >= types_len {
-                        return Err(ValidationError::unknown_type());
+                        return Err(ValidationErrorKind::unknown_type());
                     }
                 }
                 ImportDesc::Mem(memtype) => {
                     if !memtype.is_valid() {
-                        return Err(ValidationError::invalid_limit());
+                        return Err(ValidationErrorKind::invalid_limit());
                     }
                     mems_count += 1;
                     if mems_count > 1 {
-                        return Err(ValidationError::multiple_memories());
+                        return Err(ValidationErrorKind::multiple_memories());
                     }
                 }
                 _ => (),
@@ -1396,7 +1423,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_exports_section(module: &Module) -> result::Result<(), ValidationError> {
+    fn validate_exports_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref exportsec) = module.exports else {
             return Ok(());
         };
@@ -1409,28 +1436,28 @@ impl Validator {
 
         for e in exportsec {
             if !names.insert(e.name.clone()) {
-                return Err(ValidationError::duplicate_export_name());
+                return Err(ValidationErrorKind::duplicate_export_name());
             }
             let idx = e.index as usize;
             match e.kind {
                 ExportKind::Func => {
                     if idx >= func_count {
-                        return Err(ValidationError::unknown_function());
+                        return Err(ValidationErrorKind::unknown_function());
                     }
                 }
                 ExportKind::Table => {
                     if idx >= table_count {
-                        return Err(ValidationError::unknown_table());
+                        return Err(ValidationErrorKind::unknown_table());
                     }
                 }
                 ExportKind::Memory => {
                     if idx >= mem_count {
-                        return Err(ValidationError::unknown_memory());
+                        return Err(ValidationErrorKind::unknown_memory());
                     }
                 }
                 ExportKind::Global => {
                     if idx >= global_count {
-                        return Err(ValidationError::unknown_global());
+                        return Err(ValidationErrorKind::unknown_global());
                     }
                 }
             }
@@ -1439,7 +1466,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_data_section(module: &Module) -> result::Result<(), ValidationError> {
+    fn validate_data_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref datasec) = module.data else {
             return Ok(());
         };
@@ -1448,7 +1475,7 @@ impl Validator {
         for d in datasec {
             if let DataSegmentMode::Active { mem_index, offset } = &d.mode {
                 if (*mem_index as usize) >= mem_count {
-                    return Err(ValidationError::unknown_memory());
+                    return Err(ValidationErrorKind::unknown_memory());
                 }
                 Self::validate_const_expr(module, offset, &[ValueType::I32])?;
             }
@@ -1456,7 +1483,7 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_globals_section(module: &Module) -> result::Result<(), ValidationError> {
+    fn validate_globals_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref globalsec) = module.globals else {
             return Ok(());
         };
@@ -1469,7 +1496,7 @@ impl Validator {
     }
 
     // Start function, if present, must have type [] -> []
-    fn validate_start_section(module: &Module) -> result::Result<(), ValidationError> {
+    fn validate_start_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref startsec) = module.start else {
             return Ok(());
         };
@@ -1477,7 +1504,7 @@ impl Validator {
         let functype = Self::func_type_at(module, startsec.0)?;
 
         if !functype.params.is_empty() || !functype.results.is_empty() {
-            return Err(ValidationError::start_function());
+            return Err(ValidationErrorKind::start_function());
         }
         Ok(())
     }
@@ -1533,7 +1560,7 @@ impl Validator {
         let codesec = module.codes.as_deref().unwrap_or(&[]);
 
         if funcsec.len() != codesec.len() {
-            return Err(ValidationError::function_code_mismatch());
+            return Err(ValidationErrorKind::function_code_mismatch().into());
         }
 
         let declared_refs = Self::collect_declared_function_refs(module);
@@ -1547,9 +1574,10 @@ impl Validator {
                     .types
                     .as_ref()
                     .and_then(|t| t.get(idx))
-                    .ok_or_else(ValidationError::unknown_type)?;
+                    .ok_or_else(ValidationErrorKind::unknown_type)?;
                 Validator::default().validate_function(functype, entry, module, &declared_refs)
-            })
+            })?;
+        Ok(())
     }
 }
 
@@ -1906,7 +1934,10 @@ mod tests {
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
-            matches!(result, Err(ValidationError::UnknownMemory)),
+            matches!(
+                result,
+                Err(ValidationError::Module(ValidationErrorKind::UnknownMemory))
+            ),
             "expected UnknownMemory, got: {:?}",
             result
         );
@@ -1923,7 +1954,12 @@ mod tests {
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
-            matches!(result, Err(ValidationError::UnknownFunction)),
+            matches!(
+                result,
+                Err(ValidationError::Module(
+                    ValidationErrorKind::UnknownFunction
+                ))
+            ),
             "expected UnknownFunction, got: {:?}",
             result
         );
@@ -1951,7 +1987,10 @@ mod tests {
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
-            matches!(result, Err(ValidationError::TypeMismatch)),
+            matches!(
+                result,
+                Err(ValidationError::Module(ValidationErrorKind::TypeMismatch))
+            ),
             "expected TypeMismatch, got: {:?}",
             result
         );
@@ -1967,7 +2006,12 @@ mod tests {
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
-            matches!(result, Err(ValidationError::ConstantExpressionRequired)),
+            matches!(
+                result,
+                Err(ValidationError::Module(
+                    ValidationErrorKind::ConstantExpressionRequired
+                ))
+            ),
             "expected ConstantExpressionRequired, got: {:?}",
             result
         );
@@ -2000,7 +2044,10 @@ mod tests {
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
-            matches!(result, Err(ValidationError::UnknownGlobal)),
+            matches!(
+                result,
+                Err(ValidationError::Module(ValidationErrorKind::UnknownGlobal))
+            ),
             "expected UnknownGlobal, got: {:?}",
             result
         );
@@ -2097,7 +2144,10 @@ mod tests {
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
-            matches!(result, Err(ValidationError::TypeMismatch)),
+            matches!(
+                result,
+                Err(ValidationError::Module(ValidationErrorKind::TypeMismatch))
+            ),
             "expected TypeMismatch, got: {:?}",
             result
         );
