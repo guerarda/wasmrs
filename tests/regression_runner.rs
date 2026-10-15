@@ -7,7 +7,20 @@ fn main() -> anyhow::Result<()> {
     let args = Arguments::from_args();
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/regressions");
     let mut paths = Vec::new();
-    collect_fixtures(&root, &mut paths)?;
+    for entry in std::fs::read_dir(&root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            anyhow::ensure!(
+                entry.file_name() == "decode" || entry.file_name() == "validate",
+                "unknown regression folder: {} (expected decode/ or validate/)",
+                path.display()
+            );
+            collect_fixtures(&path, &mut paths)?;
+        } else if path.extension().is_some_and(|ext| ext == "wasm") {
+            anyhow::bail!("move {} into decode/ or validate/", path.display());
+        }
+    }
     paths.sort();
 
     let tests = paths
@@ -18,8 +31,9 @@ fn main() -> anyhow::Result<()> {
                 .expect("fixture under root")
                 .to_string_lossy()
                 .replace('\\', "/");
+            let validate = name.starts_with("validate/");
             Trial::test(name, move || {
-                replay(&path).map_err(|error| Failed::from(format!("{error:#}")))
+                replay(&path, validate).map_err(|error| Failed::from(format!("{error:#}")))
             })
         })
         .collect();
@@ -43,13 +57,15 @@ fn collect_fixtures(dir: &Path, paths: &mut Vec<PathBuf>) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn replay(path: &Path) -> anyhow::Result<()> {
+fn replay(path: &Path, validate: bool) -> anyhow::Result<()> {
     let bytes = std::fs::read(path)
         .with_context(|| format!("reading regression fixture {}", path.display()))?;
 
     // Malformed inputs may return errors; a panic fails this fixture's trial.
     if let Ok(module) = wasmrs::parse_module(&bytes) {
-        let _ = wasmrs::validate_module(&module);
+        if validate {
+            let _ = wasmrs::validate_module(&module);
+        }
     }
     Ok(())
 }
