@@ -666,617 +666,621 @@ impl Validator {
         let end_types: Vec<ValueType> = functype.results.iter().map(ValueType::from).collect();
         self.push_ctrl(Instruction::Call(FuncIndex(0)), vec![], end_types);
 
-        for inst in &entry.body {
-            match inst {
-                Instruction::Unreachable => self.unreachable(),
-                Instruction::Nop => continue,
-                Instruction::Block(bt) => {
-                    let (t1, t2) = Self::block_type(bt, module)?;
-                    self.pop_vals_expect(&t1)?;
-                    self.push_ctrl(Instruction::Block(*bt), t1, t2);
-                }
-                Instruction::Loop(bt) => {
-                    let (t1, t2) = Self::block_type(bt, module)?;
-                    self.pop_vals_expect(&t1)?;
-                    self.push_ctrl(Instruction::Loop(*bt), t1, t2);
-                }
-                Instruction::If(bt) => {
-                    // [t1* i32] -> [t2*]
-                    let (t1, t2) = Self::block_type(bt, module)?;
+        for (_, inst) in entry.body.iter().enumerate() {
+            self.validate_instruction(inst, functype, entry, module, declared_refs)?;
+        }
+        Ok(())
+    }
 
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_vals_expect(&t1)?;
+    fn validate_instruction(
+        &mut self,
+        instruction: &Instruction,
+        functype: &FuncType,
+        entry: &CodeEntry,
+        module: &Module,
+        declared_refs: &[FuncIndex],
+    ) -> result::Result<(), ValidationError> {
+        match instruction {
+            Instruction::Unreachable => self.unreachable(),
+            Instruction::Nop => (),
+            Instruction::Block(bt) => {
+                let (t1, t2) = Self::block_type(bt, module)?;
+                self.pop_vals_expect(&t1)?;
+                self.push_ctrl(Instruction::Block(*bt), t1, t2);
+            }
+            Instruction::Loop(bt) => {
+                let (t1, t2) = Self::block_type(bt, module)?;
+                self.pop_vals_expect(&t1)?;
+                self.push_ctrl(Instruction::Loop(*bt), t1, t2);
+            }
+            Instruction::If(bt) => {
+                // [t1* i32] -> [t2*]
+                let (t1, t2) = Self::block_type(bt, module)?;
 
-                    self.push_ctrl(Instruction::If(*bt), t1, t2);
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_vals_expect(&t1)?;
+
+                self.push_ctrl(Instruction::If(*bt), t1, t2);
+            }
+            Instruction::Else => {
+                let frame = self.pop_ctrl()?;
+                if !matches!(frame.opcode, Instruction::If(_)) {
+                    return Err(ValidationError::else_without_matching_if());
                 }
-                Instruction::Else => {
-                    let frame = self.pop_ctrl()?;
-                    if !matches!(frame.opcode, Instruction::If(_)) {
-                        return Err(ValidationError::else_without_matching_if());
-                    }
-                    self.push_ctrl(Instruction::Else, frame.start_types, frame.end_types)
+                self.push_ctrl(Instruction::Else, frame.start_types, frame.end_types)
+            }
+            Instruction::End => {
+                let frame = self.pop_ctrl()?;
+                if matches!(frame.opcode, Instruction::If(_))
+                    && frame.start_types != frame.end_types
+                {
+                    return Err(ValidationError::type_mismatch());
                 }
-                Instruction::End => {
-                    let frame = self.pop_ctrl()?;
-                    if matches!(frame.opcode, Instruction::If(_))
-                        && frame.start_types != frame.end_types
-                    {
-                        return Err(ValidationError::type_mismatch());
-                    }
-                    self.push_vals(&frame.end_types);
+                self.push_vals(&frame.end_types);
+            }
+            Instruction::Br(n) => {
+                let n = *n as usize;
+                if self.ctrls.len() <= n {
+                    return Err(ValidationError::control_stack_underflow());
                 }
-                Instruction::Br(n) => {
+                // FIXME Avoid Copy. pop_vals must be in ValueStack impl
+                let lt = Self::label_types(n, &self.ctrls).to_vec();
+                self.pop_vals_expect(&lt)?;
+                self.unreachable();
+            }
+            Instruction::BrIf(n) => {
+                let n = *n as usize;
+                if self.ctrls.len() <= n {
+                    return Err(ValidationError::control_stack_underflow());
+                }
+                self.pop_val_expect(ValueType::I32)?;
+
+                // FIXME Avoid Copy. pop_vals must be in ValueStack impl
+                let lt = Self::label_types(n, &self.ctrls).to_vec();
+                self.pop_vals_expect(&lt)?;
+                self.push_vals(&lt);
+            }
+            Instruction::BrTable(idx) => {
+                self.pop_val_expect(ValueType::I32)?;
+
+                // Verify the default target exists and get its arity
+                let m = idx.default as usize;
+                if self.ctrls.len() <= m {
+                    return Err(ValidationError::control_stack_underflow());
+                }
+                let m_types = Self::label_types(m, &self.ctrls).to_vec();
+                let arity = m_types.len();
+
+                for n in &idx.labels {
+                    // For each possible target, verify the arity matches
+                    // the default target's. And that its types are
+                    // compatible with what's currently on the stack.
                     let n = *n as usize;
                     if self.ctrls.len() <= n {
                         return Err(ValidationError::control_stack_underflow());
                     }
-                    // FIXME Avoid Copy. pop_vals must be in ValueStack impl
-                    let lt = Self::label_types(n, &self.ctrls).to_vec();
-                    self.pop_vals_expect(&lt)?;
-                    self.unreachable();
-                }
-                Instruction::BrIf(n) => {
-                    let n = *n as usize;
-                    if self.ctrls.len() <= n {
-                        return Err(ValidationError::control_stack_underflow());
-                    }
-                    self.pop_val_expect(ValueType::I32)?;
-
-                    // FIXME Avoid Copy. pop_vals must be in ValueStack impl
-                    let lt = Self::label_types(n, &self.ctrls).to_vec();
-                    self.pop_vals_expect(&lt)?;
-                    self.push_vals(&lt);
-                }
-                Instruction::BrTable(idx) => {
-                    self.pop_val_expect(ValueType::I32)?;
-
-                    // Verify the default target exists and get its arity
-                    let m = idx.default as usize;
-                    if self.ctrls.len() <= m {
-                        return Err(ValidationError::control_stack_underflow());
-                    }
-                    let m_types = Self::label_types(m, &self.ctrls).to_vec();
-                    let arity = m_types.len();
-
-                    for n in &idx.labels {
-                        // For each possible target, verify the arity matches
-                        // the default target's. And that its types are
-                        // compatible with what's currently on the stack.
-                        let n = *n as usize;
-                        if self.ctrls.len() <= n {
-                            return Err(ValidationError::control_stack_underflow());
-                        }
-                        let n_types = Self::label_types(n, &self.ctrls).to_vec();
-                        if n_types.len() != arity {
-                            return Err(ValidationError::type_mismatch());
-                        }
-                        let mut actual = self.pop_vals_expect(&n_types)?;
-                        actual.reverse();
-                        self.push_vals(&actual);
-                    }
-
-                    self.pop_vals_expect(&m_types)?;
-                    self.unreachable();
-                }
-                Instruction::Return => {
-                    let results = self
-                        .ctrls
-                        .first()
-                        .expect("unexpected empty control stack")
-                        .end_types
-                        .clone();
-
-                    self.pop_vals_expect(&results)?;
-                    self.unreachable();
-                }
-                Instruction::Call(idx) => {
-                    // [t1*] -> [t2*]
-                    let func_type = Self::func_type_at(module, *idx)?;
-                    let params: Vec<ValueType> =
-                        func_type.params.iter().copied().map(|v| v.into()).collect();
-                    self.pop_vals_expect(&params)?;
-
-                    let results: Vec<ValueType> = func_type
-                        .results
-                        .iter()
-                        .copied()
-                        .map(|v| v.into())
-                        .collect();
-
-                    self.push_vals(&results);
-                }
-                Instruction::CallIndirect((type_idx, table_idx)) => {
-                    // [t1* i32] -> [t2*]
-                    let table_type = Self::table_type_at(module, *table_idx)?;
-                    if !matches!(table_type.elemtype, RefType::Func) {
-                        return Err(ValidationError::table_type_mismatch());
-                    }
-
-                    self.pop_val_expect(ValueType::I32)?;
-
-                    let func_type = Self::type_at(module, *type_idx)?;
-                    let params: Vec<ValueType> =
-                        func_type.params.iter().copied().map(|v| v.into()).collect();
-                    self.pop_vals_expect(&params)?;
-
-                    let results: Vec<ValueType> = func_type
-                        .results
-                        .iter()
-                        .copied()
-                        .map(|v| v.into())
-                        .collect();
-
-                    self.push_vals(&results);
-                }
-
-                Instruction::Drop => {
-                    // [t] -> []
-                    self.pop_val()?;
-                }
-                Instruction::Select => {
-                    // [t t i32] -> [t]
-                    self.pop_val_expect(ValueType::I32)?;
-                    let t1 = self.pop_val()?;
-                    let t2 = self.pop_val()?;
-
-                    let is_num_or_vec =
-                        |t: &ValueType| t.is_num() || t.is_vec() || *t == ValueType::Unknown;
-
-                    if !is_num_or_vec(&t1) || !is_num_or_vec(&t2) {
+                    let n_types = Self::label_types(n, &self.ctrls).to_vec();
+                    if n_types.len() != arity {
                         return Err(ValidationError::type_mismatch());
                     }
-
-                    if t1 != t2 && t1 != ValueType::Unknown && t2 != ValueType::Unknown {
-                        return Err(ValidationError::type_mismatch());
-                    }
-
-                    self.push_val(if t1 == ValueType::Unknown { t2 } else { t1 });
-                }
-                Instruction::SelectT(vt) => {
-                    // [t t i32] -> [t]
-                    let [t] = vt.as_slice() else {
-                        return Err(ValidationError::invalid_select_types());
-                    };
-
-                    let t = t.into();
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(t)?;
-                    self.pop_val_expect(t)?;
-                    self.push_val(t);
-                }
-                Instruction::LocalGet(idx) => {
-                    // [] -> [t]
-                    let vt = Self::local_type(functype, &entry.locals, *idx)?;
-                    self.push_val(vt);
-                }
-                Instruction::LocalSet(idx) => {
-                    // [t] -> []
-                    let vt = Self::local_type(functype, &entry.locals, *idx)?;
-                    self.pop_val_expect(vt)?;
-                }
-                Instruction::LocalTee(idx) => {
-                    // [t] -> [t]
-                    let vt = Self::local_type(functype, &entry.locals, *idx)?;
-                    self.pop_val_expect(vt)?;
-                    self.push_val(vt);
-                }
-                Instruction::GlobalGet(idx) => {
-                    // [] -> [t]
-                    let gt = Self::global_type_at(module, *idx)?;
-                    self.push_val(gt.into());
-                }
-                Instruction::GlobalSet(idx) => {
-                    // [t] -> []
-                    let gt = Self::global_type_at(module, *idx)?;
-                    if matches!(gt.mutflag, MutabilityFlag::Const) {
-                        return Err(ValidationError::immutable_global());
-                    }
-                    self.pop_val_expect(gt.into())?;
-                }
-                Instruction::TableGet(idx) => {
-                    // [at] -> [t]
-                    self.pop_val_expect(ValueType::I32)?;
-                    let t = Self::table_type_at(module, *idx)?;
-                    self.push_val(t.elemtype.into());
-                }
-                Instruction::TableSet(idx) => {
-                    // [at t] -> []
-                    let t = Self::table_type_at(module, *idx)?;
-                    self.pop_val_expect(t.elemtype.into())?;
-                    self.pop_val_expect(ValueType::I32)?;
-                }
-                Instruction::I32Load(memarg) => {
-                    self.validate_mem_load(module, memarg, 4, ValType::I32)?;
-                }
-                Instruction::I64Load(memarg) => {
-                    self.validate_mem_load(module, memarg, 8, ValType::I64)?;
-                }
-                Instruction::F32Load(memarg) => {
-                    self.validate_mem_load(module, memarg, 4, ValType::F32)?;
-                }
-                Instruction::F64Load(memarg) => {
-                    self.validate_mem_load(module, memarg, 8, ValType::F64)?;
-                }
-                Instruction::I32Load8S(memarg) | Instruction::I32Load8U(memarg) => {
-                    self.validate_mem_load(module, memarg, 1, ValType::I32)?;
-                }
-                Instruction::I32Load16S(memarg) | Instruction::I32Load16U(memarg) => {
-                    self.validate_mem_load(module, memarg, 2, ValType::I32)?;
-                }
-                Instruction::I64Load8S(memarg) | Instruction::I64Load8U(memarg) => {
-                    self.validate_mem_load(module, memarg, 1, ValType::I64)?;
-                }
-                Instruction::I64Load16S(memarg) | Instruction::I64Load16U(memarg) => {
-                    self.validate_mem_load(module, memarg, 2, ValType::I64)?;
-                }
-                Instruction::I64Load32S(memarg) | Instruction::I64Load32U(memarg) => {
-                    self.validate_mem_load(module, memarg, 4, ValType::I64)?;
-                }
-                Instruction::I32Store(memarg) => {
-                    self.validate_mem_store(module, memarg, 4, ValType::I32)?;
-                }
-                Instruction::I64Store(memarg) => {
-                    self.validate_mem_store(module, memarg, 8, ValType::I64)?;
-                }
-                Instruction::F32Store(memarg) => {
-                    self.validate_mem_store(module, memarg, 4, ValType::F32)?;
-                }
-                Instruction::F64Store(memarg) => {
-                    self.validate_mem_store(module, memarg, 8, ValType::F64)?;
-                }
-                Instruction::I32Store8(memarg) => {
-                    self.validate_mem_store(module, memarg, 1, ValType::I32)?;
-                }
-                Instruction::I32Store16(memarg) => {
-                    self.validate_mem_store(module, memarg, 2, ValType::I32)?;
-                }
-                Instruction::I64Store8(memarg) => {
-                    self.validate_mem_store(module, memarg, 1, ValType::I64)?;
-                }
-                Instruction::I64Store16(memarg) => {
-                    self.validate_mem_store(module, memarg, 2, ValType::I64)?;
-                }
-                Instruction::I64Store32(memarg) => {
-                    self.validate_mem_store(module, memarg, 4, ValType::I64)?;
-                }
-                Instruction::MemorySize(idx) => {
-                    // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, *idx)?;
-
-                    // [] -> [i32]
-                    self.push_val(ValueType::I32);
-                }
-                Instruction::MemoryGrow(idx) => {
-                    // mems[0] is defined in the context
-                    let _ = Self::mem_type_at(module, *idx)?;
-
-                    // [i32] -> [i32]
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.push_val(ValueType::I32);
-                }
-                Instruction::I32Const(_) => self.push_val(ValueType::I32),
-                Instruction::I64Const(_) => self.push_val(ValueType::I64),
-                Instruction::F32Const(_) => self.push_val(ValueType::F32),
-                Instruction::F64Const(_) => self.push_val(ValueType::F64),
-                Instruction::I32Eqz => {
-                    // [i32] -> [i32]
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.push_val(ValueType::I32);
+                    let mut actual = self.pop_vals_expect(&n_types)?;
+                    actual.reverse();
+                    self.push_vals(&actual);
                 }
 
-                Instruction::I32Eq
-                | Instruction::I32Ne
-                | Instruction::I32LtS
-                | Instruction::I32LtU
-                | Instruction::I32LeS
-                | Instruction::I32LeU
-                | Instruction::I32GtS
-                | Instruction::I32GtU
-                | Instruction::I32GeS
-                | Instruction::I32GeU => self.validate_compop(ValType::I32)?,
+                self.pop_vals_expect(&m_types)?;
+                self.unreachable();
+            }
+            Instruction::Return => {
+                let results = self
+                    .ctrls
+                    .first()
+                    .expect("unexpected empty control stack")
+                    .end_types
+                    .clone();
 
-                Instruction::I64Eqz => {
-                    // [i64] -> [i32]
-                    self.pop_val_expect(ValueType::I64)?;
-                    self.push_val(ValueType::I32);
-                }
+                self.pop_vals_expect(&results)?;
+                self.unreachable();
+            }
+            Instruction::Call(idx) => {
+                // [t1*] -> [t2*]
+                let func_type = Self::func_type_at(module, *idx)?;
+                let params: Vec<ValueType> =
+                    func_type.params.iter().copied().map(|v| v.into()).collect();
+                self.pop_vals_expect(&params)?;
 
-                Instruction::I64Eq
-                | Instruction::I64Ne
-                | Instruction::I64LtS
-                | Instruction::I64LtU
-                | Instruction::I64GtS
-                | Instruction::I64GtU
-                | Instruction::I64LeS
-                | Instruction::I64LeU
-                | Instruction::I64GeS
-                | Instruction::I64GeU => self.validate_compop(ValType::I64)?,
+                let results: Vec<ValueType> = func_type
+                    .results
+                    .iter()
+                    .copied()
+                    .map(|v| v.into())
+                    .collect();
 
-                Instruction::F32Eq
-                | Instruction::F32Ne
-                | Instruction::F32Lt
-                | Instruction::F32Gt
-                | Instruction::F32Le
-                | Instruction::F32Ge => self.validate_compop(ValType::F32)?,
-
-                Instruction::F64Eq
-                | Instruction::F64Ne
-                | Instruction::F64Lt
-                | Instruction::F64Gt
-                | Instruction::F64Le
-                | Instruction::F64Ge => self.validate_compop(ValType::F64)?,
-
-                Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => {
-                    self.validate_unop(ValType::I32)?
-                }
-                Instruction::I32Add
-                | Instruction::I32Sub
-                | Instruction::I32Mul
-                | Instruction::I32DivS
-                | Instruction::I32DivU
-                | Instruction::I32RemS
-                | Instruction::I32RemU
-                | Instruction::I32And
-                | Instruction::I32Or
-                | Instruction::I32Xor
-                | Instruction::I32Shl
-                | Instruction::I32ShrS
-                | Instruction::I32ShrU
-                | Instruction::I32Rotl
-                | Instruction::I32Rotr => self.validate_binop(ValType::I32)?,
-
-                Instruction::I64Clz | Instruction::I64Ctz | Instruction::I64Popcnt => {
-                    self.validate_unop(ValType::I64)?
+                self.push_vals(&results);
+            }
+            Instruction::CallIndirect((type_idx, table_idx)) => {
+                // [t1* i32] -> [t2*]
+                let table_type = Self::table_type_at(module, *table_idx)?;
+                if !matches!(table_type.elemtype, RefType::Func) {
+                    return Err(ValidationError::table_type_mismatch());
                 }
 
-                Instruction::I64Add
-                | Instruction::I64Sub
-                | Instruction::I64Mul
-                | Instruction::I64DivS
-                | Instruction::I64DivU
-                | Instruction::I64RemS
-                | Instruction::I64RemU
-                | Instruction::I64And
-                | Instruction::I64Or
-                | Instruction::I64Xor
-                | Instruction::I64Shl
-                | Instruction::I64ShrS
-                | Instruction::I64ShrU
-                | Instruction::I64Rotl
-                | Instruction::I64Rotr => self.validate_binop(ValType::I64)?,
+                self.pop_val_expect(ValueType::I32)?;
 
-                Instruction::F32Abs
-                | Instruction::F32Neg
-                | Instruction::F32Ceil
-                | Instruction::F32Floor
-                | Instruction::F32Trunc
-                | Instruction::F32Nearest
-                | Instruction::F32Sqrt => self.validate_unop(ValType::F32)?,
+                let func_type = Self::type_at(module, *type_idx)?;
+                let params: Vec<ValueType> =
+                    func_type.params.iter().copied().map(|v| v.into()).collect();
+                self.pop_vals_expect(&params)?;
 
-                Instruction::F32Add
-                | Instruction::F32Sub
-                | Instruction::F32Mul
-                | Instruction::F32Div
-                | Instruction::F32Min
-                | Instruction::F32Max
-                | Instruction::F32Copysign => self.validate_binop(ValType::F32)?,
+                let results: Vec<ValueType> = func_type
+                    .results
+                    .iter()
+                    .copied()
+                    .map(|v| v.into())
+                    .collect();
 
-                Instruction::F64Abs
-                | Instruction::F64Neg
-                | Instruction::F64Ceil
-                | Instruction::F64Floor
-                | Instruction::F64Trunc
-                | Instruction::F64Nearest
-                | Instruction::F64Sqrt => self.validate_unop(ValType::F64)?,
+                self.push_vals(&results);
+            }
 
-                Instruction::F64Add
-                | Instruction::F64Sub
-                | Instruction::F64Mul
-                | Instruction::F64Div
-                | Instruction::F64Min
-                | Instruction::F64Max
-                | Instruction::F64Copysign => self.validate_binop(ValType::F64)?,
+            Instruction::Drop => {
+                // [t] -> []
+                self.pop_val()?;
+            }
+            Instruction::Select => {
+                // [t t i32] -> [t]
+                self.pop_val_expect(ValueType::I32)?;
+                let t1 = self.pop_val()?;
+                let t2 = self.pop_val()?;
 
-                Instruction::I32WrapI64 => self.validate_convop(ValType::I64, ValType::I32)?,
-                Instruction::I32TruncF32S | Instruction::I32TruncF32U => {
-                    self.validate_convop(ValType::F32, ValType::I32)?;
-                }
-                Instruction::I32TruncF64S | Instruction::I32TruncF64U => {
-                    self.validate_convop(ValType::F64, ValType::I32)?
-                }
-                Instruction::I64ExtendI32S | Instruction::I64ExtendI32U => {
-                    self.validate_convop(ValType::I32, ValType::I64)?
-                }
-                Instruction::I64TruncF32S | Instruction::I64TruncF32U => {
-                    self.validate_convop(ValType::F32, ValType::I64)?
-                }
-                Instruction::I64TruncF64S | Instruction::I64TruncF64U => {
-                    self.validate_convop(ValType::F64, ValType::I64)?
-                }
-                Instruction::F32ConvertI32S | Instruction::F32ConvertI32U => {
-                    self.validate_convop(ValType::I32, ValType::F32)?;
-                }
-                Instruction::F32ConvertI64S | Instruction::F32ConvertI64U => {
-                    self.validate_convop(ValType::I64, ValType::F32)?;
-                }
-                Instruction::F32DemoteF64 => {
-                    self.validate_convop(ValType::F64, ValType::F32)?;
+                let is_num_or_vec =
+                    |t: &ValueType| t.is_num() || t.is_vec() || *t == ValueType::Unknown;
+
+                if !is_num_or_vec(&t1) || !is_num_or_vec(&t2) {
+                    return Err(ValidationError::type_mismatch());
                 }
 
-                Instruction::F64ConvertI32S | Instruction::F64ConvertI32U => {
-                    self.validate_convop(ValType::I32, ValType::F64)?;
-                }
-                Instruction::F64ConvertI64S | Instruction::F64ConvertI64U => {
-                    self.validate_convop(ValType::I64, ValType::F64)?
-                }
-                Instruction::F64PromoteF32 => self.validate_convop(ValType::F32, ValType::F64)?,
-
-                Instruction::I32ReinterpretF32 => {
-                    self.validate_convop(ValType::F32, ValType::I32)?
-                }
-                Instruction::I64ReinterpretF64 => {
-                    self.validate_convop(ValType::F64, ValType::I64)?
-                }
-                Instruction::F32ReinterpretI32 => {
-                    self.validate_convop(ValType::I32, ValType::F32)?
-                }
-                Instruction::F64ReinterpretI64 => {
-                    self.validate_convop(ValType::I64, ValType::F64)?
-                }
-                Instruction::I32Extend8S | Instruction::I32Extend16S => {
-                    self.validate_convop(ValType::I32, ValType::I32)?
-                }
-                Instruction::I64Extend8S
-                | Instruction::I64Extend16S
-                | Instruction::I64Extend32S => self.validate_convop(ValType::I64, ValType::I64)?,
-
-                Instruction::RefNull(rt) => self.push_val(ValueType::Ref(*rt)),
-                Instruction::RefIsNull => {
-                    self.pop_ref()?;
-                    self.push_val(ValueType::I32);
-                }
-                Instruction::RefFunc(idx) => {
-                    // Check that the function index is valid in this module
-                    if idx.as_usize() >= module.func_count() {
-                        return Err(ValidationError::UnknownFunction);
-                    }
-                    // Check that the function index has been declared for use
-                    // as reference.
-                    if !declared_refs.contains(idx) {
-                        return Err(ValidationError::undeclared_function_reference());
-                    }
-
-                    self.push_val(ValueType::Ref(RefType::Func))
+                if t1 != t2 && t1 != ValueType::Unknown && t2 != ValueType::Unknown {
+                    return Err(ValidationError::type_mismatch());
                 }
 
-                Instruction::I32TruncSatF32S | Instruction::I32TruncSatF32U => {
-                    self.validate_convop(ValType::F32, ValType::I32)?
-                }
-                Instruction::I32TruncSatF64S | Instruction::I32TruncSatF64U => {
-                    self.validate_convop(ValType::F64, ValType::I32)?
-                }
-                Instruction::I64TruncSatF32S | Instruction::I64TruncSatF32U => {
-                    self.validate_convop(ValType::F32, ValType::I64)?
-                }
-                Instruction::I64TruncSatF64S | Instruction::I64TruncSatF64U => {
-                    self.validate_convop(ValType::F64, ValType::I64)?
-                }
-                Instruction::MemoryInit((dataidx, memidx)) => {
-                    // [at, i32, i32] -> []
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
+                self.push_val(if t1 == ValueType::Unknown { t2 } else { t1 });
+            }
+            Instruction::SelectT(vt) => {
+                // [t t i32] -> [t]
+                let [t] = vt.as_slice() else {
+                    return Err(ValidationError::invalid_select_types());
+                };
 
-                    // memory exists
-                    Self::mem_type_at(module, *memidx)?;
-
-                    // data exists
-                    if module
-                        .data
-                        .as_ref()
-                        .is_none_or(|data| (*dataidx as usize) >= data.len())
-                    {
-                        return Err(ValidationError::unknown_data());
-                    }
+                let t = t.into();
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(t)?;
+                self.pop_val_expect(t)?;
+                self.push_val(t);
+            }
+            Instruction::LocalGet(idx) => {
+                // [] -> [t]
+                let vt = Self::local_type(functype, &entry.locals, *idx)?;
+                self.push_val(vt);
+            }
+            Instruction::LocalSet(idx) => {
+                // [t] -> []
+                let vt = Self::local_type(functype, &entry.locals, *idx)?;
+                self.pop_val_expect(vt)?;
+            }
+            Instruction::LocalTee(idx) => {
+                // [t] -> [t]
+                let vt = Self::local_type(functype, &entry.locals, *idx)?;
+                self.pop_val_expect(vt)?;
+                self.push_val(vt);
+            }
+            Instruction::GlobalGet(idx) => {
+                // [] -> [t]
+                let gt = Self::global_type_at(module, *idx)?;
+                self.push_val(gt.into());
+            }
+            Instruction::GlobalSet(idx) => {
+                // [t] -> []
+                let gt = Self::global_type_at(module, *idx)?;
+                if matches!(gt.mutflag, MutabilityFlag::Const) {
+                    return Err(ValidationError::immutable_global());
                 }
-                Instruction::DataDrop(idx) => {
-                    if module
-                        .data
-                        .as_ref()
-                        .is_none_or(|data| (*idx as usize) >= data.len())
-                    {
-                        return Err(ValidationError::unknown_data());
-                    }
+                self.pop_val_expect(gt.into())?;
+            }
+            Instruction::TableGet(idx) => {
+                // [at] -> [t]
+                self.pop_val_expect(ValueType::I32)?;
+                let t = Self::table_type_at(module, *idx)?;
+                self.push_val(t.elemtype.into());
+            }
+            Instruction::TableSet(idx) => {
+                // [at t] -> []
+                let t = Self::table_type_at(module, *idx)?;
+                self.pop_val_expect(t.elemtype.into())?;
+                self.pop_val_expect(ValueType::I32)?;
+            }
+            Instruction::I32Load(memarg) => {
+                self.validate_mem_load(module, memarg, 4, ValType::I32)?;
+            }
+            Instruction::I64Load(memarg) => {
+                self.validate_mem_load(module, memarg, 8, ValType::I64)?;
+            }
+            Instruction::F32Load(memarg) => {
+                self.validate_mem_load(module, memarg, 4, ValType::F32)?;
+            }
+            Instruction::F64Load(memarg) => {
+                self.validate_mem_load(module, memarg, 8, ValType::F64)?;
+            }
+            Instruction::I32Load8S(memarg) | Instruction::I32Load8U(memarg) => {
+                self.validate_mem_load(module, memarg, 1, ValType::I32)?;
+            }
+            Instruction::I32Load16S(memarg) | Instruction::I32Load16U(memarg) => {
+                self.validate_mem_load(module, memarg, 2, ValType::I32)?;
+            }
+            Instruction::I64Load8S(memarg) | Instruction::I64Load8U(memarg) => {
+                self.validate_mem_load(module, memarg, 1, ValType::I64)?;
+            }
+            Instruction::I64Load16S(memarg) | Instruction::I64Load16U(memarg) => {
+                self.validate_mem_load(module, memarg, 2, ValType::I64)?;
+            }
+            Instruction::I64Load32S(memarg) | Instruction::I64Load32U(memarg) => {
+                self.validate_mem_load(module, memarg, 4, ValType::I64)?;
+            }
+            Instruction::I32Store(memarg) => {
+                self.validate_mem_store(module, memarg, 4, ValType::I32)?;
+            }
+            Instruction::I64Store(memarg) => {
+                self.validate_mem_store(module, memarg, 8, ValType::I64)?;
+            }
+            Instruction::F32Store(memarg) => {
+                self.validate_mem_store(module, memarg, 4, ValType::F32)?;
+            }
+            Instruction::F64Store(memarg) => {
+                self.validate_mem_store(module, memarg, 8, ValType::F64)?;
+            }
+            Instruction::I32Store8(memarg) => {
+                self.validate_mem_store(module, memarg, 1, ValType::I32)?;
+            }
+            Instruction::I32Store16(memarg) => {
+                self.validate_mem_store(module, memarg, 2, ValType::I32)?;
+            }
+            Instruction::I64Store8(memarg) => {
+                self.validate_mem_store(module, memarg, 1, ValType::I64)?;
+            }
+            Instruction::I64Store16(memarg) => {
+                self.validate_mem_store(module, memarg, 2, ValType::I64)?;
+            }
+            Instruction::I64Store32(memarg) => {
+                self.validate_mem_store(module, memarg, 4, ValType::I64)?;
+            }
+            Instruction::MemorySize(idx) => {
+                // mems[0] is defined in the context
+                let _ = Self::mem_type_at(module, *idx)?;
+
+                // [] -> [i32]
+                self.push_val(ValueType::I32);
+            }
+            Instruction::MemoryGrow(idx) => {
+                // mems[0] is defined in the context
+                let _ = Self::mem_type_at(module, *idx)?;
+
+                // [i32] -> [i32]
+                self.pop_val_expect(ValueType::I32)?;
+                self.push_val(ValueType::I32);
+            }
+            Instruction::I32Const(_) => self.push_val(ValueType::I32),
+            Instruction::I64Const(_) => self.push_val(ValueType::I64),
+            Instruction::F32Const(_) => self.push_val(ValueType::F32),
+            Instruction::F64Const(_) => self.push_val(ValueType::F64),
+            Instruction::I32Eqz => {
+                // [i32] -> [i32]
+                self.pop_val_expect(ValueType::I32)?;
+                self.push_val(ValueType::I32);
+            }
+
+            Instruction::I32Eq
+            | Instruction::I32Ne
+            | Instruction::I32LtS
+            | Instruction::I32LtU
+            | Instruction::I32LeS
+            | Instruction::I32LeU
+            | Instruction::I32GtS
+            | Instruction::I32GtU
+            | Instruction::I32GeS
+            | Instruction::I32GeU => self.validate_compop(ValType::I32)?,
+
+            Instruction::I64Eqz => {
+                // [i64] -> [i32]
+                self.pop_val_expect(ValueType::I64)?;
+                self.push_val(ValueType::I32);
+            }
+
+            Instruction::I64Eq
+            | Instruction::I64Ne
+            | Instruction::I64LtS
+            | Instruction::I64LtU
+            | Instruction::I64GtS
+            | Instruction::I64GtU
+            | Instruction::I64LeS
+            | Instruction::I64LeU
+            | Instruction::I64GeS
+            | Instruction::I64GeU => self.validate_compop(ValType::I64)?,
+
+            Instruction::F32Eq
+            | Instruction::F32Ne
+            | Instruction::F32Lt
+            | Instruction::F32Gt
+            | Instruction::F32Le
+            | Instruction::F32Ge => self.validate_compop(ValType::F32)?,
+
+            Instruction::F64Eq
+            | Instruction::F64Ne
+            | Instruction::F64Lt
+            | Instruction::F64Gt
+            | Instruction::F64Le
+            | Instruction::F64Ge => self.validate_compop(ValType::F64)?,
+
+            Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => {
+                self.validate_unop(ValType::I32)?
+            }
+            Instruction::I32Add
+            | Instruction::I32Sub
+            | Instruction::I32Mul
+            | Instruction::I32DivS
+            | Instruction::I32DivU
+            | Instruction::I32RemS
+            | Instruction::I32RemU
+            | Instruction::I32And
+            | Instruction::I32Or
+            | Instruction::I32Xor
+            | Instruction::I32Shl
+            | Instruction::I32ShrS
+            | Instruction::I32ShrU
+            | Instruction::I32Rotl
+            | Instruction::I32Rotr => self.validate_binop(ValType::I32)?,
+
+            Instruction::I64Clz | Instruction::I64Ctz | Instruction::I64Popcnt => {
+                self.validate_unop(ValType::I64)?
+            }
+
+            Instruction::I64Add
+            | Instruction::I64Sub
+            | Instruction::I64Mul
+            | Instruction::I64DivS
+            | Instruction::I64DivU
+            | Instruction::I64RemS
+            | Instruction::I64RemU
+            | Instruction::I64And
+            | Instruction::I64Or
+            | Instruction::I64Xor
+            | Instruction::I64Shl
+            | Instruction::I64ShrS
+            | Instruction::I64ShrU
+            | Instruction::I64Rotl
+            | Instruction::I64Rotr => self.validate_binop(ValType::I64)?,
+
+            Instruction::F32Abs
+            | Instruction::F32Neg
+            | Instruction::F32Ceil
+            | Instruction::F32Floor
+            | Instruction::F32Trunc
+            | Instruction::F32Nearest
+            | Instruction::F32Sqrt => self.validate_unop(ValType::F32)?,
+
+            Instruction::F32Add
+            | Instruction::F32Sub
+            | Instruction::F32Mul
+            | Instruction::F32Div
+            | Instruction::F32Min
+            | Instruction::F32Max
+            | Instruction::F32Copysign => self.validate_binop(ValType::F32)?,
+
+            Instruction::F64Abs
+            | Instruction::F64Neg
+            | Instruction::F64Ceil
+            | Instruction::F64Floor
+            | Instruction::F64Trunc
+            | Instruction::F64Nearest
+            | Instruction::F64Sqrt => self.validate_unop(ValType::F64)?,
+
+            Instruction::F64Add
+            | Instruction::F64Sub
+            | Instruction::F64Mul
+            | Instruction::F64Div
+            | Instruction::F64Min
+            | Instruction::F64Max
+            | Instruction::F64Copysign => self.validate_binop(ValType::F64)?,
+
+            Instruction::I32WrapI64 => self.validate_convop(ValType::I64, ValType::I32)?,
+            Instruction::I32TruncF32S | Instruction::I32TruncF32U => {
+                self.validate_convop(ValType::F32, ValType::I32)?;
+            }
+            Instruction::I32TruncF64S | Instruction::I32TruncF64U => {
+                self.validate_convop(ValType::F64, ValType::I32)?
+            }
+            Instruction::I64ExtendI32S | Instruction::I64ExtendI32U => {
+                self.validate_convop(ValType::I32, ValType::I64)?
+            }
+            Instruction::I64TruncF32S | Instruction::I64TruncF32U => {
+                self.validate_convop(ValType::F32, ValType::I64)?
+            }
+            Instruction::I64TruncF64S | Instruction::I64TruncF64U => {
+                self.validate_convop(ValType::F64, ValType::I64)?
+            }
+            Instruction::F32ConvertI32S | Instruction::F32ConvertI32U => {
+                self.validate_convop(ValType::I32, ValType::F32)?;
+            }
+            Instruction::F32ConvertI64S | Instruction::F32ConvertI64U => {
+                self.validate_convop(ValType::I64, ValType::F32)?;
+            }
+            Instruction::F32DemoteF64 => {
+                self.validate_convop(ValType::F64, ValType::F32)?;
+            }
+
+            Instruction::F64ConvertI32S | Instruction::F64ConvertI32U => {
+                self.validate_convop(ValType::I32, ValType::F64)?;
+            }
+            Instruction::F64ConvertI64S | Instruction::F64ConvertI64U => {
+                self.validate_convop(ValType::I64, ValType::F64)?
+            }
+            Instruction::F64PromoteF32 => self.validate_convop(ValType::F32, ValType::F64)?,
+
+            Instruction::I32ReinterpretF32 => self.validate_convop(ValType::F32, ValType::I32)?,
+            Instruction::I64ReinterpretF64 => self.validate_convop(ValType::F64, ValType::I64)?,
+            Instruction::F32ReinterpretI32 => self.validate_convop(ValType::I32, ValType::F32)?,
+            Instruction::F64ReinterpretI64 => self.validate_convop(ValType::I64, ValType::F64)?,
+            Instruction::I32Extend8S | Instruction::I32Extend16S => {
+                self.validate_convop(ValType::I32, ValType::I32)?
+            }
+            Instruction::I64Extend8S | Instruction::I64Extend16S | Instruction::I64Extend32S => {
+                self.validate_convop(ValType::I64, ValType::I64)?
+            }
+
+            Instruction::RefNull(rt) => self.push_val(ValueType::Ref(*rt)),
+            Instruction::RefIsNull => {
+                self.pop_ref()?;
+                self.push_val(ValueType::I32);
+            }
+            Instruction::RefFunc(idx) => {
+                // Check that the function index is valid in this module
+                if idx.as_usize() >= module.func_count() {
+                    return Err(ValidationError::UnknownFunction);
                 }
-                Instruction::MemoryCopy((dstidx, srcidx)) => {
-                    // [at at at] -> []
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
-
-                    // mems exist
-                    Self::mem_type_at(module, *dstidx)?;
-                    Self::mem_type_at(module, *srcidx)?;
+                // Check that the function index has been declared for use
+                // as reference.
+                if !declared_refs.contains(idx) {
+                    return Err(ValidationError::undeclared_function_reference());
                 }
-                Instruction::MemoryFill(memidx) => {
-                    // [at i32 at] -> []
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
 
-                    // mem exist
-                    Self::mem_type_at(module, *memidx)?;
+                self.push_val(ValueType::Ref(RefType::Func))
+            }
+
+            Instruction::I32TruncSatF32S | Instruction::I32TruncSatF32U => {
+                self.validate_convop(ValType::F32, ValType::I32)?
+            }
+            Instruction::I32TruncSatF64S | Instruction::I32TruncSatF64U => {
+                self.validate_convop(ValType::F64, ValType::I32)?
+            }
+            Instruction::I64TruncSatF32S | Instruction::I64TruncSatF32U => {
+                self.validate_convop(ValType::F32, ValType::I64)?
+            }
+            Instruction::I64TruncSatF64S | Instruction::I64TruncSatF64U => {
+                self.validate_convop(ValType::F64, ValType::I64)?
+            }
+            Instruction::MemoryInit((dataidx, memidx)) => {
+                // [at, i32, i32] -> []
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
+
+                // memory exists
+                Self::mem_type_at(module, *memidx)?;
+
+                // data exists
+                if module
+                    .data
+                    .as_ref()
+                    .is_none_or(|data| (*dataidx as usize) >= data.len())
+                {
+                    return Err(ValidationError::unknown_data());
                 }
-                Instruction::TableInit((elemidx, tableidx)) => {
-                    // [at, i32, i32] -> []
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
-
-                    // table exists
-                    let tabletype = Self::table_type_at(module, *tableidx)?;
-
-                    // element exists
-                    let elem = module
-                        .elements
-                        .as_ref()
-                        .and_then(|elems| elems.get(*elemidx as usize))
-                        .ok_or_else(ValidationError::unknown_element)?;
-
-                    let elemtype = match elem.items {
-                        ElementSegmentItems::Functions(_) => RefType::Func,
-                        ElementSegmentItems::Expressions(rt, ..) => rt,
-                    };
-
-                    if elemtype != tabletype.elemtype {
-                        return Err(ValidationError::type_mismatch());
-                    }
+            }
+            Instruction::DataDrop(idx) => {
+                if module
+                    .data
+                    .as_ref()
+                    .is_none_or(|data| (*idx as usize) >= data.len())
+                {
+                    return Err(ValidationError::unknown_data());
                 }
-                Instruction::ElemDrop(idx) => {
-                    if module
-                        .elements
-                        .as_ref()
-                        .is_none_or(|elems| (*idx as usize) >= elems.len())
-                    {
-                        return Err(ValidationError::unknown_element());
-                    }
-                }
-                Instruction::TableCopy((dstidx, srcidx)) => {
-                    // [at at at] -> []
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(ValueType::I32)?;
+            }
+            Instruction::MemoryCopy((dstidx, srcidx)) => {
+                // [at at at] -> []
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
 
-                    let dst_type = Self::table_type_at(module, *dstidx)?;
-                    let src_type = Self::table_type_at(module, *srcidx)?;
+                // mems exist
+                Self::mem_type_at(module, *dstidx)?;
+                Self::mem_type_at(module, *srcidx)?;
+            }
+            Instruction::MemoryFill(memidx) => {
+                // [at i32 at] -> []
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
 
-                    if src_type.elemtype != dst_type.elemtype {
-                        return Err(ValidationError::type_mismatch());
-                    }
-                }
-                Instruction::TableGrow(idx) => {
-                    // [t at] -> [at]
-                    let tabletype = Self::table_type_at(module, *idx)?;
-                    self.pop_val_expect(ValueType::I32)?;
-                    self.pop_val_expect(tabletype.elemtype.into())?;
+                // mem exist
+                Self::mem_type_at(module, *memidx)?;
+            }
+            Instruction::TableInit((elemidx, tableidx)) => {
+                // [at, i32, i32] -> []
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
 
-                    self.push_val(ValueType::I32);
-                }
-                Instruction::TableSize(idx) => {
-                    // [] -> [at]
-                    Self::table_type_at(module, *idx)?;
-                    self.push_val(ValueType::I32);
-                }
-                Instruction::TableFill(idx) => {
-                    // [at t at] -> []
-                    self.pop_val_expect(ValueType::I32)?;
+                // table exists
+                let tabletype = Self::table_type_at(module, *tableidx)?;
 
-                    let tabletype = Self::table_type_at(module, *idx)?;
-                    self.pop_val_expect(tabletype.elemtype.into())?;
+                // element exists
+                let elem = module
+                    .elements
+                    .as_ref()
+                    .and_then(|elems| elems.get(*elemidx as usize))
+                    .ok_or_else(ValidationError::unknown_element)?;
 
-                    self.pop_val_expect(ValueType::I32)?;
-                    Self::table_type_at(module, *idx)?;
+                let elemtype = match elem.items {
+                    ElementSegmentItems::Functions(_) => RefType::Func,
+                    ElementSegmentItems::Expressions(rt, ..) => rt,
+                };
+
+                if elemtype != tabletype.elemtype {
+                    return Err(ValidationError::type_mismatch());
                 }
+            }
+            Instruction::ElemDrop(idx) => {
+                if module
+                    .elements
+                    .as_ref()
+                    .is_none_or(|elems| (*idx as usize) >= elems.len())
+                {
+                    return Err(ValidationError::unknown_element());
+                }
+            }
+            Instruction::TableCopy((dstidx, srcidx)) => {
+                // [at at at] -> []
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(ValueType::I32)?;
+
+                let dst_type = Self::table_type_at(module, *dstidx)?;
+                let src_type = Self::table_type_at(module, *srcidx)?;
+
+                if src_type.elemtype != dst_type.elemtype {
+                    return Err(ValidationError::type_mismatch());
+                }
+            }
+            Instruction::TableGrow(idx) => {
+                // [t at] -> [at]
+                let tabletype = Self::table_type_at(module, *idx)?;
+                self.pop_val_expect(ValueType::I32)?;
+                self.pop_val_expect(tabletype.elemtype.into())?;
+
+                self.push_val(ValueType::I32);
+            }
+            Instruction::TableSize(idx) => {
+                // [] -> [at]
+                Self::table_type_at(module, *idx)?;
+                self.push_val(ValueType::I32);
+            }
+            Instruction::TableFill(idx) => {
+                // [at t at] -> []
+                self.pop_val_expect(ValueType::I32)?;
+
+                let tabletype = Self::table_type_at(module, *idx)?;
+                self.pop_val_expect(tabletype.elemtype.into())?;
+
+                self.pop_val_expect(ValueType::I32)?;
+                Self::table_type_at(module, *idx)?;
             }
         }
         Ok(())
