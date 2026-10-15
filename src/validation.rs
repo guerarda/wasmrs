@@ -365,7 +365,9 @@ impl Validator {
                     .as_ref()
                     .ok_or_else(ValidationError::unknown_type)?;
 
-                let t = &types[*idx as usize];
+                let t = types
+                    .get(*idx as usize)
+                    .ok_or(ValidationError::UnknownType)?;
                 (
                     t.params.iter().copied().map(|v| (&v).into()).collect(),
                     t.results.iter().copied().map(|v| (&v).into()).collect(),
@@ -1634,6 +1636,25 @@ mod tests {
         assert!(
             result.is_err(),
             "expected validation error, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_block_type_index_out_of_range() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (type (func))
+                (func (type 0)
+                    (block (type 1))))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            result.is_err(),
+            "expected validation error for out-of-range block type index, got: {:?}",
             result
         );
         Ok(())
