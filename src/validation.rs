@@ -95,12 +95,17 @@ struct Validator {
 #[derive(Debug)]
 pub enum ValidationError {
     Module(ValidationErrorKind),
+    Function {
+        index: usize,
+        source: FunctionValidationError,
+    },
 }
 
 impl error::Error for ValidationError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match &self {
             Self::Module(e) => Some(e),
+            Self::Function { index: _, source } => Some(source),
         }
     }
 }
@@ -109,6 +114,7 @@ impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             Self::Module(_) => write!(f, "invalid module"),
+            Self::Function { index, .. } => write!(f, "validating function at index {index}"),
         }
     }
 }
@@ -116,6 +122,37 @@ impl fmt::Display for ValidationError {
 impl From<ValidationErrorKind> for ValidationError {
     fn from(value: ValidationErrorKind) -> Self {
         ValidationError::Module(value)
+    }
+}
+
+#[derive(Debug)]
+pub enum FunctionValidationError {
+    Instruction {
+        index: usize,
+        name: &'static str,
+        kind: ValidationErrorKind,
+    },
+}
+
+impl error::Error for FunctionValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match &self {
+            Self::Instruction {
+                index: _,
+                name: _,
+                kind,
+            } => Some(kind),
+        }
+    }
+}
+
+impl fmt::Display for FunctionValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Self::Instruction { index, name, .. } => {
+                write!(f, "validating instruction {index} ({name})")
+            }
+        }
     }
 }
 
@@ -689,12 +726,17 @@ impl Validator {
         entry: &CodeEntry,
         module: &Module,
         declared_refs: &[FuncIndex],
-    ) -> result::Result<(), ValidationErrorKind> {
+    ) -> result::Result<(), FunctionValidationError> {
         let end_types: Vec<ValueType> = functype.results.iter().map(ValueType::from).collect();
         self.push_ctrl(Instruction::Call(FuncIndex(0)), vec![], end_types);
 
-        for (_, inst) in entry.body.iter().enumerate() {
-            self.validate_instruction(inst, functype, entry, module, declared_refs)?;
+        for (idx, inst) in entry.body.iter().enumerate() {
+            self.validate_instruction(inst, functype, entry, module, declared_refs)
+                .map_err(|e| FunctionValidationError::Instruction {
+                    index: idx,
+                    name: inst.name(),
+                    kind: e,
+                })?;
         }
         Ok(())
     }
@@ -1575,7 +1617,12 @@ impl Validator {
                     .as_ref()
                     .and_then(|t| t.get(idx))
                     .ok_or_else(ValidationErrorKind::unknown_type)?;
-                Validator::default().validate_function(functype, entry, module, &declared_refs)
+                Validator::default()
+                    .validate_function(functype, entry, module, &declared_refs)
+                    .map_err(|e| ValidationError::Function {
+                        index: idx,
+                        source: e,
+                    })
             })?;
         Ok(())
     }
@@ -2144,10 +2191,7 @@ mod tests {
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(
-            matches!(
-                result,
-                Err(ValidationError::Module(ValidationErrorKind::TypeMismatch))
-            ),
+            matches!(result, Err(ValidationError::Function { .. })),
             "expected TypeMismatch, got: {:?}",
             result
         );
