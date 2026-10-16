@@ -1680,11 +1680,12 @@ impl Validator {
             return Ok(());
         };
 
+        let imported_global_count = module.imported_global_count();
         for (idx, global) in globalsec.iter().enumerate() {
             // Const expression must produce the global declared type
             Self::validate_const_expr(module, &global.body, &[ValueType::from(global.gt.type_)])
                 .map_err(|e| ValidationError::Global {
-                    index: idx,
+                    index: imported_global_count + idx,
                     source: GlobalValidationError::InvalidConstExpression(e),
                 })?;
         }
@@ -2205,6 +2206,32 @@ mod tests {
                 })
             ),
             "expected TypeMismatch, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_error_index_includes_imports() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (import "e" "g" (global i32))
+                (global i32 (f32.const 0)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Global {
+                    index: 1,
+                    source: GlobalValidationError::InvalidConstExpression(
+                        ConstExpressionValidationError::ResultTypeMismatch { .. }
+                    )
+                })
+            ),
+            "expected type mismatch at global index 1 after imported global, got: {:?}",
             result
         );
         Ok(())
