@@ -218,7 +218,7 @@ pub enum ConstExpressionValidationError {
         inst_index: usize,
         global_index: usize,
     },
-    InstructionNotAllowd {
+    InstructionNotAllowed {
         index: usize,
         name: &'static str,
     },
@@ -267,7 +267,7 @@ impl fmt::Display for ConstExpressionValidationError {
                     "global.get({global_index}) at index {inst_index} is not allowed, constant expression required"
                 )
             }
-            Self::InstructionNotAllowd { index, name } => write!(
+            Self::InstructionNotAllowed { index, name } => write!(
                 f,
                 "instruction at index {index} ({name}) is not allowed in a constant epxression"
             ),
@@ -853,7 +853,7 @@ impl Validator {
                 }
                 Instruction::End => break,
                 _ => {
-                    return Err(ConstExpressionValidationError::InstructionNotAllowd {
+                    return Err(ConstExpressionValidationError::InstructionNotAllowed {
                         index: i,
                         name: inst.name(),
                     });
@@ -2224,7 +2224,7 @@ mod tests {
                 Err(ValidationError::Global {
                     index: 0,
                     source: GlobalValidationError::InvalidConstExpression(
-                        ConstExpressionValidationError::InstructionNotAllowd {
+                        ConstExpressionValidationError::InstructionNotAllowed {
                             index: 1,
                             name: "f32.neg"
                         }
