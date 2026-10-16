@@ -125,6 +125,7 @@ impl From<ValidationErrorKind> for ValidationError {
     }
 }
 
+/// Function Validation Error
 #[derive(Debug)]
 pub enum FunctionValidationError {
     Instruction {
@@ -156,6 +157,70 @@ impl fmt::Display for FunctionValidationError {
     }
 }
 
+/// Const Expression Validation Errpr
+#[derive(Debug)]
+pub enum ConstExpressionValidationError {
+    GlobalNotAllowed {
+        inst_index: usize,
+        global_index: usize,
+    },
+    InstructionNotAllowd {
+        index: usize,
+        name: &'static str,
+    },
+    Instruction {
+        index: usize,
+        name: &'static str,
+        source: ValidationErrorKind,
+    },
+    ResultTypeMismatch {
+        expected: Vec<ValueType>,
+        actual: Vec<ValueType>,
+    },
+}
+
+impl error::Error for ConstExpressionValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Instruction {
+                index: _,
+                name: _,
+                source,
+            } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for ConstExpressionValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Instruction { index, name, .. } => {
+                write!(f, "validating instruction at index {index} ({name})")
+            }
+            Self::ResultTypeMismatch { expected, actual } => {
+                write!(f, "type mismatch, expected:")?;
+                fmt_value_type_vec(f, expected)?;
+                write!(f, ", got:")?;
+                fmt_value_type_vec(f, actual)
+            }
+            Self::GlobalNotAllowed {
+                inst_index,
+                global_index,
+            } => {
+                write!(
+                    f,
+                    "global.get({global_index}) at index {inst_index} is not allowed, constant expression required"
+                )
+            }
+            Self::InstructionNotAllowd { index, name } => write!(
+                f,
+                "instruction at index {index} ({name}) is not allowed in a constant epxression"
+            ),
+        }
+    }
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ValidationErrorKind {
@@ -183,6 +248,9 @@ pub enum ValidationErrorKind {
     DuplicatExportName,
     FunctionCodeMismatch,
     StartFunction,
+    ConstExprError {
+        source: Box<ConstExpressionValidationError>,
+    },
 }
 
 impl error::Error for ValidationErrorKind {
@@ -218,6 +286,15 @@ impl fmt::Display for ValidationErrorKind {
             Self::DuplicatExportName => write!(f, "duplicate export name"),
             Self::FunctionCodeMismatch => write!(f, "function and code section mismatch"),
             Self::StartFunction => write!(f, "start function type"),
+            Self::ConstExprError { .. } => write!(f, "CONST EXPR ERROR PLACEHOLDER"),
+        }
+    }
+}
+
+impl From<ConstExpressionValidationError> for ValidationErrorKind {
+    fn from(value: ConstExpressionValidationError) -> Self {
+        Self::ConstExprError {
+            source: Box::new(value),
         }
     }
 }
@@ -303,10 +380,6 @@ impl ValidationErrorKind {
 
     fn multiple_memories() -> Self {
         Self::mint(ValidationErrorKind::MultipleMemories)
-    }
-
-    fn constant_expression_required() -> Self {
-        Self::mint(ValidationErrorKind::ConstantExpressionRequired)
     }
 
     fn duplicate_export_name() -> Self {
@@ -667,9 +740,9 @@ impl Validator {
         module: &Module,
         expr: &ConstExpression,
         expected: &[ValueType],
-    ) -> result::Result<(), ValidationErrorKind> {
+    ) -> result::Result<(), ConstExpressionValidationError> {
         let mut stack = vec![];
-        for inst in &expr.0 {
+        for (i, inst) in expr.0.iter().enumerate() {
             match inst {
                 Instruction::I32Const(_) => stack.push(ValueType::I32),
                 Instruction::I64Const(_) => stack.push(ValueType::I64),
@@ -678,7 +751,11 @@ impl Validator {
                 Instruction::RefNull(rt) => stack.push(ValueType::Ref(*rt)),
                 Instruction::RefFunc(idx) => {
                     if idx.as_usize() >= module.func_count() {
-                        return Err(ValidationErrorKind::unknown_function());
+                        return Err(ConstExpressionValidationError::Instruction {
+                            index: i,
+                            name: inst.name(),
+                            source: ValidationErrorKind::unknown_function(),
+                        });
                     }
                     stack.push(ValueType::Ref(RefType::Func))
                 }
@@ -686,7 +763,11 @@ impl Validator {
                     let idx = idx.0 as usize;
 
                     if idx >= module.imported_global_count() {
-                        return Err(ValidationErrorKind::unknown_global());
+                        return Err(ConstExpressionValidationError::Instruction {
+                            index: i,
+                            name: inst.name(),
+                            source: ValidationErrorKind::unknown_global(),
+                        });
                     }
 
                     let import = module
@@ -697,7 +778,11 @@ impl Validator {
                                 .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
                                 .nth(idx)
                         })
-                        .ok_or_else(ValidationErrorKind::unknown_global)?;
+                        .ok_or_else(|| ConstExpressionValidationError::Instruction {
+                            index: i,
+                            name: inst.name(),
+                            source: ValidationErrorKind::unknown_global(),
+                        })?;
 
                     let ImportDesc::Global(gt) = &import.desc else {
                         unreachable!()
@@ -706,17 +791,28 @@ impl Validator {
                     if matches!(gt.mutflag, MutabilityFlag::Const) {
                         stack.push(ValueType::from(gt.type_));
                     } else {
-                        return Err(ValidationErrorKind::constant_expression_required());
+                        return Err(ConstExpressionValidationError::GlobalNotAllowed {
+                            inst_index: i,
+                            global_index: idx,
+                        });
                     }
                 }
                 Instruction::End => break,
-                _ => return Err(ValidationErrorKind::constant_expression_required()),
+                _ => {
+                    return Err(ConstExpressionValidationError::InstructionNotAllowd {
+                        index: i,
+                        name: inst.name(),
+                    });
+                }
             }
         }
         if stack == expected {
             Ok(())
         } else {
-            Err(ValidationErrorKind::type_mismatch())
+            Err(ConstExpressionValidationError::ResultTypeMismatch {
+                expected: expected.to_vec(),
+                actual: stack,
+            })
         }
     }
 
@@ -2004,7 +2100,8 @@ mod tests {
             matches!(
                 result,
                 Err(ValidationError::Module(
-                    ValidationErrorKind::UnknownFunction
+                    // TODO Update to GlobalValidationError
+                    ValidationErrorKind::ConstExprError { .. }
                 ))
             ),
             "expected UnknownFunction, got: {:?}",
@@ -2036,7 +2133,10 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(ValidationError::Module(ValidationErrorKind::TypeMismatch))
+                Err(ValidationError::Module(
+                    // TODO Update to GlobalValidationError
+                    ValidationErrorKind::ConstExprError { .. }
+                ))
             ),
             "expected TypeMismatch, got: {:?}",
             result
@@ -2056,7 +2156,8 @@ mod tests {
             matches!(
                 result,
                 Err(ValidationError::Module(
-                    ValidationErrorKind::ConstantExpressionRequired
+                    // TODO Upadte to GlobalValidationError
+                    ValidationErrorKind::ConstExprError { .. }
                 ))
             ),
             "expected ConstantExpressionRequired, got: {:?}",
@@ -2093,7 +2194,10 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(ValidationError::Module(ValidationErrorKind::UnknownGlobal))
+                // TODO Update to GlobalValidationError
+                Err(ValidationError::Module(
+                    ValidationErrorKind::ConstExprError { .. }
+                ))
             ),
             "expected UnknownGlobal, got: {:?}",
             result
