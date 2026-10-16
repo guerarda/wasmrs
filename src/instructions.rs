@@ -37,6 +37,19 @@ macro_rules! instructions {
             )*)*
         }
 
+        impl Instruction {
+            pub fn name(&self) -> &'static str {
+                match self {
+                $(
+                    instructions!(@pattern $name $(($arg))?) => $instr_name,
+                )*
+                $($(
+                    instructions!(@pattern $pname $(($parg))?) => $pinstr_name,
+                )*)*
+                }
+            }
+        }
+
         pub fn decode_instruction(reader: &mut Reader) -> Result<Instruction, InstructionError> {
             let offset = reader.position() as usize;
             let opcode = reader.read_u8()?;
@@ -75,6 +88,13 @@ macro_rules! instructions {
 
             }
         }
+    };
+
+    (@pattern $name:ident) => {
+        Instruction::$name
+    };
+    (@pattern $name:ident ($arg:ty)) => {
+        Instruction::$name(..)
     };
 
     // No arg instruction
