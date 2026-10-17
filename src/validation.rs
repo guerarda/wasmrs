@@ -121,10 +121,15 @@ struct Validator {
 #[derive(Debug)]
 pub enum ValidationError {
     Module(ValidationErrorKind),
+    Table {
+        index: usize,
+        source: TableValidationError,
+    },
     Global {
         index: usize,
         source: GlobalValidationError,
     },
+
     Function {
         index: usize,
         source: FunctionValidationError,
@@ -137,6 +142,7 @@ impl error::Error for ValidationError {
             Self::Module(e) => Some(e),
             Self::Function { index: _, source } => Some(source),
             Self::Global { index: _, source } => Some(source),
+            Self::Table { index: _, source } => Some(source),
         }
     }
 }
@@ -147,6 +153,7 @@ impl fmt::Display for ValidationError {
             Self::Module(_) => write!(f, "invalid module"),
             Self::Function { index, .. } => write!(f, "validating function at index {index}"),
             Self::Global { index, .. } => write!(f, "validating global at index {index}"),
+            Self::Table { index, .. } => write!(f, "validatin table at index {index}"),
         }
     }
 }
@@ -185,6 +192,31 @@ impl fmt::Display for FunctionValidationError {
             Self::Instruction { index, name, .. } => {
                 write!(f, "validating instruction {index} ({name})")
             }
+        }
+    }
+}
+
+/// Table ValidationError
+#[derive(Debug)]
+pub enum TableValidationError {
+    InvalidConstExpression(ConstExpressionValidationError),
+    InvalidLimit(LimitValidationError),
+}
+
+impl error::Error for TableValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::InvalidConstExpression(e) => Some(e),
+            Self::InvalidLimit(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for TableValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidConstExpression(_) => write!(f, "validating const expression"),
+            Self::InvalidLimit(_) => write!(f, "validating limit"),
         }
     }
 }
@@ -271,6 +303,25 @@ impl fmt::Display for ConstExpressionValidationError {
                 f,
                 "instruction at index {index} ({name}) is not allowed in a constant epxression"
             ),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum LimitValidationError {
+    MinExceedsMax { min: u32, max: u32 },
+}
+
+impl error::Error for LimitValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for LimitValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MinExceedsMax { min, max } => write!(f, "limit min ({min}) exceeds max ({max})"),
         }
     }
 }
@@ -1506,16 +1557,23 @@ impl Validator {
     }
 
     // Section validation
-    fn validate_table_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
+    fn validate_table_section(module: &Module) -> result::Result<(), ValidationError> {
         let Some(ref tablesec) = module.tables else {
             return Ok(());
         };
 
-        for table in tablesec {
+        for (index, table) in tablesec.iter().enumerate() {
             // Validate the table limit
             let l = &table.tabletype.limit;
-            if l.max.is_some_and(|max| l.min > max) {
-                return Err(ValidationErrorKind::invalid_limit());
+            if let Some(max) = l.max
+                && l.min > max
+            {
+                return Err(ValidationError::Table {
+                    index,
+                    source: TableValidationError::InvalidLimit(
+                        LimitValidationError::MinExceedsMax { min: l.min, max },
+                    ),
+                });
             }
 
             // Validate that the expression, if present is a valid const
@@ -1525,7 +1583,11 @@ impl Validator {
                     module,
                     expr,
                     &[ValueType::from(table.tabletype.elemtype)],
-                )?;
+                )
+                .map_err(|e| ValidationError::Table {
+                    index,
+                    source: TableValidationError::InvalidConstExpression(e),
+                })?;
             }
         }
         Ok(())
@@ -1856,6 +1918,83 @@ mod tests {
         let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         validate_module(&m)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_table_min_exceeds_max() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (table 2 1 funcref))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Table {
+                    index: 0,
+                    source: TableValidationError::InvalidLimit(
+                        LimitValidationError::MinExceedsMax { min: 2, max: 1 }
+                    )
+                })
+            ),
+            "expected MinExceedsMax, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_table_initializer_type_mismatch() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (table 1 funcref (ref.null extern)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                &result,
+                Err(ValidationError::Table {
+                    index: 0,
+                    source: TableValidationError::InvalidConstExpression(
+                        ConstExpressionValidationError::ResultTypeMismatch { expected, actual }
+                    )
+                }) if expected == &[ValueType::Ref(RefType::Func)]
+                    && actual == &[ValueType::Ref(RefType::Extern)]
+            ),
+            "expected table initializer type mismatch, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_table_ref_func_out_of_bounds() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (table 1 funcref (ref.func 5)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Table {
+                    index: 0,
+                    source: TableValidationError::InvalidConstExpression(
+                        ConstExpressionValidationError::Instruction {
+                            index: 0,
+                            source: ValidationErrorKind::UnknownFunction,
+                            ..
+                        }
+                    )
+                })
+            ),
+            "expected UnknownFunction, got: {:?}",
+            result
+        );
         Ok(())
     }
 
