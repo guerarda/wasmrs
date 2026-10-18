@@ -120,6 +120,7 @@ struct Validator {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ValidationError {
     Module(ValidationErrorKind),
     Table {
@@ -179,6 +180,7 @@ impl From<ValidationErrorKind> for ValidationError {
 
 /// Function Validation Error
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FunctionValidationError {
     Instruction {
         index: usize,
@@ -211,6 +213,7 @@ impl fmt::Display for FunctionValidationError {
 
 /// Table ValidationError
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum TableValidationError {
     InvalidConstExpression(ConstExpressionValidationError),
     InvalidLimit(LimitValidationError),
@@ -236,6 +239,7 @@ impl fmt::Display for TableValidationError {
 
 /// Memory ValidationError
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum MemoryValidationError {
     MultipleMemories,
     InvalidLimit(LimitValidationError),
@@ -261,6 +265,7 @@ impl fmt::Display for MemoryValidationError {
 
 /// Imports Validation error
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ImportValidationError {
     UnknownFunctionType(TypeIndexValidationError),
     InvalidMemory(LimitValidationError),
@@ -293,6 +298,7 @@ impl fmt::Display for ImportValidationError {
 
 /// Global Validation error
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum GlobalValidationError {
     InvalidConstExpression(ConstExpressionValidationError),
 }
@@ -338,6 +344,7 @@ impl fmt::Display for TypeIndexValidationError {
 
 /// Const Expression Validation Error
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ConstExpressionValidationError {
     GlobalNotAllowed {
         inst_index: usize,
@@ -401,6 +408,7 @@ impl fmt::Display for ConstExpressionValidationError {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum LimitValidationError {
     MinExceedsMax { min: u32, max: u32 },
     MinExceedsRange { min: u32, limit: u32 },
