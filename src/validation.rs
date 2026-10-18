@@ -130,6 +130,10 @@ pub enum ValidationError {
         index: usize,
         source: MemoryValidationError,
     },
+    Import {
+        index: usize,
+        source: ImportValidationError,
+    },
     Global {
         index: usize,
         source: GlobalValidationError,
@@ -149,6 +153,7 @@ impl error::Error for ValidationError {
             Self::Table { index: _, source } => Some(source),
             Self::Memory { index: _, source } => Some(source),
             Self::Global { index: _, source } => Some(source),
+            Self::Import { index: _, source } => Some(source),
         }
     }
 }
@@ -161,6 +166,7 @@ impl fmt::Display for ValidationError {
             Self::Table { index, .. } => write!(f, "validatin table at index {index}"),
             Self::Global { index, .. } => write!(f, "validating global at index {index}"),
             Self::Memory { index, .. } => write!(f, "validating memory at index {index}"),
+            Self::Import { index, .. } => write!(f, "validating import at index {index}"),
         }
     }
 }
@@ -253,6 +259,38 @@ impl fmt::Display for MemoryValidationError {
     }
 }
 
+/// Imports Validation error
+#[derive(Debug)]
+pub enum ImportValidationError {
+    UnknownFunctionType(TypeIndexValidationError),
+    InvalidMemory(LimitValidationError),
+    MultipleMemories,
+}
+
+impl error::Error for ImportValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::UnknownFunctionType(e) => Some(e),
+            Self::InvalidMemory(e) => Some(e),
+            Self::MultipleMemories => None,
+        }
+    }
+}
+
+impl fmt::Display for ImportValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownFunctionType(_) => {
+                write!(f, "validating imported function type")
+            }
+            Self::InvalidMemory(_) => {
+                write!(f, "validating imported memory limit")
+            }
+            Self::MultipleMemories => write!(f, "multiple memories not allowed"),
+        }
+    }
+}
+
 /// Global Validation error
 #[derive(Debug)]
 pub enum GlobalValidationError {
@@ -272,6 +310,29 @@ impl fmt::Display for GlobalValidationError {
         match self {
             Self::InvalidConstExpression(_) => write!(f, "validating const expression"),
         }
+    }
+}
+
+/// Type Index Validation Error
+#[derive(Debug)]
+pub struct TypeIndexValidationError {
+    index: usize,
+    count: usize,
+}
+
+impl error::Error for TypeIndexValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for TypeIndexValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "type index {} out of range ({} available)",
+            self.index, self.count
+        )
     }
 }
 
@@ -517,14 +578,6 @@ impl ValidationErrorKind {
 
     fn invalid_mem_alignment() -> Self {
         Self::mint(ValidationErrorKind::InvalidMemAlignment)
-    }
-
-    fn invalid_limit() -> Self {
-        Self::mint(ValidationErrorKind::InvalidLimit)
-    }
-
-    fn multiple_memories() -> Self {
-        Self::mint(ValidationErrorKind::MultipleMemories)
     }
 
     fn duplicate_export_name() -> Self {
@@ -1716,27 +1769,40 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_imports_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
+    fn validate_imports_section(module: &Module) -> result::Result<(), ValidationError> {
         let Some(ref importsec) = module.imports else {
             return Ok(());
         };
         let types_len = module.types.as_ref().map(|t| t.len()).unwrap_or(0);
         let mut mems_count = module.memories.as_ref().map(|t| t.len()).unwrap_or(0);
 
-        for i in importsec {
+        for (index, i) in importsec.iter().enumerate() {
             match &i.desc {
                 ImportDesc::Func(idx) => {
                     if *idx as usize >= types_len {
-                        return Err(ValidationErrorKind::unknown_type());
+                        return Err(ValidationError::Import {
+                            index,
+                            source: ImportValidationError::UnknownFunctionType(
+                                TypeIndexValidationError {
+                                    index: *idx as usize,
+                                    count: types_len,
+                                },
+                            ),
+                        });
                     }
                 }
                 ImportDesc::Mem(memtype) => {
-                    if !memtype.is_valid() {
-                        return Err(ValidationErrorKind::invalid_limit());
-                    }
+                    Self::validate_memory_limit(memtype).map_err(|e| ValidationError::Import {
+                        index,
+                        source: ImportValidationError::InvalidMemory(e),
+                    })?;
+
                     mems_count += 1;
                     if mems_count > 1 {
-                        return Err(ValidationErrorKind::multiple_memories());
+                        return Err(ValidationError::Import {
+                            index,
+                            source: ImportValidationError::MultipleMemories,
+                        });
                     }
                 }
                 _ => (),
@@ -1985,6 +2051,154 @@ mod tests {
         let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         validate_module(&m)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_unknown_function_type() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (type (func))
+                (import "e" "g" (global i32))
+                (import "e" "f" (func (type 1))))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Import {
+                    index: 1,
+                    source: ImportValidationError::UnknownFunctionType(
+                        TypeIndexValidationError { index: 1, count: 1 }
+                    )
+                })
+            ),
+            "expected unknown function type at import index 1, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_memory_min_exceeds_range() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (import "e" "g" (global i32))
+                (import "e" "m" (memory 65537)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Import {
+                    index: 1,
+                    source: ImportValidationError::InvalidMemory(
+                        LimitValidationError::MinExceedsRange { min: 65537, limit: 65536 }
+                    )
+                })
+            ),
+            "expected min_exceeds_range at import index 1, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_memory_max_exceeds_range() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (import "e" "g" (global i32))
+                (import "e" "m" (memory 1 65537)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Import {
+                    index: 1,
+                    source: ImportValidationError::InvalidMemory(
+                        LimitValidationError::MaxExceedsRange { max: 65537, limit: 65536 }
+                    )
+                })
+            ),
+            "expected max_exceeds_range at import index 1, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_memory_min_exceeds_max() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (import "e" "g" (global i32))
+                (import "e" "m" (memory 2 1)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Import {
+                    index: 1,
+                    source: ImportValidationError::InvalidMemory(
+                        LimitValidationError::MinExceedsMax { min: 2, max: 1 }
+                    )
+                })
+            ),
+            "expected min_exceeds_max at import index 1, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_multiple_memories() -> anyhow::Result<()> {
+        let cases = [
+            (
+                r#"
+                    (module
+                        (import "e" "g" (global i32))
+                        (import "e" "m0" (memory 1))
+                        (import "e" "m1" (memory 1)))
+                "#,
+                2,
+            ),
+            (
+                r#"
+                    (module
+                        (import "e" "g" (global i32))
+                        (import "e" "m" (memory 1))
+                        (memory 1))
+                "#,
+                1,
+            ),
+        ];
+
+        for (wat, expected_index) in cases {
+            let bytes = wat::parse_str(wat)?;
+            let m = decode_bytes(bytes)?;
+            let result = validate_module(&m);
+            assert!(
+                matches!(
+                    result,
+                    Err(ValidationError::Import {
+                        index,
+                        source: ImportValidationError::MultipleMemories,
+                    }) if index == expected_index
+                ),
+                "expected MultipleMemories at import index {}, got: {:?}",
+                expected_index,
+                result
+            );
+        }
         Ok(())
     }
 
