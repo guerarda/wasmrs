@@ -447,9 +447,7 @@ pub enum ValidationErrorKind {
     ImmutableGlobal,
     InvalidSelectTypes,
     InvalidMemAlignment,
-    InvalidLimit,
     InvalidElement,
-    MultipleMemories,
     ConstantExpressionRequired,
     DuplicatExportName,
     FunctionCodeMismatch,
@@ -485,9 +483,7 @@ impl fmt::Display for ValidationErrorKind {
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
             Self::InvalidMemAlignment => write!(f, "invalid mem alignment"),
-            Self::InvalidLimit => write!(f, "invalid limit"),
             Self::InvalidElement => write!(f, "invalid element"),
-            Self::MultipleMemories => write!(f, "multiple memories"),
             Self::ConstantExpressionRequired => write!(f, "constant expression required"),
             Self::DuplicatExportName => write!(f, "duplicate export name"),
             Self::FunctionCodeMismatch => write!(f, "function and code section mismatch"),
@@ -2070,9 +2066,10 @@ mod tests {
                 result,
                 Err(ValidationError::Import {
                     index: 1,
-                    source: ImportValidationError::UnknownFunctionType(
-                        TypeIndexValidationError { index: 1, count: 1 }
-                    )
+                    source: ImportValidationError::UnknownFunctionType(TypeIndexValidationError {
+                        index: 1,
+                        count: 1
+                    })
                 })
             ),
             "expected unknown function type at import index 1, got: {:?}",
@@ -2097,7 +2094,10 @@ mod tests {
                 Err(ValidationError::Import {
                     index: 1,
                     source: ImportValidationError::InvalidMemory(
-                        LimitValidationError::MinExceedsRange { min: 65537, limit: 65536 }
+                        LimitValidationError::MinExceedsRange {
+                            min: 65537,
+                            limit: 65536
+                        }
                     )
                 })
             ),
@@ -2123,7 +2123,10 @@ mod tests {
                 Err(ValidationError::Import {
                     index: 1,
                     source: ImportValidationError::InvalidMemory(
-                        LimitValidationError::MaxExceedsRange { max: 65537, limit: 65536 }
+                        LimitValidationError::MaxExceedsRange {
+                            max: 65537,
+                            limit: 65536
+                        }
                     )
                 })
             ),
