@@ -19,6 +19,7 @@ use crate::{
         },
     },
     instructions::Instruction,
+    limits::MAX_WASM_32BIT_MEMORY_PAGES,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -125,6 +126,10 @@ pub enum ValidationError {
         index: usize,
         source: TableValidationError,
     },
+    Memory {
+        index: usize,
+        source: MemoryValidationError,
+    },
     Global {
         index: usize,
         source: GlobalValidationError,
@@ -141,8 +146,9 @@ impl error::Error for ValidationError {
         match &self {
             Self::Module(e) => Some(e),
             Self::Function { index: _, source } => Some(source),
-            Self::Global { index: _, source } => Some(source),
             Self::Table { index: _, source } => Some(source),
+            Self::Memory { index: _, source } => Some(source),
+            Self::Global { index: _, source } => Some(source),
         }
     }
 }
@@ -152,8 +158,9 @@ impl fmt::Display for ValidationError {
         match &self {
             Self::Module(_) => write!(f, "invalid module"),
             Self::Function { index, .. } => write!(f, "validating function at index {index}"),
-            Self::Global { index, .. } => write!(f, "validating global at index {index}"),
             Self::Table { index, .. } => write!(f, "validatin table at index {index}"),
+            Self::Global { index, .. } => write!(f, "validating global at index {index}"),
+            Self::Memory { index, .. } => write!(f, "validating memory at index {index}"),
         }
     }
 }
@@ -216,6 +223,31 @@ impl fmt::Display for TableValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidConstExpression(_) => write!(f, "validating const expression"),
+            Self::InvalidLimit(_) => write!(f, "validating limit"),
+        }
+    }
+}
+
+/// Memory ValidationError
+#[derive(Debug)]
+pub enum MemoryValidationError {
+    MultipleMemories,
+    InvalidLimit(LimitValidationError),
+}
+
+impl error::Error for MemoryValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::MultipleMemories => None,
+            Self::InvalidLimit(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for MemoryValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MultipleMemories => write!(f, "multiple memories declared, only one is allowed"),
             Self::InvalidLimit(_) => write!(f, "validating limit"),
         }
     }
@@ -310,6 +342,8 @@ impl fmt::Display for ConstExpressionValidationError {
 #[derive(Debug)]
 pub enum LimitValidationError {
     MinExceedsMax { min: u32, max: u32 },
+    MinExceedsRange { min: u32, limit: u32 },
+    MaxExceedsRange { max: u32, limit: u32 },
 }
 
 impl error::Error for LimitValidationError {
@@ -322,6 +356,12 @@ impl fmt::Display for LimitValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MinExceedsMax { min, max } => write!(f, "limit min ({min}) exceeds max ({max})"),
+            Self::MinExceedsRange { min, limit } => {
+                write!(f, "limit min ({min}) exceeds allowed max ({limit})")
+            }
+            Self::MaxExceedsRange { max, limit } => {
+                write!(f, "limit max ({max}) exceeds allowed max ({limit})")
+            }
         }
     }
 }
@@ -919,6 +959,28 @@ impl Validator {
                 actual: stack,
             })
         }
+    }
+
+    fn validate_memory_limit(memtype: &MemType) -> result::Result<(), LimitValidationError> {
+        let l = &memtype.0;
+        if l.min > MAX_WASM_32BIT_MEMORY_PAGES {
+            return Err(LimitValidationError::MinExceedsRange {
+                min: l.min,
+                limit: MAX_WASM_32BIT_MEMORY_PAGES,
+            });
+        }
+        if let Some(max) = l.max {
+            if max > MAX_WASM_32BIT_MEMORY_PAGES {
+                return Err(LimitValidationError::MaxExceedsRange {
+                    max,
+                    limit: MAX_WASM_32BIT_MEMORY_PAGES,
+                });
+            }
+            if l.min > max {
+                return Err(LimitValidationError::MinExceedsMax { min: l.min, max });
+            }
+        }
+        Ok(())
     }
 
     fn validate_function(
@@ -1593,18 +1655,24 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_memory_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
+    fn validate_memory_section(module: &Module) -> result::Result<(), ValidationError> {
         let Some(ref memsec) = module.memories else {
             return Ok(());
         };
 
         // Only one memory is allowed
         if memsec.len() > 1 {
-            return Err(ValidationErrorKind::multiple_memories());
+            return Err(ValidationError::Memory {
+                index: 1,
+                source: MemoryValidationError::MultipleMemories,
+            });
         }
 
-        if !memsec.iter().all(MemType::is_valid) {
-            return Err(ValidationErrorKind::invalid_limit());
+        for (index, mem) in memsec.iter().enumerate() {
+            Self::validate_memory_limit(mem).map_err(|e| ValidationError::Memory {
+                index: index + module.imported_memory_count(),
+                source: MemoryValidationError::InvalidLimit(e),
+            })?;
         }
 
         Ok(())
@@ -1742,12 +1810,11 @@ impl Validator {
             return Ok(());
         };
 
-        let imported_global_count = module.imported_global_count();
         for (idx, global) in globalsec.iter().enumerate() {
             // Const expression must produce the global declared type
             Self::validate_const_expr(module, &global.body, &[ValueType::from(global.gt.type_)])
                 .map_err(|e| ValidationError::Global {
-                    index: imported_global_count + idx,
+                    index: module.imported_global_count() + idx,
                     source: GlobalValidationError::InvalidConstExpression(e),
                 })?;
         }
@@ -1918,6 +1985,108 @@ mod tests {
         let bytes = wat::parse_str(wat)?;
         let m = decode_bytes(bytes)?;
         validate_module(&m)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_min_exceeds_range() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (memory 65537))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Memory {
+                    index: 0,
+                    source: MemoryValidationError::InvalidLimit(
+                        LimitValidationError::MinExceedsRange {
+                            min: 65537,
+                            limit: 65536,
+                        }
+                    )
+                })
+            ),
+            "expected MinExceedsRange, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_max_exceeds_range() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (memory 1 65537))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Memory {
+                    index: 0,
+                    source: MemoryValidationError::InvalidLimit(
+                        LimitValidationError::MaxExceedsRange {
+                            max: 65537,
+                            limit: 65536,
+                        }
+                    )
+                })
+            ),
+            "expected MaxExceedsRange, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_min_exceeds_max() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (memory 2 1))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Memory {
+                    index: 0,
+                    source: MemoryValidationError::InvalidLimit(
+                        LimitValidationError::MinExceedsMax { min: 2, max: 1 }
+                    )
+                })
+            ),
+            "expected MinExceedsMax, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_multiple_memories() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (memory 1)
+                (memory 1))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Memory {
+                    index: 1,
+                    source: MemoryValidationError::MultipleMemories,
+                })
+            ),
+            "expected MultipleMemories at memory index 1, got: {:?}",
+            result
+        );
         Ok(())
     }
 

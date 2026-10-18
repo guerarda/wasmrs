@@ -24,6 +24,18 @@ macro_rules! impl_count_kind {
     };
 }
 
+macro_rules! impl_import_count_kind {
+    ($name: ident, $variant: ident, $field: ident) => {
+        pub(crate) fn $name(&self) -> usize {
+            self.imports.as_ref().map_or(0, |imps| {
+                imps.iter()
+                    .filter(|i| matches!(i.desc, ImportDesc::$variant(_)))
+                    .count()
+            })
+        }
+    };
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum MalformedError {
@@ -139,13 +151,8 @@ impl Module {
     impl_count_kind!(table_count, Table, tables);
     impl_count_kind!(global_count, Global, globals);
 
-    pub(crate) fn imported_global_count(&self) -> usize {
-        self.imports.as_ref().map_or(0, |imps| {
-            imps.iter()
-                .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
-                .count()
-        })
-    }
+    impl_import_count_kind!(imported_memory_count, Mem, memories);
+    impl_import_count_kind!(imported_global_count, Global, globals);
 
     fn from_bytes(bytes: Vec<u8>) -> Self {
         Module {

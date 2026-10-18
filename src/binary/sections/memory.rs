@@ -14,6 +14,7 @@ use crate::{
 pub struct MemType(pub Limit);
 
 impl MemType {
+    #[deprecated]
     pub fn is_valid(&self) -> bool {
         let l = &self.0;
         l.min <= MAX_WASM_32BIT_MEMORY_PAGES
