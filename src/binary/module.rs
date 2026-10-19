@@ -151,6 +151,7 @@ impl Module {
     impl_count_kind!(table_count, Table, tables);
     impl_count_kind!(global_count, Global, globals);
 
+    impl_import_count_kind!(imported_func_count, Func, functions);
     impl_import_count_kind!(imported_memory_count, Mem, memories);
     impl_import_count_kind!(imported_global_count, Global, globals);
 

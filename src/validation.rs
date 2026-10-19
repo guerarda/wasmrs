@@ -1961,23 +1961,21 @@ impl Validator {
 
         let declared_refs = Self::collect_declared_function_refs(module);
 
-        funcsec
-            .iter()
-            .zip(codesec.iter())
-            .try_for_each(|(idx, entry)| {
-                let idx = *idx as usize;
-                let functype = module
-                    .types
-                    .as_ref()
-                    .and_then(|t| t.get(idx))
-                    .ok_or_else(ValidationErrorKind::unknown_type)?;
-                Validator::default()
-                    .validate_function(functype, entry, module, &declared_refs)
-                    .map_err(|e| ValidationError::Function {
-                        index: idx,
-                        source: e,
-                    })
-            })?;
+        for (index, (type_idx, entry)) in funcsec.iter().zip(codesec).enumerate() {
+            let type_idx = *type_idx as usize;
+            let functype = module
+                .types
+                .as_ref()
+                .and_then(|t| t.get(type_idx))
+                .ok_or_else(ValidationErrorKind::unknown_type)?;
+            Validator::default()
+                .validate_function(functype, entry, module, &declared_refs)
+                .map_err(|e| ValidationError::Function {
+                    index: index + module.imported_func_count(),
+                    source: e,
+                })?
+        }
+
         Ok(())
     }
 }
@@ -2934,6 +2932,31 @@ mod tests {
         assert!(
             matches!(result, Err(ValidationError::Function { .. })),
             "expected TypeMismatch, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_function_error_index_includes_imports() -> anyhow::Result<()> {
+        // The invalid function is at position 1 in the function section and
+        // uses type 2, but its index in the function index space is 3.
+        let wat = r#"
+            (module
+                (type (func))
+                (type (func (param i32)))
+                (type (func (result i32)))
+                (import "env" "f0" (func (type 0)))
+                (import "env" "f1" (func (type 0)))
+                (func (type 1))
+                (func (type 2)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(result, Err(ValidationError::Function { index: 3, .. })),
+            "expected function error at index 3, got: {:?}",
             result
         );
         Ok(())
