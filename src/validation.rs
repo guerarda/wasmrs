@@ -342,6 +342,29 @@ impl fmt::Display for TypeIndexValidationError {
     }
 }
 
+/// Table Index Validation Error
+#[derive(Debug)]
+pub struct TableIndexValidationError {
+    index: usize,
+    count: usize,
+}
+
+impl error::Error for TableIndexValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for TableIndexValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "table index {} out of range ({} available)",
+            self.index, self.count
+        )
+    }
+}
+
 /// Const Expression Validation Error
 #[derive(Debug)]
 #[non_exhaustive]
@@ -447,7 +470,6 @@ pub enum ValidationErrorKind {
     UnknownLocal,
     UnknownGlobal,
     UnknownType,
-    UnknownTable,
     UnknownFunction,
     UnknownMemory,
     UnknownData,
@@ -463,11 +485,16 @@ pub enum ValidationErrorKind {
     ConstExprError {
         source: Box<ConstExpressionValidationError>,
     },
+    UnknownTable(TableIndexValidationError),
 }
 
 impl error::Error for ValidationErrorKind {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
+        match self {
+            Self::ConstExprError { source } => Some(source),
+            Self::UnknownTable(e) => Some(e),
+            _ => None,
+        }
     }
 }
 
@@ -483,7 +510,6 @@ impl fmt::Display for ValidationErrorKind {
             Self::UnknownLocal => write!(f, "unknown local"),
             Self::UnknownGlobal => write!(f, "unknown global"),
             Self::UnknownType => write!(f, "unknown type"),
-            Self::UnknownTable => write!(f, "unknown table"),
             Self::UnknownFunction => write!(f, "unknown function"),
             Self::UnknownMemory => write!(f, "unknown memory"),
             Self::UnknownData => write!(f, "unknown data"),
@@ -497,6 +523,7 @@ impl fmt::Display for ValidationErrorKind {
             Self::FunctionCodeMismatch => write!(f, "function and code section mismatch"),
             Self::StartFunction => write!(f, "start function type"),
             Self::ConstExprError { .. } => write!(f, "CONST EXPR ERROR PLACEHOLDER"),
+            Self::UnknownTable(_) => write!(f, "unknown table"),
         }
     }
 }
@@ -506,6 +533,12 @@ impl From<ConstExpressionValidationError> for ValidationErrorKind {
         Self::ConstExprError {
             source: Box::new(value),
         }
+    }
+}
+
+impl From<TableIndexValidationError> for ValidationErrorKind {
+    fn from(value: TableIndexValidationError) -> Self {
+        Self::UnknownTable(value)
     }
 }
 
@@ -550,10 +583,6 @@ impl ValidationErrorKind {
 
     fn unknown_type() -> Self {
         Self::mint(ValidationErrorKind::UnknownType)
-    }
-
-    fn unknown_table() -> Self {
-        Self::mint(ValidationErrorKind::UnknownTable)
     }
 
     fn unknown_function() -> Self {
@@ -753,7 +782,7 @@ impl Validator {
     fn table_type_at(
         module: &Module,
         table_idx: u32,
-    ) -> result::Result<&TableType, ValidationErrorKind> {
+    ) -> result::Result<&TableType, TableIndexValidationError> {
         let imported = module
             .imports
             .iter()
@@ -767,7 +796,10 @@ impl Validator {
         imported
             .chain(defined)
             .nth(table_idx as usize)
-            .ok_or_else(ValidationErrorKind::unknown_table)
+            .ok_or_else(|| TableIndexValidationError {
+                index: table_idx as usize,
+                count: module.table_count(),
+            })
     }
 
     /// Returns the global type at the given index
@@ -1839,7 +1871,12 @@ impl Validator {
                 }
                 ExportKind::Table => {
                     if idx >= table_count {
-                        return Err(ValidationErrorKind::unknown_table());
+                        return Err(ValidationErrorKind::UnknownTable(
+                            TableIndexValidationError {
+                                index: idx,
+                                count: table_count,
+                            },
+                        ));
                     }
                 }
                 ExportKind::Memory => {
