@@ -187,6 +187,7 @@ pub enum FunctionValidationError {
         name: &'static str,
         kind: ValidationErrorKind,
     },
+    UnknownType(TypeIndexValidationError),
 }
 
 impl error::Error for FunctionValidationError {
@@ -197,6 +198,7 @@ impl error::Error for FunctionValidationError {
                 name: _,
                 kind,
             } => Some(kind),
+            Self::UnknownType(e) => Some(e),
         }
     }
 }
@@ -207,6 +209,7 @@ impl fmt::Display for FunctionValidationError {
             Self::Instruction { index, name, .. } => {
                 write!(f, "validating instruction {index} ({name})")
             }
+            Self::UnknownType(_) => write!(f, "function type refers to an invalid type index"),
         }
     }
 }
@@ -365,6 +368,29 @@ impl fmt::Display for TableIndexValidationError {
     }
 }
 
+/// Func Index Validation Error
+#[derive(Debug)]
+pub struct FuncIndexValidationError {
+    index: usize,
+    count: usize,
+}
+
+impl error::Error for FuncIndexValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for FuncIndexValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "func index {} out of range ({} available)",
+            self.index, self.count
+        )
+    }
+}
+
 /// Const Expression Validation Error
 #[derive(Debug)]
 #[non_exhaustive]
@@ -469,8 +495,6 @@ pub enum ValidationErrorKind {
     UndeclaredFunctionReference,
     UnknownLocal,
     UnknownGlobal,
-    UnknownType,
-    UnknownFunction,
     UnknownMemory,
     UnknownData,
     UnknownElement,
@@ -486,6 +510,8 @@ pub enum ValidationErrorKind {
         source: Box<ConstExpressionValidationError>,
     },
     UnknownTable(TableIndexValidationError),
+    UnknownType(TypeIndexValidationError),
+    UnknownFunction(FuncIndexValidationError),
 }
 
 impl error::Error for ValidationErrorKind {
@@ -493,6 +519,7 @@ impl error::Error for ValidationErrorKind {
         match self {
             Self::ConstExprError { source } => Some(source),
             Self::UnknownTable(e) => Some(e),
+            Self::UnknownType(e) => Some(e),
             _ => None,
         }
     }
@@ -509,8 +536,6 @@ impl fmt::Display for ValidationErrorKind {
             Self::UndeclaredFunctionReference => write!(f, "undeclared function reference"),
             Self::UnknownLocal => write!(f, "unknown local"),
             Self::UnknownGlobal => write!(f, "unknown global"),
-            Self::UnknownType => write!(f, "unknown type"),
-            Self::UnknownFunction => write!(f, "unknown function"),
             Self::UnknownMemory => write!(f, "unknown memory"),
             Self::UnknownData => write!(f, "unknown data"),
             Self::UnknownElement => write!(f, "unknown element"),
@@ -524,6 +549,8 @@ impl fmt::Display for ValidationErrorKind {
             Self::StartFunction => write!(f, "start function type"),
             Self::ConstExprError { .. } => write!(f, "CONST EXPR ERROR PLACEHOLDER"),
             Self::UnknownTable(_) => write!(f, "unknown table"),
+            Self::UnknownType(_) => write!(f, "unknown type"),
+            Self::UnknownFunction(_) => write!(f, "unknown function"),
         }
     }
 }
@@ -539,6 +566,18 @@ impl From<ConstExpressionValidationError> for ValidationErrorKind {
 impl From<TableIndexValidationError> for ValidationErrorKind {
     fn from(value: TableIndexValidationError) -> Self {
         Self::UnknownTable(value)
+    }
+}
+
+impl From<TypeIndexValidationError> for ValidationErrorKind {
+    fn from(value: TypeIndexValidationError) -> Self {
+        Self::UnknownType(value)
+    }
+}
+
+impl From<FuncIndexValidationError> for ValidationErrorKind {
+    fn from(value: FuncIndexValidationError) -> Self {
+        Self::UnknownFunction(value)
     }
 }
 
@@ -579,14 +618,6 @@ impl ValidationErrorKind {
 
     fn unknown_global() -> Self {
         Self::mint(ValidationErrorKind::UnknownGlobal)
-    }
-
-    fn unknown_type() -> Self {
-        Self::mint(ValidationErrorKind::UnknownType)
-    }
-
-    fn unknown_function() -> Self {
-        Self::mint(ValidationErrorKind::UnknownFunction)
     }
 
     fn unknown_memory() -> Self {
@@ -728,14 +759,15 @@ impl Validator {
             BlockType::Empty => (vec![], vec![]),
             BlockType::Value(vt) => (vec![], vec![vt.into()]),
             BlockType::Index(idx) => {
-                let types = &module
+                let t = &module
                     .types
                     .as_ref()
-                    .ok_or_else(ValidationErrorKind::unknown_type)?;
+                    .and_then(|t| t.get(*idx as usize))
+                    .ok_or(TypeIndexValidationError {
+                        index: *idx as usize,
+                        count: module.type_count(),
+                    })?;
 
-                let t = types
-                    .get(*idx as usize)
-                    .ok_or(ValidationErrorKind::UnknownType)?;
                 (
                     t.params.iter().copied().map(|v| (&v).into()).collect(),
                     t.results.iter().copied().map(|v| (&v).into()).collect(),
@@ -745,12 +777,18 @@ impl Validator {
     }
 
     /// Returns the function type at the given type index (not function index)
-    fn type_at(module: &Module, type_idx: u32) -> result::Result<&FuncType, ValidationErrorKind> {
+    fn type_at(
+        module: &Module,
+        type_idx: u32,
+    ) -> result::Result<&FuncType, TypeIndexValidationError> {
         module
             .types
             .as_ref()
             .and_then(|types| types.get(type_idx as usize))
-            .ok_or_else(ValidationErrorKind::unknown_type)
+            .ok_or_else(|| TypeIndexValidationError {
+                index: type_idx as usize,
+                count: module.func_count(),
+            })
     }
 
     /// Returns the type for an idx in the Function Section.
@@ -772,9 +810,12 @@ impl Validator {
         let type_idx = imported
             .chain(defined)
             .nth(func_idx.as_usize())
-            .ok_or_else(ValidationErrorKind::unknown_function)?;
+            .ok_or_else(|| FuncIndexValidationError {
+                index: func_idx.as_usize(),
+                count: module.func_count(),
+            })?;
 
-        Self::type_at(module, type_idx)
+        Ok(Self::type_at(module, type_idx)?)
     }
 
     /// Returns the table type at the given index
@@ -988,7 +1029,12 @@ impl Validator {
                         return Err(ConstExpressionValidationError::Instruction {
                             index: i,
                             name: inst.name(),
-                            source: ValidationErrorKind::unknown_function(),
+                            source: ValidationErrorKind::UnknownFunction(
+                                FuncIndexValidationError {
+                                    index: idx.as_usize(),
+                                    count: module.func_count(),
+                                },
+                            ),
                         });
                     }
                     stack.push(ValueType::Ref(RefType::Func))
@@ -1564,7 +1610,12 @@ impl Validator {
             Instruction::RefFunc(idx) => {
                 // Check that the function index is valid in this module
                 if idx.as_usize() >= module.func_count() {
-                    return Err(ValidationErrorKind::UnknownFunction);
+                    return Err(ValidationErrorKind::UnknownFunction(
+                        FuncIndexValidationError {
+                            index: idx.as_usize(),
+                            count: module.func_count(),
+                        },
+                    ));
                 }
                 // Check that the function index has been declared for use
                 // as reference.
@@ -1866,7 +1917,12 @@ impl Validator {
             match e.kind {
                 ExportKind::Func => {
                     if idx >= func_count {
-                        return Err(ValidationErrorKind::unknown_function());
+                        return Err(ValidationErrorKind::UnknownFunction(
+                            FuncIndexValidationError {
+                                index: idx,
+                                count: func_count,
+                            },
+                        ));
                     }
                 }
                 ExportKind::Table => {
@@ -2004,7 +2060,13 @@ impl Validator {
                 .types
                 .as_ref()
                 .and_then(|t| t.get(type_idx))
-                .ok_or_else(ValidationErrorKind::unknown_type)?;
+                .ok_or_else(|| ValidationError::Function {
+                    index: index + module.imported_func_count(),
+                    source: FunctionValidationError::UnknownType(TypeIndexValidationError {
+                        index: type_idx,
+                        count: module.type_count(),
+                    }),
+                })?;
             Validator::default()
                 .validate_function(functype, entry, module, &declared_refs)
                 .map_err(|e| ValidationError::Function {
@@ -2415,7 +2477,9 @@ mod tests {
                     source: TableValidationError::InvalidConstExpression(
                         ConstExpressionValidationError::Instruction {
                             index: 0,
-                            source: ValidationErrorKind::UnknownFunction,
+                            source: ValidationErrorKind::UnknownFunction(
+                                FuncIndexValidationError { index: 5, count: 0 }
+                            ),
                             ..
                         }
                     )
@@ -2732,7 +2796,9 @@ mod tests {
                         ConstExpressionValidationError::Instruction {
                             index: _,
                             name: _,
-                            source: ValidationErrorKind::UnknownFunction
+                            source: ValidationErrorKind::UnknownFunction(
+                                FuncIndexValidationError { index: 5, count: 0 }
+                            )
                         }
                     )
                 })
