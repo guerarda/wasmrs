@@ -187,7 +187,7 @@ pub enum FunctionValidationError {
         name: &'static str,
         kind: ValidationErrorKind,
     },
-    UnknownType(TypeIndexValidationError),
+    UnknownType(IndexValidationError),
 }
 
 impl error::Error for FunctionValidationError {
@@ -270,7 +270,7 @@ impl fmt::Display for MemoryValidationError {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ImportValidationError {
-    UnknownFunctionType(TypeIndexValidationError),
+    UnknownFunctionType(IndexValidationError),
     InvalidMemory(LimitValidationError),
     MultipleMemories,
 }
@@ -322,71 +322,38 @@ impl fmt::Display for GlobalValidationError {
     }
 }
 
-/// Type Index Validation Error
+/// Index Validation Error
 #[derive(Debug)]
-pub struct TypeIndexValidationError {
+pub enum IndexSpace {
+    Type,
+    Function,
+    Table,
+}
+
+impl fmt::Display for IndexSpace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Type => write!(f, "type"),
+            Self::Function => write!(f, "function"),
+            Self::Table => write!(f, "table"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct IndexValidationError {
+    space: IndexSpace,
     index: usize,
     count: usize,
 }
 
-impl error::Error for TypeIndexValidationError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
-}
-
-impl fmt::Display for TypeIndexValidationError {
+impl error::Error for IndexValidationError {}
+impl fmt::Display for IndexValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "type index {} out of range ({} available)",
-            self.index, self.count
-        )
-    }
-}
-
-/// Table Index Validation Error
-#[derive(Debug)]
-pub struct TableIndexValidationError {
-    index: usize,
-    count: usize,
-}
-
-impl error::Error for TableIndexValidationError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
-}
-
-impl fmt::Display for TableIndexValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "table index {} out of range ({} available)",
-            self.index, self.count
-        )
-    }
-}
-
-/// Func Index Validation Error
-#[derive(Debug)]
-pub struct FuncIndexValidationError {
-    index: usize,
-    count: usize,
-}
-
-impl error::Error for FuncIndexValidationError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
-}
-
-impl fmt::Display for FuncIndexValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "func index {} out of range ({} available)",
-            self.index, self.count
+            "{} index {} out of range ({} available)",
+            self.space, self.index, self.count
         )
     }
 }
@@ -459,7 +426,7 @@ impl fmt::Display for ConstExpressionValidationError {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum LimitValidationError {
-    MinExceedsMax { min: u32, max: u32 },
+    MinExceedsMax(u32, u32),
     MinExceedsRange { min: u32, limit: u32 },
     MaxExceedsRange { max: u32, limit: u32 },
 }
@@ -473,7 +440,7 @@ impl error::Error for LimitValidationError {
 impl fmt::Display for LimitValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MinExceedsMax { min, max } => write!(f, "limit min ({min}) exceeds max ({max})"),
+            Self::MinExceedsMax(min, max) => write!(f, "limit min ({min}) exceeds max ({max})"),
             Self::MinExceedsRange { min, limit } => {
                 write!(f, "limit min ({min}) exceeds allowed max ({limit})")
             }
@@ -509,17 +476,14 @@ pub enum ValidationErrorKind {
     ConstExprError {
         source: Box<ConstExpressionValidationError>,
     },
-    UnknownTable(TableIndexValidationError),
-    UnknownType(TypeIndexValidationError),
-    UnknownFunction(FuncIndexValidationError),
+    InvalidIndex(IndexValidationError),
 }
 
 impl error::Error for ValidationErrorKind {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             Self::ConstExprError { source } => Some(source),
-            Self::UnknownTable(e) => Some(e),
-            Self::UnknownType(e) => Some(e),
+            Self::InvalidIndex(e) => Some(e),
             _ => None,
         }
     }
@@ -548,9 +512,7 @@ impl fmt::Display for ValidationErrorKind {
             Self::FunctionCodeMismatch => write!(f, "function and code section mismatch"),
             Self::StartFunction => write!(f, "start function type"),
             Self::ConstExprError { .. } => write!(f, "CONST EXPR ERROR PLACEHOLDER"),
-            Self::UnknownTable(_) => write!(f, "unknown table"),
-            Self::UnknownType(_) => write!(f, "unknown type"),
-            Self::UnknownFunction(_) => write!(f, "unknown function"),
+            Self::InvalidIndex(_) => write!(f, "invalid index"),
         }
     }
 }
@@ -563,21 +525,9 @@ impl From<ConstExpressionValidationError> for ValidationErrorKind {
     }
 }
 
-impl From<TableIndexValidationError> for ValidationErrorKind {
-    fn from(value: TableIndexValidationError) -> Self {
-        Self::UnknownTable(value)
-    }
-}
-
-impl From<TypeIndexValidationError> for ValidationErrorKind {
-    fn from(value: TypeIndexValidationError) -> Self {
-        Self::UnknownType(value)
-    }
-}
-
-impl From<FuncIndexValidationError> for ValidationErrorKind {
-    fn from(value: FuncIndexValidationError) -> Self {
-        Self::UnknownFunction(value)
+impl From<IndexValidationError> for ValidationErrorKind {
+    fn from(value: IndexValidationError) -> Self {
+        ValidationErrorKind::InvalidIndex(value)
     }
 }
 
@@ -763,7 +713,8 @@ impl Validator {
                     .types
                     .as_ref()
                     .and_then(|t| t.get(*idx as usize))
-                    .ok_or(TypeIndexValidationError {
+                    .ok_or(IndexValidationError {
+                        space: IndexSpace::Type,
                         index: *idx as usize,
                         count: module.type_count(),
                     })?;
@@ -777,15 +728,13 @@ impl Validator {
     }
 
     /// Returns the function type at the given type index (not function index)
-    fn type_at(
-        module: &Module,
-        type_idx: u32,
-    ) -> result::Result<&FuncType, TypeIndexValidationError> {
+    fn type_at(module: &Module, type_idx: u32) -> result::Result<&FuncType, IndexValidationError> {
         module
             .types
             .as_ref()
             .and_then(|types| types.get(type_idx as usize))
-            .ok_or_else(|| TypeIndexValidationError {
+            .ok_or_else(|| IndexValidationError {
+                space: IndexSpace::Type,
                 index: type_idx as usize,
                 count: module.func_count(),
             })
@@ -810,7 +759,8 @@ impl Validator {
         let type_idx = imported
             .chain(defined)
             .nth(func_idx.as_usize())
-            .ok_or_else(|| FuncIndexValidationError {
+            .ok_or_else(|| IndexValidationError {
+                space: IndexSpace::Function,
                 index: func_idx.as_usize(),
                 count: module.func_count(),
             })?;
@@ -823,7 +773,7 @@ impl Validator {
     fn table_type_at(
         module: &Module,
         table_idx: u32,
-    ) -> result::Result<&TableType, TableIndexValidationError> {
+    ) -> result::Result<&TableType, IndexValidationError> {
         let imported = module
             .imports
             .iter()
@@ -837,7 +787,8 @@ impl Validator {
         imported
             .chain(defined)
             .nth(table_idx as usize)
-            .ok_or_else(|| TableIndexValidationError {
+            .ok_or_else(|| IndexValidationError {
+                space: IndexSpace::Table,
                 index: table_idx as usize,
                 count: module.table_count(),
             })
@@ -1029,12 +980,12 @@ impl Validator {
                         return Err(ConstExpressionValidationError::Instruction {
                             index: i,
                             name: inst.name(),
-                            source: ValidationErrorKind::UnknownFunction(
-                                FuncIndexValidationError {
-                                    index: idx.as_usize(),
-                                    count: module.func_count(),
-                                },
-                            ),
+                            source: IndexValidationError {
+                                space: IndexSpace::Function,
+                                index: idx.as_usize(),
+                                count: module.func_count(),
+                            }
+                            .into(),
                         });
                     }
                     stack.push(ValueType::Ref(RefType::Func))
@@ -1112,7 +1063,7 @@ impl Validator {
                 });
             }
             if l.min > max {
-                return Err(LimitValidationError::MinExceedsMax { min: l.min, max });
+                return Err(LimitValidationError::MinExceedsMax(l.min, max));
             }
         }
         Ok(())
@@ -1610,12 +1561,12 @@ impl Validator {
             Instruction::RefFunc(idx) => {
                 // Check that the function index is valid in this module
                 if idx.as_usize() >= module.func_count() {
-                    return Err(ValidationErrorKind::UnknownFunction(
-                        FuncIndexValidationError {
-                            index: idx.as_usize(),
-                            count: module.func_count(),
-                        },
-                    ));
+                    return Err(IndexValidationError {
+                        space: IndexSpace::Function,
+                        index: idx.as_usize(),
+                        count: module.func_count(),
+                    }
+                    .into());
                 }
                 // Check that the function index has been declared for use
                 // as reference.
@@ -1773,7 +1724,7 @@ impl Validator {
                 return Err(ValidationError::Table {
                     index,
                     source: TableValidationError::InvalidLimit(
-                        LimitValidationError::MinExceedsMax { min: l.min, max },
+                        LimitValidationError::MinExceedsMax(l.min, max),
                     ),
                 });
             }
@@ -1870,7 +1821,8 @@ impl Validator {
                         return Err(ValidationError::Import {
                             index,
                             source: ImportValidationError::UnknownFunctionType(
-                                TypeIndexValidationError {
+                                IndexValidationError {
+                                    space: IndexSpace::Type,
                                     index: *idx as usize,
                                     count: types_len,
                                 },
@@ -1917,22 +1869,22 @@ impl Validator {
             match e.kind {
                 ExportKind::Func => {
                     if idx >= func_count {
-                        return Err(ValidationErrorKind::UnknownFunction(
-                            FuncIndexValidationError {
-                                index: idx,
-                                count: func_count,
-                            },
-                        ));
+                        return Err(IndexValidationError {
+                            space: IndexSpace::Function,
+                            index: idx,
+                            count: func_count,
+                        }
+                        .into());
                     }
                 }
                 ExportKind::Table => {
                     if idx >= table_count {
-                        return Err(ValidationErrorKind::UnknownTable(
-                            TableIndexValidationError {
-                                index: idx,
-                                count: table_count,
-                            },
-                        ));
+                        return Err(IndexValidationError {
+                            space: IndexSpace::Table,
+                            index: idx,
+                            count: table_count,
+                        }
+                        .into());
                     }
                 }
                 ExportKind::Memory => {
@@ -2062,7 +2014,8 @@ impl Validator {
                 .and_then(|t| t.get(type_idx))
                 .ok_or_else(|| ValidationError::Function {
                     index: index + module.imported_func_count(),
-                    source: FunctionValidationError::UnknownType(TypeIndexValidationError {
+                    source: FunctionValidationError::UnknownType(IndexValidationError {
+                        space: IndexSpace::Type,
                         index: type_idx,
                         count: module.type_count(),
                     }),
@@ -2171,7 +2124,8 @@ mod tests {
                 result,
                 Err(ValidationError::Import {
                     index: 1,
-                    source: ImportValidationError::UnknownFunctionType(TypeIndexValidationError {
+                    source: ImportValidationError::UnknownFunctionType(IndexValidationError {
+                        space: IndexSpace::Type,
                         index: 1,
                         count: 1
                     })
@@ -2257,7 +2211,7 @@ mod tests {
                 Err(ValidationError::Import {
                     index: 1,
                     source: ImportValidationError::InvalidMemory(
-                        LimitValidationError::MinExceedsMax { min: 2, max: 1 }
+                        LimitValidationError::MinExceedsMax(2, 1)
                     )
                 })
             ),
@@ -2378,7 +2332,7 @@ mod tests {
                 Err(ValidationError::Memory {
                     index: 0,
                     source: MemoryValidationError::InvalidLimit(
-                        LimitValidationError::MinExceedsMax { min: 2, max: 1 }
+                        LimitValidationError::MinExceedsMax(2, 1)
                     )
                 })
             ),
@@ -2426,7 +2380,7 @@ mod tests {
                 Err(ValidationError::Table {
                     index: 0,
                     source: TableValidationError::InvalidLimit(
-                        LimitValidationError::MinExceedsMax { min: 2, max: 1 }
+                        LimitValidationError::MinExceedsMax(2, 1)
                     )
                 })
             ),
@@ -2477,9 +2431,11 @@ mod tests {
                     source: TableValidationError::InvalidConstExpression(
                         ConstExpressionValidationError::Instruction {
                             index: 0,
-                            source: ValidationErrorKind::UnknownFunction(
-                                FuncIndexValidationError { index: 5, count: 0 }
-                            ),
+                            source: ValidationErrorKind::InvalidIndex(IndexValidationError {
+                                space: IndexSpace::Function,
+                                index: 5,
+                                count: 0
+                            }),
                             ..
                         }
                     )
@@ -2796,9 +2752,11 @@ mod tests {
                         ConstExpressionValidationError::Instruction {
                             index: _,
                             name: _,
-                            source: ValidationErrorKind::UnknownFunction(
-                                FuncIndexValidationError { index: 5, count: 0 }
-                            )
+                            source: ValidationErrorKind::InvalidIndex(IndexValidationError {
+                                space: IndexSpace::Function,
+                                index: 5,
+                                count: 0
+                            })
                         }
                     )
                 })
