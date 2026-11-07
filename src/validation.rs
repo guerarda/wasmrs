@@ -328,6 +328,7 @@ pub enum IndexSpace {
     Type,
     Function,
     Table,
+    Element,
 }
 
 impl fmt::Display for IndexSpace {
@@ -336,6 +337,7 @@ impl fmt::Display for IndexSpace {
             Self::Type => write!(f, "type"),
             Self::Function => write!(f, "function"),
             Self::Table => write!(f, "table"),
+            Self::Element => write!(f, "element"),
         }
     }
 }
@@ -464,7 +466,6 @@ pub enum ValidationErrorKind {
     UnknownGlobal,
     UnknownMemory,
     UnknownData,
-    UnknownElement,
     ImmutableGlobal,
     InvalidSelectTypes,
     InvalidMemAlignment,
@@ -502,7 +503,6 @@ impl fmt::Display for ValidationErrorKind {
             Self::UnknownGlobal => write!(f, "unknown global"),
             Self::UnknownMemory => write!(f, "unknown memory"),
             Self::UnknownData => write!(f, "unknown data"),
-            Self::UnknownElement => write!(f, "unknown element"),
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
             Self::InvalidMemAlignment => write!(f, "invalid mem alignment"),
@@ -576,10 +576,6 @@ impl ValidationErrorKind {
 
     fn unknown_data() -> Self {
         Self::mint(ValidationErrorKind::UnknownData)
-    }
-
-    fn unknown_element() -> Self {
-        Self::mint(ValidationErrorKind::UnknownElement)
     }
 
     fn immutable_global() -> Self {
@@ -1645,11 +1641,13 @@ impl Validator {
                 let tabletype = Self::table_type_at(module, *tableidx)?;
 
                 // element exists
-                let elem = module
-                    .elements
-                    .as_ref()
-                    .and_then(|elems| elems.get(*elemidx as usize))
-                    .ok_or_else(ValidationErrorKind::unknown_element)?;
+                let index = *elemidx as usize;
+                let elems = module.elements.as_deref().unwrap_or(&[]);
+                let elem = elems.get(index).ok_or_else(|| IndexValidationError {
+                    space: IndexSpace::Element,
+                    index,
+                    count: elems.len(),
+                })?;
 
                 let elemtype = match elem.items {
                     ElementSegmentItems::Functions(_) => RefType::Func,
@@ -1661,12 +1659,15 @@ impl Validator {
                 }
             }
             Instruction::ElemDrop(idx) => {
-                if module
-                    .elements
-                    .as_ref()
-                    .is_none_or(|elems| (*idx as usize) >= elems.len())
-                {
-                    return Err(ValidationErrorKind::unknown_element());
+                let count = module.elements.as_ref().map_or(0, Vec::len);
+                let index = *idx as usize;
+                if index >= count {
+                    return Err(IndexValidationError {
+                        space: IndexSpace::Element,
+                        index,
+                        count,
+                    }
+                    .into());
                 }
             }
             Instruction::TableCopy((dstidx, srcidx)) => {
