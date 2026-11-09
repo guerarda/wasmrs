@@ -328,6 +328,7 @@ pub enum IndexSpace {
     Type,
     Function,
     Table,
+    Memory,
     Element,
 }
 
@@ -337,6 +338,7 @@ impl fmt::Display for IndexSpace {
             Self::Type => write!(f, "type"),
             Self::Function => write!(f, "function"),
             Self::Table => write!(f, "table"),
+            Self::Memory => write!(f, "memory"),
             Self::Element => write!(f, "element"),
         }
     }
@@ -347,6 +349,22 @@ pub struct IndexValidationError {
     space: IndexSpace,
     index: usize,
     count: usize,
+}
+
+impl IndexValidationError {
+    fn mint(space: IndexSpace, index: usize, count: usize) -> Self {
+        #[cfg(feature = "debug-errors")]
+        dbg_breakpoint::breakpoint_if_debugging();
+        Self {
+            space,
+            index,
+            count,
+        }
+    }
+
+    fn memory(index: MemIndex, count: usize) -> Self {
+        Self::mint(IndexSpace::Memory, index.0 as usize, count)
+    }
 }
 
 impl error::Error for IndexValidationError {}
@@ -464,7 +482,6 @@ pub enum ValidationErrorKind {
     UndeclaredFunctionReference,
     UnknownLocal,
     UnknownGlobal,
-    UnknownMemory,
     UnknownData,
     ImmutableGlobal,
     InvalidSelectTypes,
@@ -501,7 +518,6 @@ impl fmt::Display for ValidationErrorKind {
             Self::UndeclaredFunctionReference => write!(f, "undeclared function reference"),
             Self::UnknownLocal => write!(f, "unknown local"),
             Self::UnknownGlobal => write!(f, "unknown global"),
-            Self::UnknownMemory => write!(f, "unknown memory"),
             Self::UnknownData => write!(f, "unknown data"),
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
@@ -568,10 +584,6 @@ impl ValidationErrorKind {
 
     fn unknown_global() -> Self {
         Self::mint(ValidationErrorKind::UnknownGlobal)
-    }
-
-    fn unknown_memory() -> Self {
-        Self::mint(ValidationErrorKind::UnknownMemory)
     }
 
     fn unknown_data() -> Self {
@@ -816,7 +828,7 @@ impl Validator {
     fn mem_type_at(
         module: &Module,
         mem_idx: MemIndex,
-    ) -> result::Result<&MemType, ValidationErrorKind> {
+    ) -> result::Result<&MemType, IndexValidationError> {
         let imported = module
             .imports
             .iter()
@@ -830,7 +842,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(mem_idx.0 as usize)
-            .ok_or_else(ValidationErrorKind::unknown_memory)
+            .ok_or_else(|| IndexValidationError::memory(mem_idx, module.memory_count()))
     }
 
     /// Return the type of the function local at the given index
@@ -1890,7 +1902,9 @@ impl Validator {
                 }
                 ExportKind::Memory => {
                     if idx >= mem_count {
-                        return Err(ValidationErrorKind::unknown_memory());
+                        return Err(
+                            IndexValidationError::memory(MemIndex(idx as u32), mem_count).into(),
+                        );
                     }
                 }
                 ExportKind::Global => {
@@ -1913,7 +1927,9 @@ impl Validator {
         for d in datasec {
             if let DataSegmentMode::Active { mem_index, offset } = &d.mode {
                 if (*mem_index as usize) >= mem_count {
-                    return Err(ValidationErrorKind::unknown_memory());
+                    return Err(
+                        IndexValidationError::memory(MemIndex(*mem_index), mem_count).into(),
+                    );
                 }
                 Self::validate_const_expr(module, offset, &[ValueType::I32])?;
             }
@@ -2442,7 +2458,7 @@ mod tests {
                     )
                 })
             ),
-            "expected UnknownFunction, got: {:?}",
+            "expected invalid function index, got: {:?}",
             result
         );
         Ok(())
@@ -2727,11 +2743,116 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(ValidationError::Module(ValidationErrorKind::UnknownMemory))
+                Err(ValidationError::Module(ValidationErrorKind::InvalidIndex(
+                    IndexValidationError {
+                        space: IndexSpace::Memory,
+                        index: 1,
+                        count: 1
+                    }
+                )))
             ),
-            "expected UnknownMemory, got: {:?}",
+            "expected invalid memory index, got: {:?}",
             result
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_export_unknown_memory() -> anyhow::Result<()> {
+        // The module has no memory, so exporting memory 0 is out of range.
+        let wat = r#"
+            (module (export "m" (memory 0)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Module(ValidationErrorKind::InvalidIndex(
+                    IndexValidationError {
+                        space: IndexSpace::Memory,
+                        index: 0,
+                        count: 0
+                    }
+                )))
+            ),
+            "expected invalid memory index, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_instructions_unknown_memory() -> anyhow::Result<()> {
+        // Each function uses a memory instruction in a module without memory.
+        let cases = [
+            (
+                "memory.size",
+                r#"
+                    (module
+                        (func (result i32)
+                            memory.size))
+                "#,
+                0,
+            ),
+            (
+                "memory.grow",
+                r#"
+                    (module
+                        (func (result i32)
+                            i32.const 1
+                            memory.grow))
+                "#,
+                1,
+            ),
+            (
+                "i32.load",
+                r#"
+                    (module
+                        (func (result i32)
+                            i32.const 0
+                            i32.load))
+                "#,
+                1,
+            ),
+            (
+                "i32.store",
+                r#"
+                    (module
+                        (func
+                            i32.const 0
+                            i32.const 0
+                            i32.store))
+                "#,
+                2,
+            ),
+        ];
+
+        for (name, wat, inst_index) in cases {
+            let bytes = wat::parse_str(wat)?;
+            let m = decode_bytes(bytes)?;
+            let result = validate_module(&m);
+            assert!(
+                matches!(
+                    result,
+                    Err(ValidationError::Function {
+                        index: 0,
+                        source: FunctionValidationError::Instruction {
+                            index,
+                            name: _,
+                            kind: ValidationErrorKind::InvalidIndex(IndexValidationError {
+                                space: IndexSpace::Memory,
+                                index: 0,
+                                count: 0
+                            })
+                        }
+                    }) if index == inst_index
+                ),
+                "{name}: expected invalid memory index, got: {:?}",
+                result
+            );
+        }
         Ok(())
     }
 
@@ -2762,7 +2883,7 @@ mod tests {
                     )
                 })
             ),
-            "expected UnknownFunction, got: {:?}",
+            "expected invalid function index, got: {:?}",
             result
         );
         Ok(())
