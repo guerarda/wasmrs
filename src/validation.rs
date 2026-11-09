@@ -744,7 +744,7 @@ impl Validator {
             .ok_or_else(|| IndexValidationError {
                 space: IndexSpace::Type,
                 index: type_idx as usize,
-                count: module.func_count(),
+                count: module.type_count(),
             })
     }
 
