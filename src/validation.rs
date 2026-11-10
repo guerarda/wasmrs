@@ -8,7 +8,6 @@ use sections::table::TableValidationError;
 
 use crate::binary::module::Module;
 use crate::binary::sections::code::{CodeEntry, FuncLocal};
-use crate::binary::sections::data::DataSegmentMode;
 use crate::binary::sections::element::ElementSegmentItems;
 use crate::binary::sections::export::ExportKind;
 use crate::binary::sections::global::{GlobalType, MutabilityFlag};
@@ -1463,24 +1462,6 @@ impl Validator {
     }
 
     // Section validation
-    fn validate_data_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
-        let Some(ref datasec) = module.data else {
-            return Ok(());
-        };
-
-        let mem_count = module.memory_count();
-        for d in datasec {
-            if let DataSegmentMode::Active { mem_index, offset } = &d.mode {
-                if (*mem_index as usize) >= mem_count {
-                    return Err(
-                        IndexValidationError::memory(MemIndex(*mem_index), mem_count).into(),
-                    );
-                }
-                const_expr::validate(module, offset, &[ValueType::I32])?;
-            }
-        }
-        Ok(())
-    }
 
     // Start function, if present, must have type [] -> []
     fn validate_start_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
@@ -1538,7 +1519,7 @@ impl Validator {
         sections::memory::validate(module)?;
         sections::element::validate(module)?;
         sections::import::validate(module)?;
-        Self::validate_data_section(module)?;
+        sections::data::validate(module)?;
         sections::global::validate(module)?;
         sections::export::validate(module)?;
         Self::validate_start_section(module)?;
