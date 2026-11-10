@@ -1,4 +1,6 @@
-use std::{collections::HashSet, error, fmt, result};
+mod const_expr;
+
+use const_expr::{ConstExpressionValidationError, validate};
 
 use crate::{
     binary::{
@@ -13,14 +15,12 @@ use crate::{
             memory::MemType,
             table::TableType,
         },
-        types::{
-            BlockType, ConstExpression, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex,
-            RefType, ValType,
-        },
+        types::{BlockType, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, ValType},
     },
     instructions::Instruction,
     limits::MAX_WASM_32BIT_MEMORY_PAGES,
 };
+use std::{collections::HashSet, error, fmt, result};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValueType {
@@ -329,7 +329,10 @@ pub enum IndexSpace {
     Function,
     Table,
     Memory,
+    // Global,
+    // Data,
     Element,
+    // Local,
 }
 
 impl fmt::Display for IndexSpace {
@@ -375,71 +378,6 @@ impl fmt::Display for IndexValidationError {
             "{} index {} out of range ({} available)",
             self.space, self.index, self.count
         )
-    }
-}
-
-/// Const Expression Validation Error
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum ConstExpressionValidationError {
-    GlobalNotAllowed {
-        inst_index: usize,
-        global_index: usize,
-    },
-    InstructionNotAllowed {
-        index: usize,
-        name: &'static str,
-    },
-    Instruction {
-        index: usize,
-        name: &'static str,
-        source: ValidationErrorKind,
-    },
-    ResultTypeMismatch {
-        expected: Vec<ValueType>,
-        actual: Vec<ValueType>,
-    },
-}
-
-impl error::Error for ConstExpressionValidationError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Instruction {
-                index: _,
-                name: _,
-                source,
-            } => Some(source),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for ConstExpressionValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Instruction { index, name, .. } => {
-                write!(f, "validating instruction at index {index} ({name})")
-            }
-            Self::ResultTypeMismatch { expected, actual } => {
-                write!(f, "type mismatch, expected:")?;
-                fmt_value_type_vec(f, expected)?;
-                write!(f, ", got:")?;
-                fmt_value_type_vec(f, actual)
-            }
-            Self::GlobalNotAllowed {
-                inst_index,
-                global_index,
-            } => {
-                write!(
-                    f,
-                    "global.get({global_index}) at index {inst_index} is not allowed, constant expression required"
-                )
-            }
-            Self::InstructionNotAllowed { index, name } => write!(
-                f,
-                "instruction at index {index} ({name}) is not allowed in a constant epxression"
-            ),
-        }
     }
 }
 
@@ -964,95 +902,6 @@ impl Validator {
         self.pop_val_expect(valuetype.into())?;
         self.pop_val_expect(ValueType::I32)?;
         Ok(())
-    }
-
-    /// Validates that `expr` is constant and evaluates to the expected type.
-    /// Also enforces that global.get instructions only refer to allowed globals
-    /// Imported or previously defined flor Globals, and imported
-    /// only for Tables.
-    fn validate_const_expr(
-        module: &Module,
-        expr: &ConstExpression,
-        expected: &[ValueType],
-    ) -> result::Result<(), ConstExpressionValidationError> {
-        let mut stack = vec![];
-        for (i, inst) in expr.0.iter().enumerate() {
-            match inst {
-                Instruction::I32Const(_) => stack.push(ValueType::I32),
-                Instruction::I64Const(_) => stack.push(ValueType::I64),
-                Instruction::F32Const(_) => stack.push(ValueType::F32),
-                Instruction::F64Const(_) => stack.push(ValueType::F64),
-                Instruction::RefNull(rt) => stack.push(ValueType::Ref(*rt)),
-                Instruction::RefFunc(idx) => {
-                    if idx.as_usize() >= module.func_count() {
-                        return Err(ConstExpressionValidationError::Instruction {
-                            index: i,
-                            name: inst.name(),
-                            source: IndexValidationError {
-                                space: IndexSpace::Function,
-                                index: idx.as_usize(),
-                                count: module.func_count(),
-                            }
-                            .into(),
-                        });
-                    }
-                    stack.push(ValueType::Ref(RefType::Func))
-                }
-                Instruction::GlobalGet(idx) => {
-                    let idx = idx.0 as usize;
-
-                    if idx >= module.imported_global_count() {
-                        return Err(ConstExpressionValidationError::Instruction {
-                            index: i,
-                            name: inst.name(),
-                            source: ValidationErrorKind::unknown_global(),
-                        });
-                    }
-
-                    let import = module
-                        .imports
-                        .as_ref()
-                        .and_then(|imps| {
-                            imps.iter()
-                                .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
-                                .nth(idx)
-                        })
-                        .ok_or_else(|| ConstExpressionValidationError::Instruction {
-                            index: i,
-                            name: inst.name(),
-                            source: ValidationErrorKind::unknown_global(),
-                        })?;
-
-                    let ImportDesc::Global(gt) = &import.desc else {
-                        unreachable!()
-                    };
-
-                    if matches!(gt.mutflag, MutabilityFlag::Const) {
-                        stack.push(ValueType::from(gt.type_));
-                    } else {
-                        return Err(ConstExpressionValidationError::GlobalNotAllowed {
-                            inst_index: i,
-                            global_index: idx,
-                        });
-                    }
-                }
-                Instruction::End => break,
-                _ => {
-                    return Err(ConstExpressionValidationError::InstructionNotAllowed {
-                        index: i,
-                        name: inst.name(),
-                    });
-                }
-            }
-        }
-        if stack == expected {
-            Ok(())
-        } else {
-            Err(ConstExpressionValidationError::ResultTypeMismatch {
-                expected: expected.to_vec(),
-                actual: stack,
-            })
-        }
     }
 
     fn validate_memory_limit(memtype: &MemType) -> result::Result<(), LimitValidationError> {
@@ -1745,15 +1594,12 @@ impl Validator {
             // Validate that the expression, if present is a valid const
             // expression and evaluate to the table's declared type
             if let Some(expr) = &table.expr {
-                Self::validate_const_expr(
-                    module,
-                    expr,
-                    &[ValueType::from(table.tabletype.elemtype)],
-                )
-                .map_err(|e| ValidationError::Table {
-                    index,
-                    source: TableValidationError::InvalidConstExpression(e),
-                })?;
+                validate(module, expr, &[ValueType::from(table.tabletype.elemtype)]).map_err(
+                    |e| ValidationError::Table {
+                        index,
+                        source: TableValidationError::InvalidConstExpression(e),
+                    },
+                )?;
             }
         }
         Ok(())
@@ -1797,7 +1643,7 @@ impl Validator {
                 ElementSegmentItems::Expressions(rt, expr) => {
                     let expected = &[ValueType::from(*rt)];
                     expr.iter()
-                        .try_for_each(|e| Self::validate_const_expr(module, e, expected))?;
+                        .try_for_each(|e| validate(module, e, expected))?;
                     *rt
                 }
             };
@@ -1814,7 +1660,7 @@ impl Validator {
                     return Err(ValidationErrorKind::type_mismatch());
                 }
 
-                Self::validate_const_expr(module, offset, &[ValueType::I32])?;
+                validate(module, offset, &[ValueType::I32])?;
             }
         }
         Ok(())
@@ -1931,7 +1777,7 @@ impl Validator {
                         IndexValidationError::memory(MemIndex(*mem_index), mem_count).into(),
                     );
                 }
-                Self::validate_const_expr(module, offset, &[ValueType::I32])?;
+                validate(module, offset, &[ValueType::I32])?;
             }
         }
         Ok(())
@@ -1944,11 +1790,12 @@ impl Validator {
 
         for (idx, global) in globalsec.iter().enumerate() {
             // Const expression must produce the global declared type
-            Self::validate_const_expr(module, &global.body, &[ValueType::from(global.gt.type_)])
-                .map_err(|e| ValidationError::Global {
+            validate(module, &global.body, &[ValueType::from(global.gt.type_)]).map_err(|e| {
+                ValidationError::Global {
                     index: module.imported_global_count() + idx,
                     source: GlobalValidationError::InvalidConstExpression(e),
-                })?;
+                }
+            })?;
         }
         Ok(())
     }
