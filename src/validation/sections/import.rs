@@ -84,6 +84,7 @@ impl fmt::Display for ImportValidationError {
 mod tests {
     use super::*;
     use crate::binary::module::decode_bytes;
+    use crate::validation::validate_module;
 
     #[test]
     fn test_import_unknown_function_type() -> anyhow::Result<()> {

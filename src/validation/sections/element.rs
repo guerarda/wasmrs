@@ -2,9 +2,7 @@ use std::{error, fmt, result};
 
 use crate::RefType;
 use crate::binary::module::Module;
-use crate::validation::IndexValidationError;
-use crate::validation::Validator;
-use crate::validation::const_expr;
+use crate::validation::{IndexValidationError, Validator, const_expr};
 
 use crate::binary::sections::element::{ElementSegmentItems, ElementSegmentMode};
 use crate::validation::const_expr::ConstExpressionValidationError;
