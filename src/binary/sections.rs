@@ -1,32 +1,34 @@
 use std::fmt::{self, Display};
 use std::{error, result};
 
+use crate::binary::reader::{InvalidEnumValueError, ReadError, Reader};
+
 pub mod code;
-pub use code::CodeSection;
+pub use code::{CodeSection, CodeSectionReadError};
 
 pub mod custom;
-pub use custom::CustomSection;
+pub use custom::{CustomSection, CustomSectionReadError};
 
 pub mod data;
-pub use data::DataSection;
+pub use data::{DataSection, DataSectionReadError};
 
 pub mod data_count;
 pub use data_count::{DataCountSection, decode_data_count_section};
 
 pub mod element;
-pub use element::ElementSection;
+pub use element::{ElementSection, ElementSectionReadError};
 
 pub mod export;
-pub use export::ExportSection;
+pub use export::{ExportSection, ExportSectionReadError};
 
 pub mod function;
 pub use function::FunctionSection;
 
 pub mod global;
-pub use global::{GlobalSection, GlobalTypeReadError};
+pub use global::{GlobalSection, GlobalSectionReadError, GlobalTypeReadError};
 
 pub mod import;
-pub use import::ImportSection;
+pub use import::{ImportSection, ImportSectionReadError};
 
 pub mod memory;
 pub use memory::{MemTypeReadError, MemorySection};
@@ -38,17 +40,7 @@ pub mod table;
 pub use table::{TableReadError, TableSection};
 
 pub mod type_;
-pub use type_::TypeSection;
-
-use crate::binary::reader::{InvalidEnumValueError, ReadError, Reader};
-use crate::binary::sections::code::CodeSectionReadError;
-use crate::binary::sections::custom::CustomSectionReadError;
-use crate::binary::sections::data::DataSectionReadError;
-use crate::binary::sections::element::ElementSectionReadError;
-use crate::binary::sections::export::ExportSectionReadError;
-use crate::binary::sections::global::GlobalSectionReadError;
-use crate::binary::sections::import::ImportSectionReadError;
-use crate::binary::sections::type_::TypeSectionReadError;
+pub use type_::{TypeSection, TypeSectionReadError};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
