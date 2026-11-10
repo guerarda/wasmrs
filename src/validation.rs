@@ -581,7 +581,7 @@ impl Validator {
     fn func_type_at(
         module: &Module,
         func_idx: FuncIndex,
-    ) -> result::Result<&FuncType, ValidationErrorKind> {
+    ) -> result::Result<&FuncType, IndexValidationError> {
         let imported = module
             .imports
             .iter()
