@@ -1,11 +1,13 @@
-use std::result;
+use std::{error, fmt, result};
 
 use crate::RefType;
 use crate::binary::module::Module;
+use crate::validation::IndexValidationError;
 use crate::validation::Validator;
 use crate::validation::const_expr;
 
 use crate::binary::sections::element::{ElementSegmentItems, ElementSegmentMode};
+use crate::validation::const_expr::ConstExpressionValidationError;
 use crate::validation::{ValidationErrorKind, ValueType};
 
 /// Validate the Element section of a module
@@ -51,4 +53,59 @@ pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationErrorKin
         }
     }
     Ok(())
+}
+
+/// Element Validation Error
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ElementValidationError {
+    UnknownFunction {
+        index: usize,
+        source: IndexValidationError,
+    },
+    InvalidInitExpression {
+        index: usize,
+        source: ConstExpressionValidationError,
+    },
+    UnknownTable(IndexValidationError),
+    TableTypeMismatch {
+        expected: RefType,
+        actual: RefType,
+    },
+    InvalidOffset(ConstExpressionValidationError),
+}
+
+impl error::Error for ElementValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match &self {
+            Self::UnknownFunction { index: _, source } => Some(source),
+            Self::InvalidInitExpression { index: _, source } => Some(source),
+            Self::UnknownTable(e) => Some(e),
+            Self::TableTypeMismatch { .. } => None,
+            Self::InvalidOffset(e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for ElementValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Self::UnknownFunction { index, .. } => {
+                write!(f, "validating function index at item {index}")
+            }
+            Self::InvalidInitExpression { index, .. } => {
+                write!(f, "validating init expression at item {index}")
+            }
+            Self::UnknownTable(_) => write!(f, "validating table index"),
+            Self::TableTypeMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "segment's type ({actual}) doesn't match the table's type ({expected})"
+                )
+            }
+            Self::InvalidOffset(_) => {
+                write!(f, "validating offset expression")
+            }
+        }
+    }
 }
