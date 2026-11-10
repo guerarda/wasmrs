@@ -97,17 +97,6 @@ impl fmt::Display for ValueType {
     }
 }
 
-pub fn fmt_value_type_vec(f: &mut fmt::Formatter<'_>, items: &[ValueType]) -> fmt::Result {
-    write!(f, "[")?;
-    for (i, item) in items.iter().enumerate() {
-        if i > 0 {
-            write!(f, ", ")?;
-        }
-        write!(f, "{item}")?
-    }
-    write!(f, "]")
-}
-
 #[derive(Debug)]
 pub struct CtrlFrame {
     opcode: Instruction,

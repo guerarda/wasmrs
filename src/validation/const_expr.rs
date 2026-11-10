@@ -1,78 +1,11 @@
+use std::{error, fmt, result};
+
 use crate::binary::module::Module;
 use crate::binary::sections::import::ImportDesc;
 use crate::binary::types::ConstExpression;
 use crate::instructions::Instruction;
-use crate::validation::{
-    IndexSpace, IndexValidationError, ValidationErrorKind, ValueType, fmt_value_type_vec,
-};
+use crate::validation::{IndexSpace, IndexValidationError, ValidationErrorKind, ValueType};
 use crate::{MutabilityFlag, RefType};
-
-use std::{error, fmt, result};
-
-/// Const Expression Validation Error
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum ConstExpressionValidationError {
-    GlobalNotAllowed {
-        inst_index: usize,
-        global_index: usize,
-    },
-    InstructionNotAllowed {
-        index: usize,
-        name: &'static str,
-    },
-    Instruction {
-        index: usize,
-        name: &'static str,
-        source: ValidationErrorKind,
-    },
-    ResultTypeMismatch {
-        expected: Vec<ValueType>,
-        actual: Vec<ValueType>,
-    },
-}
-
-impl error::Error for ConstExpressionValidationError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Instruction {
-                index: _,
-                name: _,
-                source,
-            } => Some(source),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for ConstExpressionValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Instruction { index, name, .. } => {
-                write!(f, "validating instruction at index {index} ({name})")
-            }
-            Self::ResultTypeMismatch { expected, actual } => {
-                write!(f, "type mismatch, expected:")?;
-                fmt_value_type_vec(f, expected)?;
-                write!(f, ", got:")?;
-                fmt_value_type_vec(f, actual)
-            }
-            Self::GlobalNotAllowed {
-                inst_index,
-                global_index,
-            } => {
-                write!(
-                    f,
-                    "global.get({global_index}) at index {inst_index} is not allowed, constant expression required"
-                )
-            }
-            Self::InstructionNotAllowed { index, name } => write!(
-                f,
-                "instruction at index {index} ({name}) is not allowed in a constant expression"
-            ),
-        }
-    }
-}
 
 /// Validates that `expr` is constant and evaluates to the expected type. Also
 /// enforces that global.get instructions only refer to allowed globals
@@ -159,5 +92,81 @@ pub(super) fn validate(
             expected: expected.to_vec(),
             actual: stack,
         })
+    }
+}
+
+fn fmt_value_type_vec(f: &mut fmt::Formatter<'_>, items: &[ValueType]) -> fmt::Result {
+    write!(f, "[")?;
+    for (i, item) in items.iter().enumerate() {
+        if i > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{item}")?
+    }
+    write!(f, "]")
+}
+
+/// Const Expression Validation Error
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ConstExpressionValidationError {
+    GlobalNotAllowed {
+        inst_index: usize,
+        global_index: usize,
+    },
+    InstructionNotAllowed {
+        index: usize,
+        name: &'static str,
+    },
+    Instruction {
+        index: usize,
+        name: &'static str,
+        source: ValidationErrorKind,
+    },
+    ResultTypeMismatch {
+        expected: Vec<ValueType>,
+        actual: Vec<ValueType>,
+    },
+}
+
+impl error::Error for ConstExpressionValidationError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Instruction {
+                index: _,
+                name: _,
+                source,
+            } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for ConstExpressionValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Instruction { index, name, .. } => {
+                write!(f, "validating instruction at index {index} ({name})")
+            }
+            Self::ResultTypeMismatch { expected, actual } => {
+                write!(f, "type mismatch, expected:")?;
+                fmt_value_type_vec(f, expected)?;
+                write!(f, ", got:")?;
+                fmt_value_type_vec(f, actual)
+            }
+            Self::GlobalNotAllowed {
+                inst_index,
+                global_index,
+            } => {
+                write!(
+                    f,
+                    "global.get({global_index}) at index {inst_index} is not allowed, constant expression required"
+                )
+            }
+            Self::InstructionNotAllowed { index, name } => write!(
+                f,
+                "instruction at index {index} ({name}) is not allowed in a constant expression"
+            ),
+        }
     }
 }
