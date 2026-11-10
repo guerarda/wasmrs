@@ -1464,18 +1464,6 @@ impl Validator {
     // Section validation
 
     // Start function, if present, must have type [] -> []
-    fn validate_start_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
-        let Some(ref startsec) = module.start else {
-            return Ok(());
-        };
-
-        let functype = Self::func_type_at(module, startsec.0)?;
-
-        if !functype.params.is_empty() || !functype.results.is_empty() {
-            return Err(ValidationErrorKind::start_function());
-        }
-        Ok(())
-    }
 
     // Gather the indeices that have been declared for reference
     fn collect_declared_function_refs(module: &Module) -> Vec<FuncIndex> {
@@ -1522,7 +1510,7 @@ impl Validator {
         sections::data::validate(module)?;
         sections::global::validate(module)?;
         sections::export::validate(module)?;
-        Self::validate_start_section(module)?;
+        sections::start::validate(module)?;
 
         let funcsec = module.functions.as_deref().unwrap_or(&[]);
         let codesec = module.codes.as_deref().unwrap_or(&[]);

@@ -4,4 +4,5 @@ pub(super) mod export;
 pub(super) mod global;
 pub(super) mod import;
 pub(super) mod memory;
+pub(super) mod start;
 pub(super) mod table;
