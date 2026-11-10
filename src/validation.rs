@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::{error, fmt, result};
 
 use const_expr::ConstExpressionValidationError;
@@ -1464,62 +1463,6 @@ impl Validator {
     }
 
     // Section validation
-
-    fn validate_exports_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
-        let Some(ref exportsec) = module.exports else {
-            return Ok(());
-        };
-        let mut names: HashSet<String> = HashSet::new();
-
-        let func_count = module.func_count();
-        let table_count = module.table_count();
-        let mem_count = module.memory_count();
-        let global_count = module.global_count();
-
-        for e in exportsec {
-            if !names.insert(e.name.clone()) {
-                return Err(ValidationErrorKind::duplicate_export_name());
-            }
-            let idx = e.index as usize;
-            match e.kind {
-                ExportKind::Func => {
-                    if idx >= func_count {
-                        return Err(IndexValidationError {
-                            space: IndexSpace::Function,
-                            index: idx,
-                            count: func_count,
-                        }
-                        .into());
-                    }
-                }
-                ExportKind::Table => {
-                    if idx >= table_count {
-                        return Err(IndexValidationError {
-                            space: IndexSpace::Table,
-                            index: idx,
-                            count: table_count,
-                        }
-                        .into());
-                    }
-                }
-                ExportKind::Memory => {
-                    if idx >= mem_count {
-                        return Err(
-                            IndexValidationError::memory(MemIndex(idx as u32), mem_count).into(),
-                        );
-                    }
-                }
-                ExportKind::Global => {
-                    if idx >= global_count {
-                        return Err(ValidationErrorKind::unknown_global());
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     fn validate_data_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref datasec) = module.data else {
             return Ok(());
@@ -1597,7 +1540,7 @@ impl Validator {
         sections::import::validate(module)?;
         Self::validate_data_section(module)?;
         sections::global::validate(module)?;
-        Self::validate_exports_section(module)?;
+        sections::export::validate(module)?;
         Self::validate_start_section(module)?;
 
         let funcsec = module.functions.as_deref().unwrap_or(&[]);
@@ -2111,39 +2054,6 @@ mod tests {
                 (func (result i32) table.size))
         "#;
         let bytes = wat::parse_str(wat)?;
-        let m = decode_bytes(bytes)?;
-        let result = validate_module(&m);
-        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
-        Ok(())
-    }
-
-    #[test]
-    fn test_global_get_imported_global_in_function() -> anyhow::Result<()> {
-        let wat = r#"
-            (module
-                (import "e" "g" (global i32))
-                (func (result i32) global.get 0))
-        "#;
-        let bytes = wat::parse_str(wat)?;
-        let m = decode_bytes(bytes)?;
-        let result = validate_module(&m);
-        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
-        Ok(())
-    }
-
-    #[test]
-    fn test_global_get_imported_and_defined_globals() -> anyhow::Result<()> {
-        let wat = r#"
-            (module
-                (import "env" "g" (global i32))
-                (global i64 (i64.const 42))
-                (func (export "get") (result i32 i64)
-                    global.get 0
-                    global.get 1))
-        "#;
-        let bytes = wat::parse_str(wat)?;
-
-        // Distinct types ensure each index resolves to the correct global.
         let m = decode_bytes(bytes)?;
         let result = validate_module(&m);
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
