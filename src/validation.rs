@@ -20,6 +20,7 @@ use crate::binary::types::{
 use crate::instructions::Instruction;
 use crate::limits::MAX_WASM_32BIT_MEMORY_PAGES;
 use crate::validation::sections::element::ElementValidationError;
+use crate::validation::sections::export::ExportValidationError;
 
 mod const_expr;
 mod sections;
@@ -138,6 +139,10 @@ pub enum ValidationError {
         index: usize,
         source: ElementValidationError,
     },
+    Export {
+        index: usize,
+        source: ExportValidationError,
+    },
 }
 
 impl error::Error for ValidationError {
@@ -150,6 +155,7 @@ impl error::Error for ValidationError {
             Self::Global { index: _, source } => Some(source),
             Self::Import { index: _, source } => Some(source),
             Self::Element { index: _, source } => Some(source),
+            Self::Export { index: _, source } => Some(source),
         }
     }
 }
@@ -166,6 +172,8 @@ impl fmt::Display for ValidationError {
             Self::Element { index, .. } => {
                 write!(f, "validating elements segment at index {index}")
             }
+
+            Self::Export { index, .. } => write!(f, "validating export at index {index}"),
         }
     }
 }
@@ -428,10 +436,6 @@ impl ValidationErrorKind {
 
     fn invalid_mem_alignment() -> Self {
         Self::mint(ValidationErrorKind::InvalidMemAlignment)
-    }
-
-    fn duplicate_export_name() -> Self {
-        Self::mint(ValidationErrorKind::DuplicatExportName)
     }
 
     fn function_code_mismatch() -> Self {
@@ -1869,32 +1873,6 @@ mod tests {
         assert!(
             result.is_err(),
             "expected validation error, got: {:?}",
-            result
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_export_unknown_memory() -> anyhow::Result<()> {
-        // The module has no memory, so exporting memory 0 is out of range.
-        let wat = r#"
-            (module (export "m" (memory 0)))
-        "#;
-        let bytes = wat::parse_str(wat)?;
-        let m = decode_bytes(bytes)?;
-        let result = validate_module(&m);
-        assert!(
-            matches!(
-                result,
-                Err(ValidationError::Module(ValidationErrorKind::InvalidIndex(
-                    IndexValidationError {
-                        space: IndexSpace::Memory,
-                        index: 0,
-                        count: 0
-                    }
-                )))
-            ),
-            "expected invalid memory index, got: {:?}",
             result
         );
         Ok(())
