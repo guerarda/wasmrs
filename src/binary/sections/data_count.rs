@@ -1,7 +1,5 @@
-use crate::binary::{
-    reader::Reader,
-    sections::{SectionError, SectionErrorKind, SectionInfo},
-};
+use crate::binary::reader::Reader;
+use crate::binary::sections::{SectionError, SectionErrorKind, SectionInfo};
 
 /// Data Count Section
 #[derive(Debug)]

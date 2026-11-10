@@ -1,10 +1,8 @@
 use core::{error, fmt};
 
-use crate::binary::{
-    reader::{FromReader, ReadError, ReadErrorKind, Reader, VecReadError},
-    sections::{SectionEntry, SectionErrorKind},
-    types::FuncType,
-};
+use crate::binary::reader::{FromReader, ReadError, ReadErrorKind, Reader, VecReadError};
+use crate::binary::sections::{SectionEntry, SectionErrorKind};
+use crate::binary::types::FuncType;
 
 /// Type Section
 pub type TypeSection = Vec<FuncType>;

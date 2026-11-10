@@ -1,10 +1,8 @@
 use std::{error, fmt, result};
 
-use crate::binary::{
-    reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result},
-    sections::{SectionEntry, SectionErrorKind},
-    types::{ConstExpression, ConstExpressionReadError, ValType},
-};
+use crate::binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader, Result};
+use crate::binary::sections::{SectionEntry, SectionErrorKind};
+use crate::binary::types::{ConstExpression, ConstExpressionReadError, ValType};
 
 /// Global Section
 pub type GlobalSection = Vec<GlobalEntry>;

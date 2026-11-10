@@ -1,4 +1,5 @@
-use crate::runtime::{store::FuncAddr, value::Value};
+use crate::runtime::store::FuncAddr;
+use crate::runtime::value::Value;
 
 /// A Labels hold the arity of the block, the continuation (`pc`) and
 /// the stack height (`sp`) for unwinding on exit.

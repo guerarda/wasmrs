@@ -1,10 +1,8 @@
 use core::{error, fmt};
 use std::ops::Range;
 
-use crate::binary::{
-    reader::{ReadError, Reader},
-    sections::{SectionError, SectionErrorKind, SectionInfo},
-};
+use crate::binary::reader::{ReadError, Reader};
+use crate::binary::sections::{SectionError, SectionErrorKind, SectionInfo};
 
 /// Custom Section
 #[derive(Debug)]

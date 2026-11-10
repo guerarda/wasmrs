@@ -18,7 +18,8 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wasmrs::{Error, runtime::value::Value};
+    use wasmrs::Error;
+    use wasmrs::runtime::value::Value;
 
     #[test]
     fn test_add_wasm() -> anyhow::Result<()> {

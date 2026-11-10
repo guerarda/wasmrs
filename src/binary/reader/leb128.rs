@@ -1,9 +1,7 @@
 use core::fmt;
-use std::{
-    error::Error,
-    fmt::{Display, Formatter},
-    io,
-};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::io;
 
 /// Returns one byte
 pub fn read_u8<R: std::io::Read>(reader: &mut R) -> Result<u8, DecodeError> {

@@ -1,11 +1,9 @@
 use core::{error, fmt};
 
-use crate::{
-    binary::reader::{
-        FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, VecReadError,
-    },
-    instructions::{Instruction, InstructionError, decode_instruction},
+use crate::binary::reader::{
+    FromReader, InvalidEnumValueError, ReadError, ReadErrorKind, Reader, VecReadError,
 };
+use crate::instructions::{Instruction, InstructionError, decode_instruction};
 
 /// Indices​
 pub type TypeIdx = u32;

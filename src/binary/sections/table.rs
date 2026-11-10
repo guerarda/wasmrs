@@ -1,7 +1,7 @@
-use crate::binary::{
-    reader::{FromReader, ReadError, ReadErrorKind, Reader},
-    sections::{SectionEntry, SectionErrorKind},
-    types::{ConstExpression, ConstExpressionReadError, Limit, LimitReadError, RefType},
+use crate::binary::reader::{FromReader, ReadError, ReadErrorKind, Reader};
+use crate::binary::sections::{SectionEntry, SectionErrorKind};
+use crate::binary::types::{
+    ConstExpression, ConstExpressionReadError, Limit, LimitReadError, RefType,
 };
 
 /// Table Section

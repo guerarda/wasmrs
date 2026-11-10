@@ -1,15 +1,11 @@
 use core::fmt;
 use std::error;
 
-use crate::{
-    binary::{
-        reader::{FromReader, ReadError, Reader, Result, VecReadError},
-        sections::{SectionEntry, SectionErrorKind},
-        types::ValType,
-    },
-    instructions::{Instruction, InstructionError, decode_instruction},
-    limits::MAX_WASM_FUNCTION_LOCALS,
-};
+use crate::binary::reader::{FromReader, ReadError, Reader, Result, VecReadError};
+use crate::binary::sections::{SectionEntry, SectionErrorKind};
+use crate::binary::types::ValType;
+use crate::instructions::{Instruction, InstructionError, decode_instruction};
+use crate::limits::MAX_WASM_FUNCTION_LOCALS;
 
 /// Code Section
 #[derive(Debug)]

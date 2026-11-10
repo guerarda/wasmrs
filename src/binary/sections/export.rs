@@ -1,9 +1,7 @@
 use std::{error, fmt};
 
-use crate::binary::{
-    reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
-    sections::{SectionEntry, SectionErrorKind},
-};
+use crate::binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader};
+use crate::binary::sections::{SectionEntry, SectionErrorKind};
 
 /// Export Section
 #[repr(u8)]

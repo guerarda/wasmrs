@@ -1,10 +1,8 @@
 use std::{error, fmt};
 
-use crate::binary::{
-    reader::{FromReader, Reader},
-    sections::{SectionEntry, SectionErrorKind},
-    types::{Limit, LimitReadError},
-};
+use crate::binary::reader::{FromReader, Reader};
+use crate::binary::sections::{SectionEntry, SectionErrorKind};
+use crate::binary::types::{Limit, LimitReadError};
 
 /// Memory Section
 #[derive(Debug, Clone)]

@@ -1,30 +1,21 @@
 use std::{error, fmt, result};
 
-use crate::{
-    Error, Limit, Module,
-    binary::{
-        module,
-        sections::{
-            data::DataSegmentMode,
-            element::{ElementSegmentItems, ElementSegmentMode},
-            export::ExportKind,
-            global::GlobalType,
-            import::ImportDesc,
-            memory::MemType,
-            table::TableType,
-        },
-        types::{ConstExpression, FuncType, MemIndex, RefType, TableIdx},
-    },
-    instructions::Instruction,
-    runtime::{
-        executor::ExecutionContext,
-        instance::{ModuleHandle, ModuleInstance, ModuleRegistry},
-        stack::Frame,
-        store::{FuncAddr, Store},
-        value::{ExternVal, Ref, Value},
-    },
-    validation,
-};
+use crate::binary::module;
+use crate::binary::sections::data::DataSegmentMode;
+use crate::binary::sections::element::{ElementSegmentItems, ElementSegmentMode};
+use crate::binary::sections::export::ExportKind;
+use crate::binary::sections::global::GlobalType;
+use crate::binary::sections::import::ImportDesc;
+use crate::binary::sections::memory::MemType;
+use crate::binary::sections::table::TableType;
+use crate::binary::types::{ConstExpression, FuncType, MemIndex, RefType, TableIdx};
+use crate::instructions::Instruction;
+use crate::runtime::executor::ExecutionContext;
+use crate::runtime::instance::{ModuleHandle, ModuleInstance, ModuleRegistry};
+use crate::runtime::stack::Frame;
+use crate::runtime::store::{FuncAddr, Store};
+use crate::runtime::value::{ExternVal, Ref, Value};
+use crate::{Error, Limit, Module, validation};
 
 pub mod executor;
 pub mod instance;
@@ -726,21 +717,13 @@ impl fmt::Display for InternalErrorKind {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        Error, Limit,
-        binary::{
-            sections::{
-                global::{GlobalType, MutabilityFlag},
-                memory::MemType,
-                table::TableType,
-            },
-            types::{FuncType, RefType, ValType},
-        },
-        runtime::{
-            Runtime, UnlinkableError,
-            value::{Ref, Value},
-        },
-    };
+    use crate::binary::sections::global::{GlobalType, MutabilityFlag};
+    use crate::binary::sections::memory::MemType;
+    use crate::binary::sections::table::TableType;
+    use crate::binary::types::{FuncType, RefType, ValType};
+    use crate::runtime::value::{Ref, Value};
+    use crate::runtime::{Runtime, UnlinkableError};
+    use crate::{Error, Limit};
 
     #[test]
     fn test_host_fn_direct_call() -> anyhow::Result<()> {

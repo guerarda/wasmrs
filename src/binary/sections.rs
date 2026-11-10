@@ -1,8 +1,5 @@
-use std::{
-    error,
-    fmt::{self, Display},
-    result,
-};
+use std::fmt::{self, Display};
+use std::{error, result};
 
 pub mod code;
 pub use code::CodeSection;
@@ -43,15 +40,15 @@ pub use table::{TableReadError, TableSection};
 pub mod type_;
 pub use type_::TypeSection;
 
-use crate::binary::{
-    reader::{InvalidEnumValueError, ReadError, Reader},
-    sections::{
-        code::CodeSectionReadError, custom::CustomSectionReadError, data::DataSectionReadError,
-        element::ElementSectionReadError, export::ExportSectionReadError,
-        global::GlobalSectionReadError, import::ImportSectionReadError,
-        type_::TypeSectionReadError,
-    },
-};
+use crate::binary::reader::{InvalidEnumValueError, ReadError, Reader};
+use crate::binary::sections::code::CodeSectionReadError;
+use crate::binary::sections::custom::CustomSectionReadError;
+use crate::binary::sections::data::DataSectionReadError;
+use crate::binary::sections::element::ElementSectionReadError;
+use crate::binary::sections::export::ExportSectionReadError;
+use crate::binary::sections::global::GlobalSectionReadError;
+use crate::binary::sections::import::ImportSectionReadError;
+use crate::binary::sections::type_::TypeSectionReadError;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]

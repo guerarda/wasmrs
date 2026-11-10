@@ -1,13 +1,13 @@
 use core::{error, fmt};
 
-use crate::binary::{
-    reader::{FromReader, InvalidEnumValueError, ReadError, Reader},
-    sections::{
-        GlobalTypeReadError, MemTypeReadError, SectionEntry, SectionErrorKind, TableReadError,
-        global::GlobalType, memory::MemType, table::TableType,
-    },
-    types::TypeIdx,
+use crate::binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader};
+use crate::binary::sections::global::GlobalType;
+use crate::binary::sections::memory::MemType;
+use crate::binary::sections::table::TableType;
+use crate::binary::sections::{
+    GlobalTypeReadError, MemTypeReadError, SectionEntry, SectionErrorKind, TableReadError,
 };
+use crate::binary::types::TypeIdx;
 
 /// Import Section
 pub type ImportSection = Vec<ImportEntry>;

@@ -1,22 +1,18 @@
 use core::fmt;
-use std::{iter::repeat_n, result};
+use std::iter::repeat_n;
+use std::result;
 
-use crate::{
-    binary::{
-        sections::{
-            code::CodeEntry, data::DataSegment, global::GlobalType, memory::MemType,
-            table::TableType,
-        },
-        types::{FuncType, RefType, TypeIdx, ValType},
-    },
-    instructions::Instruction,
-    limits::{MAX_WASM_32BIT_MEMORY_PAGES, MAX_WASM_TABLE_LEN},
-    runtime::{
-        RuntimeError, TrapErrorKind, WASM_MEM_PAGE_BYTE_SIZE,
-        instance::ModuleHandle,
-        value::{Ref, Value},
-    },
-};
+use crate::binary::sections::code::CodeEntry;
+use crate::binary::sections::data::DataSegment;
+use crate::binary::sections::global::GlobalType;
+use crate::binary::sections::memory::MemType;
+use crate::binary::sections::table::TableType;
+use crate::binary::types::{FuncType, RefType, TypeIdx, ValType};
+use crate::instructions::Instruction;
+use crate::limits::{MAX_WASM_32BIT_MEMORY_PAGES, MAX_WASM_TABLE_LEN};
+use crate::runtime::instance::ModuleHandle;
+use crate::runtime::value::{Ref, Value};
+use crate::runtime::{RuntimeError, TrapErrorKind, WASM_MEM_PAGE_BYTE_SIZE};
 
 /// Func Addr
 #[derive(Debug, Clone, Copy)]

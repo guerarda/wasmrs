@@ -1,10 +1,8 @@
 use std::{error, fmt, result};
 
-use crate::binary::{
-    reader::{FromReader, ReadError, ReadErrorKind, Reader, VecReadError},
-    sections::{SectionEntry, SectionErrorKind},
-    types::{ConstExpression, ConstExpressionReadError, FuncIndex, RefType},
-};
+use crate::binary::reader::{FromReader, ReadError, ReadErrorKind, Reader, VecReadError};
+use crate::binary::sections::{SectionEntry, SectionErrorKind};
+use crate::binary::types::{ConstExpression, ConstExpressionReadError, FuncIndex, RefType};
 
 /// Element Section
 #[derive(Debug)]

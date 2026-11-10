@@ -2,25 +2,22 @@ mod const_expr;
 
 use const_expr::{ConstExpressionValidationError, validate};
 
-use crate::{
-    binary::{
-        module::Module,
-        sections::{
-            code::{CodeEntry, FuncLocal},
-            data::DataSegmentMode,
-            element::{ElementSegmentItems, ElementSegmentMode},
-            export::ExportKind,
-            global::{GlobalType, MutabilityFlag},
-            import::ImportDesc,
-            memory::MemType,
-            table::TableType,
-        },
-        types::{BlockType, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, ValType},
-    },
-    instructions::Instruction,
-    limits::MAX_WASM_32BIT_MEMORY_PAGES,
+use crate::binary::module::Module;
+use crate::binary::sections::code::{CodeEntry, FuncLocal};
+use crate::binary::sections::data::DataSegmentMode;
+use crate::binary::sections::element::{ElementSegmentItems, ElementSegmentMode};
+use crate::binary::sections::export::ExportKind;
+use crate::binary::sections::global::{GlobalType, MutabilityFlag};
+use crate::binary::sections::import::ImportDesc;
+use crate::binary::sections::memory::MemType;
+use crate::binary::sections::table::TableType;
+use crate::binary::types::{
+    BlockType, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, ValType,
 };
-use std::{collections::HashSet, error, fmt, result};
+use crate::instructions::Instruction;
+use crate::limits::MAX_WASM_32BIT_MEMORY_PAGES;
+use std::collections::HashSet;
+use std::{error, fmt, result};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValueType {

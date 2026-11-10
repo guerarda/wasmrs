@@ -1,20 +1,14 @@
-use std::{
-    ops::{BitAnd, BitOr, BitXor, Neg},
-    result,
-};
+use std::ops::{BitAnd, BitOr, BitXor, Neg};
+use std::result;
 
-use crate::{
-    binary::types::{BlockType, MemIndex},
-    instructions::Instruction,
-    limits::MAX_STACK_DEPTH,
-    runtime::{
-        Runtime, RuntimeError, TrapErrorKind,
-        instance::{ModuleInstance, ModuleRegistry},
-        stack::{Frame, Label},
-        store::{FuncAddr, FuncBody, Store},
-        value::{Ref, Value},
-    },
-};
+use crate::binary::types::{BlockType, MemIndex};
+use crate::instructions::Instruction;
+use crate::limits::MAX_STACK_DEPTH;
+use crate::runtime::instance::{ModuleInstance, ModuleRegistry};
+use crate::runtime::stack::{Frame, Label};
+use crate::runtime::store::{FuncAddr, FuncBody, Store};
+use crate::runtime::value::{Ref, Value};
+use crate::runtime::{Runtime, RuntimeError, TrapErrorKind};
 
 macro_rules! unary_op {
     ($self:expr, $variant:ident, $op:expr) => {{
@@ -1178,7 +1172,8 @@ impl Runtime {}
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::{Runtime, value::Value};
+    use crate::runtime::Runtime;
+    use crate::runtime::value::Value;
     use crate::{GlobalType, MutabilityFlag, ValType};
 
     #[test]

@@ -1,12 +1,9 @@
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
-use crate::{
-    binary::types::{DataIdx, ElemIdx, FuncType, GlobalIndex, MemIndex, TableIdx},
-    runtime::{
-        store::{DataAddr, ElemAddr, FuncAddr, GlobalAddr, MemAddr, TableAddr},
-        value::ExternVal,
-    },
-};
+use crate::binary::types::{DataIdx, ElemIdx, FuncType, GlobalIndex, MemIndex, TableIdx};
+use crate::runtime::store::{DataAddr, ElemAddr, FuncAddr, GlobalAddr, MemAddr, TableAddr};
+use crate::runtime::value::ExternVal;
 
 #[derive(Debug, Default)]
 pub struct ModuleInstance {

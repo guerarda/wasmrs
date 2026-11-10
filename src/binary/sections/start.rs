@@ -1,8 +1,6 @@
-use crate::binary::{
-    reader::Reader,
-    sections::{SectionError, SectionErrorKind, SectionInfo},
-    types::FuncIndex,
-};
+use crate::binary::reader::Reader;
+use crate::binary::sections::{SectionError, SectionErrorKind, SectionInfo};
+use crate::binary::types::FuncIndex;
 
 /// Start Section
 #[derive(Debug)]

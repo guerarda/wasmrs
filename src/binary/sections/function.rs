@@ -1,8 +1,6 @@
-use crate::binary::{
-    reader::{FromReader, Reader},
-    sections::{SectionEntry, SectionErrorKind},
-    types::TypeIdx,
-};
+use crate::binary::reader::{FromReader, Reader};
+use crate::binary::sections::{SectionEntry, SectionErrorKind};
+use crate::binary::types::TypeIdx;
 
 /// Function Section
 pub type FunctionSection = Vec<TypeIdx>;

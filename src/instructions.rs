@@ -1,10 +1,7 @@
-use crate::binary::{
-    reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError},
-    types::{
-        BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIndex,
-        GlobalIndex, LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx,
-        ValType,
-    },
+use crate::binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError};
+use crate::binary::types::{
+    BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIndex, GlobalIndex,
+    LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx, ValType,
 };
 
 /// Generates the enum for instruction of the form:

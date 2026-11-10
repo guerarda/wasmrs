@@ -8,12 +8,10 @@ use wast::lexer::Lexer;
 use wast::parser::{self, ParseBuffer};
 use wast::{QuoteWatTest, Wast, WastArg, WastDirective, WastExecute, WastRet};
 
-use wasmrs::Error;
-use wasmrs::RefType;
 use wasmrs::runtime::Runtime;
 use wasmrs::runtime::instance::ModuleHandle;
 use wasmrs::runtime::value::{Ref, Value};
-use wasmrs::{parse_module, validate_module};
+use wasmrs::{Error, RefType, parse_module, validate_module};
 
 mod spectest;
 

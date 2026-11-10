@@ -3,7 +3,9 @@ mod leb128;
 use leb128::DecodeError;
 
 use std::io::BufRead;
-use std::{error, fmt, io, ops::Range, string::FromUtf8Error};
+use std::ops::Range;
+use std::string::FromUtf8Error;
+use std::{error, fmt, io};
 
 pub struct Reader<'a> {
     pub cursor: io::Cursor<&'a [u8]>,

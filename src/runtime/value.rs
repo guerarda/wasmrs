@@ -1,12 +1,8 @@
 use core::fmt;
 
-use crate::{
-    binary::types::{RefType, ValType},
-    runtime::{
-        RuntimeError,
-        store::{FuncAddr, GlobalAddr, MemAddr, TableAddr},
-    },
-};
+use crate::binary::types::{RefType, ValType};
+use crate::runtime::RuntimeError;
+use crate::runtime::store::{FuncAddr, GlobalAddr, MemAddr, TableAddr};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Ref {
