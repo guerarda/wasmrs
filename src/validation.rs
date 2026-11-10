@@ -1,6 +1,8 @@
-mod const_expr;
+use std::collections::HashSet;
+use std::{error, fmt, result};
 
-use const_expr::{ConstExpressionValidationError, validate};
+use const_expr::ConstExpressionValidationError;
+use sections::table::TableValidationError;
 
 use crate::binary::module::Module;
 use crate::binary::sections::code::{CodeEntry, FuncLocal};
@@ -16,8 +18,9 @@ use crate::binary::types::{
 };
 use crate::instructions::Instruction;
 use crate::limits::MAX_WASM_32BIT_MEMORY_PAGES;
-use std::collections::HashSet;
-use std::{error, fmt, result};
+
+mod const_expr;
+mod sections;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValueType {
@@ -207,32 +210,6 @@ impl fmt::Display for FunctionValidationError {
                 write!(f, "validating instruction {index} ({name})")
             }
             Self::UnknownType(_) => write!(f, "function type refers to an invalid type index"),
-        }
-    }
-}
-
-/// Table ValidationError
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum TableValidationError {
-    InvalidConstExpression(ConstExpressionValidationError),
-    InvalidLimit(LimitValidationError),
-}
-
-impl error::Error for TableValidationError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::InvalidConstExpression(e) => Some(e),
-            Self::InvalidLimit(e) => Some(e),
-        }
-    }
-}
-
-impl fmt::Display for TableValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidConstExpression(_) => write!(f, "validating const expression"),
-            Self::InvalidLimit(_) => write!(f, "validating limit"),
         }
     }
 }
@@ -1569,39 +1546,6 @@ impl Validator {
     }
 
     // Section validation
-    fn validate_table_section(module: &Module) -> result::Result<(), ValidationError> {
-        let Some(ref tablesec) = module.tables else {
-            return Ok(());
-        };
-
-        for (index, table) in tablesec.iter().enumerate() {
-            // Validate the table limit
-            let l = &table.tabletype.limit;
-            if let Some(max) = l.max
-                && l.min > max
-            {
-                return Err(ValidationError::Table {
-                    index,
-                    source: TableValidationError::InvalidLimit(
-                        LimitValidationError::MinExceedsMax(l.min, max),
-                    ),
-                });
-            }
-
-            // Validate that the expression, if present is a valid const
-            // expression and evaluate to the table's declared type
-            if let Some(expr) = &table.expr {
-                validate(module, expr, &[ValueType::from(table.tabletype.elemtype)]).map_err(
-                    |e| ValidationError::Table {
-                        index,
-                        source: TableValidationError::InvalidConstExpression(e),
-                    },
-                )?;
-            }
-        }
-        Ok(())
-    }
-
     fn validate_memory_section(module: &Module) -> result::Result<(), ValidationError> {
         let Some(ref memsec) = module.memories else {
             return Ok(());
@@ -1640,7 +1584,7 @@ impl Validator {
                 ElementSegmentItems::Expressions(rt, expr) => {
                     let expected = &[ValueType::from(*rt)];
                     expr.iter()
-                        .try_for_each(|e| validate(module, e, expected))?;
+                        .try_for_each(|e| const_expr::validate(module, e, expected))?;
                     *rt
                 }
             };
@@ -1657,7 +1601,7 @@ impl Validator {
                     return Err(ValidationErrorKind::type_mismatch());
                 }
 
-                validate(module, offset, &[ValueType::I32])?;
+                const_expr::validate(module, offset, &[ValueType::I32])?;
             }
         }
         Ok(())
@@ -1774,7 +1718,7 @@ impl Validator {
                         IndexValidationError::memory(MemIndex(*mem_index), mem_count).into(),
                     );
                 }
-                validate(module, offset, &[ValueType::I32])?;
+                const_expr::validate(module, offset, &[ValueType::I32])?;
             }
         }
         Ok(())
@@ -1787,12 +1731,11 @@ impl Validator {
 
         for (idx, global) in globalsec.iter().enumerate() {
             // Const expression must produce the global declared type
-            validate(module, &global.body, &[ValueType::from(global.gt.type_)]).map_err(|e| {
-                ValidationError::Global {
+            const_expr::validate(module, &global.body, &[ValueType::from(global.gt.type_)])
+                .map_err(|e| ValidationError::Global {
                     index: module.imported_global_count() + idx,
                     source: GlobalValidationError::InvalidConstExpression(e),
-                }
-            })?;
+                })?;
         }
         Ok(())
     }
@@ -1849,7 +1792,7 @@ impl Validator {
     }
 
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
-        Self::validate_table_section(module)?;
+        sections::table::validate(module)?;
         Self::validate_memory_section(module)?;
         Self::validate_element_section(module)?;
         Self::validate_imports_section(module)?;
