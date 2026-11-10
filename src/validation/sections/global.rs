@@ -221,4 +221,36 @@ mod tests {
         );
         Ok(())
     }
+    #[test]
+    fn test_global_get_imported_global_in_function() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (import "e" "g" (global i32))
+                (func (result i32) global.get 0))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_get_imported_and_defined_globals() -> anyhow::Result<()> {
+        let wat = r#"
+            (module
+                (import "env" "g" (global i32))
+                (global i64 (i64.const 42))
+                (func (export "get") (result i32 i64)
+                    global.get 0
+                    global.get 1))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+
+        // Distinct types ensure each index resolves to the correct global.
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+        Ok(())
+    }
 }
