@@ -74,10 +74,9 @@ impl fmt::Display for ConstExpressionValidationError {
     }
 }
 
-/// Validates that `expr` is constant and evaluates to the expected type.
-/// Also enforces that global.get instructions only refer to allowed globals
-/// Imported or previously defined for Globals, and imported
-/// only for Tables.
+/// Validates that `expr` is constant and evaluates to the expected type. Also
+/// enforces that global.get instructions only refer to allowed globals
+/// Imported, immutable globals onlyand imported only for Tables.
 pub(super) fn validate(
     module: &Module,
     expr: &ConstExpression,

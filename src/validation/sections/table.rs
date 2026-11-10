@@ -8,10 +8,10 @@ use crate::validation::{LimitValidationError, ValidationError, ValueType};
 ///
 /// For each table:
 /// - The limits are valid (`min <= max`)
-/// - If present, the init expression is constant and has the type `elemetype`
+/// - If present, the init expression is constant and has the type `elemtype`
 /// - If missing, stands for `ref.null` which is always valid, as every
 ///   supported reference type is nullable
-pub fn validate(module: &Module) -> result::Result<(), ValidationError> {
+pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
     let Some(ref tablesec) = module.tables else {
         return Ok(());
     };

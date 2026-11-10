@@ -2,12 +2,13 @@ use std::collections::HashSet;
 use std::{error, fmt, result};
 
 use const_expr::ConstExpressionValidationError;
+use sections::global::GlobalValidationError;
 use sections::table::TableValidationError;
 
 use crate::binary::module::Module;
 use crate::binary::sections::code::{CodeEntry, FuncLocal};
 use crate::binary::sections::data::DataSegmentMode;
-use crate::binary::sections::element::{ElementSegmentItems, ElementSegmentMode};
+use crate::binary::sections::element::ElementSegmentItems;
 use crate::binary::sections::export::ExportKind;
 use crate::binary::sections::global::{GlobalType, MutabilityFlag};
 use crate::binary::sections::import::ImportDesc;
@@ -269,29 +270,6 @@ impl fmt::Display for ImportValidationError {
                 write!(f, "validating imported memory limit")
             }
             Self::MultipleMemories => write!(f, "multiple memories not allowed"),
-        }
-    }
-}
-
-/// Global Validation error
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum GlobalValidationError {
-    InvalidConstExpression(ConstExpressionValidationError),
-}
-
-impl error::Error for GlobalValidationError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::InvalidConstExpression(e) => Some(e),
-        }
-    }
-}
-
-impl fmt::Display for GlobalValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidConstExpression(_) => write!(f, "validating const expression"),
         }
     }
 }
@@ -1569,44 +1547,6 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_element_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
-        let Some(ref elemsec) = module.elements else {
-            return Ok(());
-        };
-        for e in elemsec {
-            let rt = match &e.items {
-                ElementSegmentItems::Functions(funcs) => {
-                    for f in funcs {
-                        Self::func_type_at(module, *f)?;
-                    }
-                    RefType::Func
-                }
-                ElementSegmentItems::Expressions(rt, expr) => {
-                    let expected = &[ValueType::from(*rt)];
-                    expr.iter()
-                        .try_for_each(|e| const_expr::validate(module, e, expected))?;
-                    *rt
-                }
-            };
-
-            if let ElementSegmentMode::Active {
-                table_index,
-                offset,
-            } = &e.mode
-            {
-                let idx = table_index.unwrap_or(0);
-                let table_type = Self::table_type_at(module, idx)?;
-
-                if table_type.elemtype != rt {
-                    return Err(ValidationErrorKind::type_mismatch());
-                }
-
-                const_expr::validate(module, offset, &[ValueType::I32])?;
-            }
-        }
-        Ok(())
-    }
-
     fn validate_imports_section(module: &Module) -> result::Result<(), ValidationError> {
         let Some(ref importsec) = module.imports else {
             return Ok(());
@@ -1724,22 +1664,6 @@ impl Validator {
         Ok(())
     }
 
-    fn validate_globals_section(module: &Module) -> result::Result<(), ValidationError> {
-        let Some(ref globalsec) = module.globals else {
-            return Ok(());
-        };
-
-        for (idx, global) in globalsec.iter().enumerate() {
-            // Const expression must produce the global declared type
-            const_expr::validate(module, &global.body, &[ValueType::from(global.gt.type_)])
-                .map_err(|e| ValidationError::Global {
-                    index: module.imported_global_count() + idx,
-                    source: GlobalValidationError::InvalidConstExpression(e),
-                })?;
-        }
-        Ok(())
-    }
-
     // Start function, if present, must have type [] -> []
     fn validate_start_section(module: &Module) -> result::Result<(), ValidationErrorKind> {
         let Some(ref startsec) = module.start else {
@@ -1794,10 +1718,10 @@ impl Validator {
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
         sections::table::validate(module)?;
         Self::validate_memory_section(module)?;
-        Self::validate_element_section(module)?;
+        sections::element::validate(module)?;
         Self::validate_imports_section(module)?;
         Self::validate_data_section(module)?;
-        Self::validate_globals_section(module)?;
+        sections::global::validate(module)?;
         Self::validate_exports_section(module)?;
         Self::validate_start_section(module)?;
 
