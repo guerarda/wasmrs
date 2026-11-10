@@ -68,3 +68,94 @@ impl fmt::Display for TableValidationError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RefType;
+    use crate::binary::module::decode_bytes;
+    use crate::validation::{
+        IndexSpace, IndexValidationError, ValidationErrorKind, validate_module,
+    };
+
+    #[test]
+    fn test_table_min_exceeds_max() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (table 2 1 funcref))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Table {
+                    index: 0,
+                    source: TableValidationError::InvalidLimit(
+                        LimitValidationError::MinExceedsMax(2, 1)
+                    )
+                })
+            ),
+            "expected MinExceedsMax, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_table_initializer_type_mismatch() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (table 1 funcref (ref.null extern)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                &result,
+                Err(ValidationError::Table {
+                    index: 0,
+                    source: TableValidationError::InvalidConstExpression(
+                        ConstExpressionValidationError::ResultTypeMismatch { expected, actual }
+                    )
+                }) if expected == &[ValueType::Ref(RefType::Func)]
+                    && actual == &[ValueType::Ref(RefType::Extern)]
+            ),
+            "expected table initializer type mismatch, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_table_ref_func_out_of_bounds() -> anyhow::Result<()> {
+        let wat = r#"
+            (module (table 1 funcref (ref.func 5)))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Table {
+                    index: 0,
+                    source: TableValidationError::InvalidConstExpression(
+                        ConstExpressionValidationError::Instruction {
+                            index: 0,
+                            source: ValidationErrorKind::InvalidIndex(IndexValidationError {
+                                space: IndexSpace::Function,
+                                index: 5,
+                                count: 0
+                            }),
+                            ..
+                        }
+                    )
+                })
+            ),
+            "expected invalid function index, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+}
