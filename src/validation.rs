@@ -3,6 +3,7 @@ use std::{error, fmt, result};
 
 use const_expr::ConstExpressionValidationError;
 use sections::global::GlobalValidationError;
+use sections::memory::MemoryValidationError;
 use sections::table::TableValidationError;
 
 use crate::binary::module::Module;
@@ -140,7 +141,6 @@ pub enum ValidationError {
         index: usize,
         source: GlobalValidationError,
     },
-
     Function {
         index: usize,
         source: FunctionValidationError,
@@ -211,32 +211,6 @@ impl fmt::Display for FunctionValidationError {
                 write!(f, "validating instruction {index} ({name})")
             }
             Self::UnknownType(_) => write!(f, "function type refers to an invalid type index"),
-        }
-    }
-}
-
-/// Memory ValidationError
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum MemoryValidationError {
-    MultipleMemories,
-    InvalidLimit(LimitValidationError),
-}
-
-impl error::Error for MemoryValidationError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::MultipleMemories => None,
-            Self::InvalidLimit(e) => Some(e),
-        }
-    }
-}
-
-impl fmt::Display for MemoryValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MultipleMemories => write!(f, "multiple memories declared, only one is allowed"),
-            Self::InvalidLimit(_) => write!(f, "validating limit"),
         }
     }
 }
@@ -1524,28 +1498,6 @@ impl Validator {
     }
 
     // Section validation
-    fn validate_memory_section(module: &Module) -> result::Result<(), ValidationError> {
-        let Some(ref memsec) = module.memories else {
-            return Ok(());
-        };
-
-        // Only one memory is allowed
-        if memsec.len() > 1 {
-            return Err(ValidationError::Memory {
-                index: 1,
-                source: MemoryValidationError::MultipleMemories,
-            });
-        }
-
-        for (index, mem) in memsec.iter().enumerate() {
-            Self::validate_memory_limit(mem).map_err(|e| ValidationError::Memory {
-                index: index + module.imported_memory_count(),
-                source: MemoryValidationError::InvalidLimit(e),
-            })?;
-        }
-
-        Ok(())
-    }
 
     fn validate_imports_section(module: &Module) -> result::Result<(), ValidationError> {
         let Some(ref importsec) = module.imports else {
@@ -1717,7 +1669,7 @@ impl Validator {
 
     fn validate_module(module: &Module) -> result::Result<(), ValidationError> {
         sections::table::validate(module)?;
-        Self::validate_memory_section(module)?;
+        sections::memory::validate(module)?;
         sections::element::validate(module)?;
         Self::validate_imports_section(module)?;
         Self::validate_data_section(module)?;
