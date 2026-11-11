@@ -15,7 +15,8 @@ use crate::binary::sections::import::ImportDesc;
 use crate::binary::sections::memory::MemType;
 use crate::binary::sections::table::TableType;
 use crate::binary::types::{
-    BlockType, DataIdx, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, ValType,
+    BlockType, DataIdx, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, TableIdx,
+    TypeIdx, ValType,
 };
 use crate::instructions::Instruction;
 use crate::limits::MAX_WASM_32BIT_MEMORY_PAGES;
@@ -269,6 +270,15 @@ impl IndexValidationError {
     fn data(index: DataIdx, count: usize) -> Self {
         Self::mint(IndexSpace::Data, index as usize, count)
     }
+
+    fn element(index: u32, count: usize) -> Self {
+        Self::mint(IndexSpace::Element, index as usize, count)
+    }
+
+    fn function(index: FuncIndex, count: usize) -> Self {
+        Self::mint(IndexSpace::Function, index.as_usize(), count)
+    }
+
     fn global(index: GlobalIndex, count: usize) -> Self {
         Self::mint(IndexSpace::Global, index.0 as usize, count)
     }
@@ -279,6 +289,14 @@ impl IndexValidationError {
 
     fn memory(index: MemIndex, count: usize) -> Self {
         Self::mint(IndexSpace::Memory, index.0 as usize, count)
+    }
+
+    fn table(index: TableIdx, count: usize) -> Self {
+        Self::mint(IndexSpace::Table, index as usize, count)
+    }
+
+    fn ty(index: TypeIdx, count: usize) -> Self {
+        Self::mint(IndexSpace::Type, index as usize, count)
     }
 }
 
@@ -549,11 +567,7 @@ impl Validator {
                     .types
                     .as_ref()
                     .and_then(|t| t.get(*idx as usize))
-                    .ok_or(IndexValidationError {
-                        space: IndexSpace::Type,
-                        index: *idx as usize,
-                        count: module.type_count(),
-                    })?;
+                    .ok_or_else(|| IndexValidationError::ty(*idx, module.table_count()))?;
 
                 (
                     t.params.iter().copied().map(|v| (&v).into()).collect(),
@@ -569,11 +583,7 @@ impl Validator {
             .types
             .as_ref()
             .and_then(|types| types.get(type_idx as usize))
-            .ok_or_else(|| IndexValidationError {
-                space: IndexSpace::Type,
-                index: type_idx as usize,
-                count: module.type_count(),
-            })
+            .ok_or_else(|| IndexValidationError::ty(type_idx, module.type_count()))
     }
 
     /// Returns the type for an idx in the Function Section.
@@ -595,13 +605,9 @@ impl Validator {
         let type_idx = imported
             .chain(defined)
             .nth(func_idx.as_usize())
-            .ok_or_else(|| IndexValidationError {
-                space: IndexSpace::Function,
-                index: func_idx.as_usize(),
-                count: module.func_count(),
-            })?;
+            .ok_or_else(|| IndexValidationError::function(func_idx, module.func_count()))?;
 
-        Ok(Self::type_at(module, type_idx)?)
+        Self::type_at(module, type_idx)
     }
 
     /// Returns the table type at the given index
@@ -623,11 +629,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(table_idx as usize)
-            .ok_or_else(|| IndexValidationError {
-                space: IndexSpace::Table,
-                index: table_idx as usize,
-                count: module.table_count(),
-            })
+            .ok_or_else(|| IndexValidationError::table(table_idx, module.table_count()))
     }
 
     /// Returns the global type at the given index
@@ -1311,12 +1313,7 @@ impl Validator {
             Instruction::RefFunc(idx) => {
                 // Check that the function index is valid in this module
                 if idx.as_usize() >= module.func_count() {
-                    return Err(IndexValidationError {
-                        space: IndexSpace::Function,
-                        index: idx.as_usize(),
-                        count: module.func_count(),
-                    }
-                    .into());
+                    return Err(IndexValidationError::function(*idx, module.func_count()).into());
                 }
                 // Check that the function index has been declared for use
                 // as reference.
@@ -1397,11 +1394,9 @@ impl Validator {
                 // element exists
                 let index = *elemidx as usize;
                 let elems = module.elements.as_deref().unwrap_or(&[]);
-                let elem = elems.get(index).ok_or_else(|| IndexValidationError {
-                    space: IndexSpace::Element,
-                    index,
-                    count: elems.len(),
-                })?;
+                let elem = elems
+                    .get(index)
+                    .ok_or_else(|| IndexValidationError::element(index as u32, elems.len()))?;
 
                 let elemtype = match elem.items {
                     ElementSegmentItems::Functions(_) => RefType::Func,
@@ -1416,12 +1411,7 @@ impl Validator {
                 let count = module.elements.as_ref().map_or(0, Vec::len);
                 let index = *idx as usize;
                 if index >= count {
-                    return Err(IndexValidationError {
-                        space: IndexSpace::Element,
-                        index,
-                        count,
-                    }
-                    .into());
+                    return Err(IndexValidationError::element(index as u32, count).into());
                 }
             }
             Instruction::TableCopy((dstidx, srcidx)) => {
@@ -1525,18 +1515,16 @@ impl Validator {
         let declared_refs = Self::collect_declared_function_refs(module);
 
         for (index, (type_idx, entry)) in funcsec.iter().zip(codesec).enumerate() {
-            let type_idx = *type_idx as usize;
             let functype = module
                 .types
                 .as_ref()
-                .and_then(|t| t.get(type_idx))
+                .and_then(|t| t.get(*type_idx as usize))
                 .ok_or_else(|| ValidationError::Function {
                     index: index + module.imported_func_count(),
-                    source: FunctionValidationError::UnknownType(IndexValidationError {
-                        space: IndexSpace::Type,
-                        index: type_idx,
-                        count: module.type_count(),
-                    }),
+                    source: FunctionValidationError::UnknownType(IndexValidationError::ty(
+                        *type_idx,
+                        module.type_count(),
+                    )),
                 })?;
             Validator::default()
                 .validate_function(functype, entry, module, &declared_refs)

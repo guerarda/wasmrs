@@ -45,7 +45,6 @@ impl<'a> FromReader<'a> for ExportKind {
 #[derive(Debug)]
 pub struct ExportEntry {
     pub name: String,
-    #[allow(dead_code)]
     pub kind: ExportKind,
     pub index: u32,
 }

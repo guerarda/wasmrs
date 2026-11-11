@@ -4,7 +4,7 @@ use crate::binary::module::Module;
 use crate::binary::sections::import::ImportDesc;
 use crate::binary::types::ConstExpression;
 use crate::instructions::Instruction;
-use crate::validation::{IndexSpace, IndexValidationError, ValidationErrorKind, ValueType};
+use crate::validation::{IndexValidationError, ValidationErrorKind, ValueType};
 use crate::{MutabilityFlag, RefType};
 
 /// Validates that `expr` is constant and evaluates to the expected type. Also
@@ -28,12 +28,7 @@ pub(super) fn validate(
                     return Err(ConstExpressionValidationError::Instruction {
                         index: i,
                         name: inst.name(),
-                        source: IndexValidationError {
-                            space: IndexSpace::Function,
-                            index: idx.as_usize(),
-                            count: module.func_count(),
-                        }
-                        .into(),
+                        source: IndexValidationError::function(*idx, module.func_count()).into(),
                     });
                 }
                 stack.push(ValueType::Ref(RefType::Func))

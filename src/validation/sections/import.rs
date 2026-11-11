@@ -2,9 +2,7 @@ use std::{error, fmt, result};
 
 use crate::binary::module::Module;
 use crate::binary::sections::import::ImportDesc;
-use crate::validation::{
-    IndexSpace, IndexValidationError, LimitValidationError, ValidationError, Validator,
-};
+use crate::validation::{IndexValidationError, LimitValidationError, ValidationError, Validator};
 
 pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
     let Some(ref importsec) = module.imports else {
@@ -19,11 +17,9 @@ pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
                 if *idx as usize >= types_len {
                     return Err(ValidationError::Import {
                         index,
-                        source: ImportValidationError::UnknownFunctionType(IndexValidationError {
-                            space: IndexSpace::Type,
-                            index: *idx as usize,
-                            count: types_len,
-                        }),
+                        source: ImportValidationError::UnknownFunctionType(
+                            IndexValidationError::ty(*idx, types_len),
+                        ),
                     });
                 }
             }
@@ -84,7 +80,7 @@ impl fmt::Display for ImportValidationError {
 mod tests {
     use super::*;
     use crate::binary::module::decode_bytes;
-    use crate::validation::validate_module;
+    use crate::validation::{IndexSpace, validate_module};
 
     #[test]
     fn test_import_unknown_function_type() -> anyhow::Result<()> {
