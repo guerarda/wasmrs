@@ -15,7 +15,7 @@ use crate::binary::sections::import::ImportDesc;
 use crate::binary::sections::memory::MemType;
 use crate::binary::sections::table::TableType;
 use crate::binary::types::{
-    BlockType, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, ValType,
+    BlockType, DataIdx, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, ValType,
 };
 use crate::instructions::Instruction;
 use crate::limits::MAX_WASM_32BIT_MEMORY_PAGES;
@@ -228,7 +228,7 @@ pub enum IndexSpace {
     Table,
     Memory,
     Global,
-    // Data,
+    Data,
     Element,
     // Local,
 }
@@ -240,8 +240,9 @@ impl fmt::Display for IndexSpace {
             Self::Function => write!(f, "function"),
             Self::Table => write!(f, "table"),
             Self::Memory => write!(f, "memory"),
-            Self::Element => write!(f, "element"),
             Self::Global => write!(f, "global"),
+            Self::Data => write!(f, "data"),
+            Self::Element => write!(f, "element"),
         }
     }
 }
@@ -270,6 +271,10 @@ impl IndexValidationError {
 
     fn memory(index: MemIndex, count: usize) -> Self {
         Self::mint(IndexSpace::Memory, index.0 as usize, count)
+    }
+
+    fn data(index: DataIdx, count: usize) -> Self {
+        Self::mint(IndexSpace::Data, index as usize, count)
     }
 }
 
@@ -322,7 +327,6 @@ pub enum ValidationErrorKind {
     ElseWithoutMatchingIf,
     UndeclaredFunctionReference,
     UnknownLocal,
-    UnknownData,
     ImmutableGlobal,
     InvalidSelectTypes,
     InvalidMemAlignment,
@@ -357,7 +361,6 @@ impl fmt::Display for ValidationErrorKind {
             Self::ElseWithoutMatchingIf => write!(f, "else without matching if"),
             Self::UndeclaredFunctionReference => write!(f, "undeclared function reference"),
             Self::UnknownLocal => write!(f, "unknown local"),
-            Self::UnknownData => write!(f, "unknown data"),
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
             Self::InvalidMemAlignment => write!(f, "invalid mem alignment"),
@@ -419,10 +422,6 @@ impl ValidationErrorKind {
 
     fn unknown_local() -> Self {
         Self::mint(ValidationErrorKind::UnknownLocal)
-    }
-
-    fn unknown_data() -> Self {
-        Self::mint(ValidationErrorKind::UnknownData)
     }
 
     fn immutable_global() -> Self {
@@ -1354,7 +1353,7 @@ impl Validator {
                     .as_ref()
                     .is_none_or(|data| (*dataidx as usize) >= data.len())
                 {
-                    return Err(ValidationErrorKind::unknown_data());
+                    return Err(IndexValidationError::data(*dataidx, module.data_count()).into());
                 }
             }
             Instruction::DataDrop(idx) => {
@@ -1363,7 +1362,7 @@ impl Validator {
                     .as_ref()
                     .is_none_or(|data| (*idx as usize) >= data.len())
                 {
-                    return Err(ValidationErrorKind::unknown_data());
+                    return Err(IndexValidationError::data(*idx, module.data_count()).into());
                 }
             }
             Instruction::MemoryCopy((dstidx, srcidx)) => {

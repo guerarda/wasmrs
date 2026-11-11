@@ -155,6 +155,10 @@ impl Module {
         self.types.as_ref().map_or(0, |types| types.len())
     }
 
+    pub fn data_count(&self) -> usize {
+        self.types.as_ref().map_or(0, |types| types.len())
+    }
+
     impl_import_count_kind!(imported_func_count, Func, functions);
     impl_import_count_kind!(imported_memory_count, Mem, memories);
     impl_import_count_kind!(imported_global_count, Global, globals);

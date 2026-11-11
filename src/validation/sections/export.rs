@@ -93,9 +93,8 @@ impl From<IndexValidationError> for ExportValidationError {
             IndexSpace::Function => Self::UnknownFunction(value),
             IndexSpace::Table => Self::UnknownTable(value),
             IndexSpace::Memory => Self::UnknownMemory(value),
-            IndexSpace::Element => todo!(),
-            IndexSpace::Type => todo!(),
             IndexSpace::Global => Self::UnknownGlobal(value),
+            _ => unreachable!(),
         }
     }
 }
