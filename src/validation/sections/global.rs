@@ -210,7 +210,11 @@ mod tests {
                     source: GlobalValidationError::InvalidConstExpression(
                         ConstExpressionValidationError::Instruction {
                             index: 0,
-                            source: ValidationErrorKind::UnknownGlobal,
+                            source: ValidationErrorKind::InvalidIndex(IndexValidationError {
+                                space: IndexSpace::Global,
+                                index: 0,
+                                count: 0
+                            }),
                             ..
                         }
                     )

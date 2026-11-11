@@ -39,40 +39,28 @@ pub(super) fn validate(
                 stack.push(ValueType::Ref(RefType::Func))
             }
             Instruction::GlobalGet(idx) => {
-                let idx = idx.0 as usize;
-
-                if idx >= module.imported_global_count() {
-                    return Err(ConstExpressionValidationError::Instruction {
-                        index: i,
-                        name: inst.name(),
-                        source: ValidationErrorKind::unknown_global(),
-                    });
-                }
-
-                let import = module
+                let gt = module
                     .imports
-                    .as_ref()
-                    .and_then(|imps| {
-                        imps.iter()
-                            .filter(|i| matches!(i.desc, ImportDesc::Global(_)))
-                            .nth(idx)
+                    .iter()
+                    .flatten()
+                    .filter_map(|imp| match &imp.desc {
+                        ImportDesc::Global(gt) => Some(gt),
+                        _ => None,
                     })
+                    .nth(idx.0 as usize)
                     .ok_or_else(|| ConstExpressionValidationError::Instruction {
                         index: i,
                         name: inst.name(),
-                        source: ValidationErrorKind::unknown_global(),
+                        source: IndexValidationError::global(*idx, module.imported_global_count())
+                            .into(),
                     })?;
-
-                let ImportDesc::Global(gt) = &import.desc else {
-                    unreachable!()
-                };
 
                 if matches!(gt.mutflag, MutabilityFlag::Const) {
                     stack.push(ValueType::from(gt.type_));
                 } else {
                     return Err(ConstExpressionValidationError::GlobalNotAllowed {
                         inst_index: i,
-                        global_index: idx,
+                        global_index: idx.0 as usize,
                     });
                 }
             }

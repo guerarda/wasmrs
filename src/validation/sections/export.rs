@@ -3,7 +3,7 @@ use std::{error, fmt, result};
 
 use crate::binary::module::Module;
 use crate::binary::sections::export::ExportKind;
-use crate::binary::types::MemIndex;
+use crate::binary::types::{GlobalIndex, MemIndex};
 use crate::validation::{IndexSpace, IndexValidationError, ValidationError};
 
 pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
@@ -65,12 +65,8 @@ pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
                 if idx >= global_count {
                     return Err(ValidationError::Export {
                         index,
-                        source: IndexValidationError {
-                            space: todo!(),
-                            index: todo!(),
-                            count: todo!(),
-                        }
-                        .into(),
+                        source: IndexValidationError::global(GlobalIndex(idx as u32), global_count)
+                            .into(),
                     });
                 }
             }
@@ -99,6 +95,7 @@ impl From<IndexValidationError> for ExportValidationError {
             IndexSpace::Memory => Self::UnknownMemory(value),
             IndexSpace::Element => todo!(),
             IndexSpace::Type => todo!(),
+            IndexSpace::Global => Self::UnknownGlobal(value),
         }
     }
 }

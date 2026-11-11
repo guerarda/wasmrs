@@ -227,7 +227,7 @@ pub enum IndexSpace {
     Function,
     Table,
     Memory,
-    // Global,
+    Global,
     // Data,
     Element,
     // Local,
@@ -241,6 +241,7 @@ impl fmt::Display for IndexSpace {
             Self::Table => write!(f, "table"),
             Self::Memory => write!(f, "memory"),
             Self::Element => write!(f, "element"),
+            Self::Global => write!(f, "global"),
         }
     }
 }
@@ -261,6 +262,10 @@ impl IndexValidationError {
             index,
             count,
         }
+    }
+
+    fn global(index: GlobalIndex, count: usize) -> Self {
+        Self::mint(IndexSpace::Global, index.0 as usize, count)
     }
 
     fn memory(index: MemIndex, count: usize) -> Self {
@@ -317,7 +322,6 @@ pub enum ValidationErrorKind {
     ElseWithoutMatchingIf,
     UndeclaredFunctionReference,
     UnknownLocal,
-    UnknownGlobal,
     UnknownData,
     ImmutableGlobal,
     InvalidSelectTypes,
@@ -353,7 +357,6 @@ impl fmt::Display for ValidationErrorKind {
             Self::ElseWithoutMatchingIf => write!(f, "else without matching if"),
             Self::UndeclaredFunctionReference => write!(f, "undeclared function reference"),
             Self::UnknownLocal => write!(f, "unknown local"),
-            Self::UnknownGlobal => write!(f, "unknown global"),
             Self::UnknownData => write!(f, "unknown data"),
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
@@ -416,10 +419,6 @@ impl ValidationErrorKind {
 
     fn unknown_local() -> Self {
         Self::mint(ValidationErrorKind::UnknownLocal)
-    }
-
-    fn unknown_global() -> Self {
-        Self::mint(ValidationErrorKind::UnknownGlobal)
     }
 
     fn unknown_data() -> Self {
@@ -639,7 +638,7 @@ impl Validator {
     fn global_type_at(
         module: &Module,
         idx: GlobalIndex,
-    ) -> result::Result<&GlobalType, ValidationErrorKind> {
+    ) -> result::Result<&GlobalType, IndexValidationError> {
         let imported = module
             .imports
             .iter()
@@ -654,7 +653,7 @@ impl Validator {
         imported
             .chain(defined)
             .nth(idx.0 as usize)
-            .ok_or_else(ValidationErrorKind::unknown_global)
+            .ok_or_else(|| IndexValidationError::global(idx, module.global_count()))
     }
 
     fn mem_type_at(
