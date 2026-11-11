@@ -8,7 +8,7 @@ use crate::binary::sections::global::GlobalType;
 use crate::binary::sections::import::ImportDesc;
 use crate::binary::sections::memory::MemType;
 use crate::binary::sections::table::TableType;
-use crate::binary::types::{ConstExpression, FuncType, MemIndex, RefType, TableIdx};
+use crate::binary::types::{ConstExpression, FuncType, MemIndex, RefType, TableIndex};
 use crate::instructions::Instruction;
 use crate::runtime::executor::ExecutionContext;
 use crate::runtime::instance::{ModuleHandle, ModuleInstance, ModuleRegistry};
@@ -42,7 +42,7 @@ struct ElemInit<'a> {
     offset: &'a ConstExpression,
     len: usize,
     elemidx: usize,
-    tableidx: TableIdx,
+    tableidx: TableIndex,
 }
 
 impl Runtime {
@@ -83,7 +83,7 @@ impl Runtime {
                             offset,
                             len: n,
                             elemidx: i,
-                            tableidx: table_index.unwrap_or(0),
+                            tableidx: table_index.unwrap_or(TableIndex(0)),
                         })
                     }
                     _ => None,
@@ -254,7 +254,7 @@ impl Runtime {
             for export in exports {
                 let val = match &export.desc {
                     ExportDesc::Func(idx) => ExternVal::Func(mi.funcs[idx.as_usize()]),
-                    ExportDesc::Table(idx) => ExternVal::Table(mi.tables[*idx as usize]),
+                    ExportDesc::Table(idx) => ExternVal::Table(mi.tables[idx.as_usize()]),
                     ExportDesc::Memory(idx) => ExternVal::Mem(mi.mems[idx.as_usize()]),
                     ExportDesc::Global(idx) => ExternVal::Global(mi.globals[idx.as_usize()]),
                 };
@@ -282,7 +282,7 @@ impl Runtime {
                 .as_i32()
                 .ok_or(RuntimeError::internal("expected i32"))?;
             let ea = mi.elems[ei.elemidx];
-            let ta = mi.tables[ei.tableidx as usize];
+            let ta = mi.tables[ei.tableidx.as_usize()];
             let elem = self.store.elements.get(ea);
 
             self.store

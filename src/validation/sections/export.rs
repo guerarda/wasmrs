@@ -31,7 +31,7 @@ pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
                 });
             }
 
-            ExportDesc::Table(idx) if idx as usize >= table_count => {
+            ExportDesc::Table(idx) if idx.as_usize() >= table_count => {
                 return Err(ValidationError::Export {
                     index,
                     source: IndexValidationError::table(idx, table_count).into(),

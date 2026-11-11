@@ -2,14 +2,16 @@ use std::{error, fmt, result};
 
 use crate::binary::reader::{FromReader, ReadError, ReadErrorKind, Reader, VecReadError};
 use crate::binary::sections::{SectionEntry, SectionErrorKind};
-use crate::binary::types::{ConstExpression, ConstExpressionReadError, FuncIndex, RefType};
+use crate::binary::types::{
+    ConstExpression, ConstExpressionReadError, FuncIndex, RefType, TableIndex,
+};
 
 /// Element Section
 #[derive(Debug)]
 pub enum ElementSegmentMode {
     Passive,
     Active {
-        table_index: Option<u32>,
+        table_index: Option<TableIndex>,
         offset: ConstExpression,
     },
     Declarative,
@@ -302,7 +304,7 @@ mod tests {
         else {
             panic!("expected Active, got {:?}", seg.mode);
         };
-        assert_eq!(*table_index, Some(1));
+        assert_eq!(*table_index, Some(TableIndex(1)));
         assert_offset_zero(offset);
 
         let ElementSegmentItems::Functions(funcs) = &seg.items else {
@@ -423,7 +425,7 @@ mod tests {
         else {
             panic!("expected Active, got {:?}", seg.mode);
         };
-        assert_eq!(*table_index, Some(1));
+        assert_eq!(*table_index, Some(TableIndex(1)));
         assert_offset_zero(offset);
 
         let ElementSegmentItems::Expressions(rt, exprs) = &seg.items else {

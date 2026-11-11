@@ -2,6 +2,7 @@ use std::{error, fmt, result};
 
 use crate::RefType;
 use crate::binary::module::Module;
+use crate::binary::types::TableIndex;
 use crate::validation::{IndexValidationError, Validator, const_expr};
 
 use crate::binary::sections::element::{ElementSegmentItems, ElementSegmentMode};
@@ -56,7 +57,7 @@ pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
             offset,
         } = &element.mode
         {
-            let idx = table_index.unwrap_or(0);
+            let idx = table_index.unwrap_or(TableIndex::ZERO);
             let table_type =
                 Validator::table_type_at(module, idx).map_err(|e| ValidationError::Element {
                     index,

@@ -1,7 +1,7 @@
 use crate::binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError};
 use crate::binary::types::{
     BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIndex, GlobalIndex,
-    LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIdx, TypeIdx, ValType,
+    LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIndex, TypeIdx, ValType,
 };
 
 /// Generates the enum for instruction of the form:
@@ -128,7 +128,7 @@ instructions! {
     BrTable(BranchTableIdx) : 0x0e : "br_table",
     Return : 0x0f : "return",
     Call(FuncIndex) : 0x10 : "call",
-    CallIndirect((TypeIdx, TableIdx)) : 0x11 : "call_indirect",
+    CallIndirect((TypeIdx, TableIndex)) : 0x11 : "call_indirect",
 
     // Variable
     LocalGet(u32) : 0x20 : "local.get",
@@ -136,8 +136,8 @@ instructions! {
     LocalTee(u32) : 0x22 : "local.tee",
     GlobalGet(GlobalIndex) : 0x23 : "global.get",
     GlobalSet(GlobalIndex) : 0x24 : "global.set",
-    TableGet(TableIdx) : 0x25 : "table.get",
-    TableSet(TableIdx) : 0x26 : "table.set",
+    TableGet(TableIndex) : 0x25 : "table.get",
+    TableSet(TableIndex) : 0x26 : "table.set",
 
     // Memory
     // Load
@@ -337,12 +337,12 @@ instructions! {
         DataDrop(DataIdx) : 0x09 : "data.drop",
         MemoryCopy((MemIndex, MemIndex)) : 0x0a : "memory.copy",
         MemoryFill(MemIndex) : 0x0b : "memory.fill",
-        TableInit((ElemIdx, TableIdx)) : 0x0c : "table.init",
+        TableInit((ElemIdx, TableIndex)) : 0x0c : "table.init",
         ElemDrop(ElemIdx) : 0x0d : "elem.drop",
-        TableCopy((TableIdx, TableIdx)) : 0x0e : "table.copy",
-        TableGrow(TableIdx) : 0x0f : "table.grow",
-        TableSize(TableIdx) : 0x10 : "table.size",
-        TableFill(TableIdx) : 0x11 : "table.fill",
+        TableCopy((TableIndex, TableIndex)) : 0x0e : "table.copy",
+        TableGrow(TableIndex) : 0x0f : "table.grow",
+        TableSize(TableIndex) : 0x10 : "table.size",
+        TableFill(TableIndex) : 0x11 : "table.fill",
     }
 }
 

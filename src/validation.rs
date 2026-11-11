@@ -15,7 +15,7 @@ use crate::binary::sections::import::ImportDesc;
 use crate::binary::sections::memory::MemType;
 use crate::binary::sections::table::TableType;
 use crate::binary::types::{
-    BlockType, DataIdx, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, TableIdx,
+    BlockType, DataIdx, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, TableIndex,
     TypeIdx, ValType,
 };
 use crate::instructions::Instruction;
@@ -291,8 +291,8 @@ impl IndexValidationError {
         Self::mint(IndexSpace::Memory, index.0 as usize, count)
     }
 
-    fn table(index: TableIdx, count: usize) -> Self {
-        Self::mint(IndexSpace::Table, index as usize, count)
+    fn table(index: TableIndex, count: usize) -> Self {
+        Self::mint(IndexSpace::Table, index.as_usize(), count)
     }
 
     fn ty(index: TypeIdx, count: usize) -> Self {
@@ -614,7 +614,7 @@ impl Validator {
     // TODO cache the function index array with imports at the module level
     fn table_type_at(
         module: &Module,
-        table_idx: u32,
+        idx: TableIndex,
     ) -> result::Result<&TableType, IndexValidationError> {
         let imported = module
             .imports
@@ -628,8 +628,8 @@ impl Validator {
 
         imported
             .chain(defined)
-            .nth(table_idx as usize)
-            .ok_or_else(|| IndexValidationError::table(table_idx, module.table_count()))
+            .nth(idx.as_usize())
+            .ok_or_else(|| IndexValidationError::table(idx, module.table_count()))
     }
 
     /// Returns the global type at the given index

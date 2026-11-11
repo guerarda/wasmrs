@@ -2,7 +2,7 @@ use std::{error, fmt};
 
 use crate::binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader};
 use crate::binary::sections::{SectionEntry, SectionErrorKind};
-use crate::binary::types::{FuncIndex, GlobalIndex, MemIndex, TableIdx};
+use crate::binary::types::{FuncIndex, GlobalIndex, MemIndex, TableIndex};
 
 /// Export Section
 #[repr(u8)]
@@ -46,7 +46,7 @@ impl<'a> FromReader<'a> for ExportKind {
 #[derive(Debug)]
 pub enum ExportDesc {
     Func(FuncIndex),
-    Table(TableIdx),
+    Table(TableIndex),
     Memory(MemIndex),
     Global(GlobalIndex),
 }
@@ -70,7 +70,7 @@ impl SectionEntry for ExportEntry {
 
         let desc = match kind {
             ExportKind::Func => ExportDesc::Func(FuncIndex(index)),
-            ExportKind::Table => ExportDesc::Table(index),
+            ExportKind::Table => ExportDesc::Table(TableIndex(index)),
             ExportKind::Memory => ExportDesc::Memory(MemIndex(index)),
             ExportKind::Global => ExportDesc::Global(GlobalIndex(index)),
         };

@@ -7,7 +7,6 @@ use crate::instructions::{Instruction, InstructionError, decode_instruction};
 
 /// Indices​
 pub type TypeIdx = u32;
-pub type TableIdx = u32;
 pub type ElemIdx = u32;
 pub type DataIdx = u32;
 pub type LabelIdx = u32;
@@ -83,6 +82,26 @@ impl<'a> FromReader<'a> for GlobalIndex {
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
         reader.read().map(GlobalIndex)
+    }
+}
+
+/// Table Index
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableIndex(pub(crate) u32);
+
+impl TableIndex {
+    pub const ZERO: Self = Self(0);
+
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl<'a> FromReader<'a> for TableIndex {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map(TableIndex)
     }
 }
 
