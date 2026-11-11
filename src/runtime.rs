@@ -3,7 +3,7 @@ use std::{error, fmt, result};
 use crate::binary::module;
 use crate::binary::sections::data::DataSegmentMode;
 use crate::binary::sections::element::{ElementSegmentItems, ElementSegmentMode};
-use crate::binary::sections::export::ExportKind;
+use crate::binary::sections::export::ExportDesc;
 use crate::binary::sections::global::GlobalType;
 use crate::binary::sections::import::ImportDesc;
 use crate::binary::sections::memory::MemType;
@@ -252,12 +252,11 @@ impl Runtime {
         // Allocate exports
         if let Some(exports) = &module.exports {
             for export in exports {
-                let idx = export.index as usize;
-                let val = match &export.kind {
-                    ExportKind::Func => ExternVal::Func(mi.funcs[idx]),
-                    ExportKind::Table => ExternVal::Table(mi.tables[idx]),
-                    ExportKind::Memory => ExternVal::Mem(mi.mems[idx]),
-                    ExportKind::Global => ExternVal::Global(mi.globals[idx]),
+                let val = match &export.desc {
+                    ExportDesc::Func(idx) => ExternVal::Func(mi.funcs[idx.as_usize()]),
+                    ExportDesc::Table(idx) => ExternVal::Table(mi.tables[*idx as usize]),
+                    ExportDesc::Memory(idx) => ExternVal::Mem(mi.mems[idx.as_usize()]),
+                    ExportDesc::Global(idx) => ExternVal::Global(mi.globals[idx.as_usize()]),
                 };
                 mi.exports.insert(export.name.clone(), val);
             }

@@ -2,8 +2,7 @@ use std::collections::HashSet;
 use std::{error, fmt, result};
 
 use crate::binary::module::Module;
-use crate::binary::sections::export::ExportKind;
-use crate::binary::types::{FuncIndex, GlobalIndex, MemIndex};
+use crate::binary::sections::export::ExportDesc;
 use crate::validation::{IndexSpace, IndexValidationError, ValidationError};
 
 pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
@@ -24,40 +23,33 @@ pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
                 source: ExportValidationError::DuplicateName(e.name.clone()),
             });
         }
-        let idx = e.index;
-        match e.kind {
-            ExportKind::Func => {
-                if idx as usize >= func_count {
-                    return Err(ValidationError::Export {
-                        index,
-                        source: IndexValidationError::function(FuncIndex(idx), func_count).into(),
-                    });
-                }
+        match e.desc {
+            ExportDesc::Func(idx) if idx.as_usize() >= func_count => {
+                return Err(ValidationError::Export {
+                    index,
+                    source: IndexValidationError::function(idx, func_count).into(),
+                });
             }
-            ExportKind::Table => {
-                if idx as usize >= table_count {
-                    return Err(ValidationError::Export {
-                        index,
-                        source: IndexValidationError::table(idx, table_count).into(),
-                    });
-                }
+
+            ExportDesc::Table(idx) if idx as usize >= table_count => {
+                return Err(ValidationError::Export {
+                    index,
+                    source: IndexValidationError::table(idx, table_count).into(),
+                });
             }
-            ExportKind::Memory => {
-                if idx as usize >= mem_count {
-                    return Err(ValidationError::Export {
-                        index,
-                        source: IndexValidationError::memory(MemIndex(idx), mem_count).into(),
-                    });
-                }
+            ExportDesc::Memory(idx) if idx.as_usize() >= mem_count => {
+                return Err(ValidationError::Export {
+                    index,
+                    source: IndexValidationError::memory(idx, mem_count).into(),
+                });
             }
-            ExportKind::Global => {
-                if idx as usize >= global_count {
-                    return Err(ValidationError::Export {
-                        index,
-                        source: IndexValidationError::global(GlobalIndex(idx), global_count).into(),
-                    });
-                }
+            ExportDesc::Global(idx) if idx.as_usize() >= global_count => {
+                return Err(ValidationError::Export {
+                    index,
+                    source: IndexValidationError::global(idx, global_count).into(),
+                });
             }
+            _ => (),
         }
     }
 

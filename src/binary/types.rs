@@ -36,6 +36,10 @@ pub struct MemIndex(pub(crate) u32);
 
 impl MemIndex {
     pub const ZERO: Self = Self(0);
+
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
 }
 
 impl TryFrom<u32> for MemIndex {
@@ -67,6 +71,12 @@ impl<'a> FromReader<'a> for MemIndex {
 /// Global Index
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GlobalIndex(pub(crate) u32);
+
+impl GlobalIndex {
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+}
 
 impl<'a> FromReader<'a> for GlobalIndex {
     type Error = ReadError;

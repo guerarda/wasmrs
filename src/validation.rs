@@ -9,7 +9,7 @@ use sections::table::TableValidationError;
 use crate::binary::module::Module;
 use crate::binary::sections::code::{CodeEntry, FuncLocal};
 use crate::binary::sections::element::ElementSegmentItems;
-use crate::binary::sections::export::ExportKind;
+use crate::binary::sections::export::ExportDesc;
 use crate::binary::sections::global::{GlobalType, MutabilityFlag};
 use crate::binary::sections::import::ImportDesc;
 use crate::binary::sections::memory::MemType;
@@ -1465,8 +1465,8 @@ impl Validator {
 
         if let Some(ref exportsec) = module.exports {
             for e in exportsec {
-                if matches!(e.kind, ExportKind::Func) {
-                    refs.push(FuncIndex(e.index));
+                if let ExportDesc::Func(idx) = e.desc {
+                    refs.push(idx);
                 }
             }
         }
