@@ -230,7 +230,7 @@ pub enum IndexSpace {
     Global,
     Data,
     Element,
-    // Local,
+    Local,
 }
 
 impl fmt::Display for IndexSpace {
@@ -243,6 +243,7 @@ impl fmt::Display for IndexSpace {
             Self::Global => write!(f, "global"),
             Self::Data => write!(f, "data"),
             Self::Element => write!(f, "element"),
+            Self::Local => write!(f, "local"),
         }
     }
 }
@@ -265,16 +266,19 @@ impl IndexValidationError {
         }
     }
 
+    fn data(index: DataIdx, count: usize) -> Self {
+        Self::mint(IndexSpace::Data, index as usize, count)
+    }
     fn global(index: GlobalIndex, count: usize) -> Self {
         Self::mint(IndexSpace::Global, index.0 as usize, count)
     }
 
-    fn memory(index: MemIndex, count: usize) -> Self {
-        Self::mint(IndexSpace::Memory, index.0 as usize, count)
+    fn local(index: u32, count: usize) -> Self {
+        Self::mint(IndexSpace::Local, index as usize, count)
     }
 
-    fn data(index: DataIdx, count: usize) -> Self {
-        Self::mint(IndexSpace::Data, index as usize, count)
+    fn memory(index: MemIndex, count: usize) -> Self {
+        Self::mint(IndexSpace::Memory, index.0 as usize, count)
     }
 }
 
@@ -326,7 +330,6 @@ pub enum ValidationErrorKind {
     TableTypeMismatch,
     ElseWithoutMatchingIf,
     UndeclaredFunctionReference,
-    UnknownLocal,
     ImmutableGlobal,
     InvalidSelectTypes,
     InvalidMemAlignment,
@@ -360,7 +363,6 @@ impl fmt::Display for ValidationErrorKind {
             Self::TableTypeMismatch => write!(f, "table type mismatch"),
             Self::ElseWithoutMatchingIf => write!(f, "else without matching if"),
             Self::UndeclaredFunctionReference => write!(f, "undeclared function reference"),
-            Self::UnknownLocal => write!(f, "unknown local"),
             Self::ImmutableGlobal => write!(f, "immutable global"),
             Self::InvalidSelectTypes => write!(f, "select types must have exactly one entry"),
             Self::InvalidMemAlignment => write!(f, "invalid mem alignment"),
@@ -418,10 +420,6 @@ impl ValidationErrorKind {
 
     fn undeclared_function_reference() -> Self {
         Self::mint(ValidationErrorKind::UndeclaredFunctionReference)
-    }
-
-    fn unknown_local() -> Self {
-        Self::mint(ValidationErrorKind::UnknownLocal)
     }
 
     fn immutable_global() -> Self {
@@ -680,7 +678,7 @@ impl Validator {
         functype: &FuncType,
         locals: &[FuncLocal],
         idx: u32,
-    ) -> result::Result<ValueType, ValidationErrorKind> {
+    ) -> result::Result<ValueType, IndexValidationError> {
         if let Some(param) = functype.params.get(idx as usize) {
             return Ok(param.into());
         }
@@ -693,7 +691,10 @@ impl Validator {
             }
             count += local.count;
         }
-        Err(ValidationErrorKind::unknown_local())
+        Err(IndexValidationError::local(
+            idx,
+            count as usize + functype.params.len(),
+        ))
     }
 
     /// Returns the label_types for the nth frame from the top
@@ -2033,6 +2034,117 @@ mod tests {
         assert!(
             matches!(result, Err(ValidationError::Function { index: 3, .. })),
             "expected function error at index 3, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_local_index_out_of_range() -> anyhow::Result<()> {
+        // 3 params + 2 declared locals: the local index space has 5 entries,
+        // so index 5 is the first out of range.
+        let wat = r#"
+            (module
+                (func (param i32 i32 i32) (local i64 i64)
+                    local.get 5
+                    drop))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Function {
+                    index: 0,
+                    source: FunctionValidationError::Instruction {
+                        index: 0,
+                        name: _,
+                        kind: ValidationErrorKind::InvalidIndex(IndexValidationError {
+                            space: IndexSpace::Local,
+                            index: 5,
+                            count: 5
+                        })
+                    }
+                })
+            ),
+            "expected invalid local index, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_data_drop_index_out_of_range() -> anyhow::Result<()> {
+        // 1 type and 2 data segments, so a count taken from the wrong
+        // section shows up in the error.
+        let wat = r#"
+            (module
+                (func
+                    data.drop 2)
+                (data "a")
+                (data "b"))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Function {
+                    index: 0,
+                    source: FunctionValidationError::Instruction {
+                        index: 0,
+                        name: _,
+                        kind: ValidationErrorKind::InvalidIndex(IndexValidationError {
+                            space: IndexSpace::Data,
+                            index: 2,
+                            count: 2
+                        })
+                    }
+                })
+            ),
+            "expected invalid data index, got: {:?}",
+            result
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_init_data_index_out_of_range() -> anyhow::Result<()> {
+        // 1 type and 2 data segments, so a count taken from the wrong
+        // section shows up in the error.
+        let wat = r#"
+            (module
+                (memory 1)
+                (func
+                    i32.const 0
+                    i32.const 0
+                    i32.const 0
+                    memory.init 2)
+                (data "a")
+                (data "b"))
+        "#;
+        let bytes = wat::parse_str(wat)?;
+        let m = decode_bytes(bytes)?;
+        let result = validate_module(&m);
+        assert!(
+            matches!(
+                result,
+                Err(ValidationError::Function {
+                    index: 0,
+                    source: FunctionValidationError::Instruction {
+                        index: 3,
+                        name: _,
+                        kind: ValidationErrorKind::InvalidIndex(IndexValidationError {
+                            space: IndexSpace::Data,
+                            index: 2,
+                            count: 2
+                        })
+                    }
+                })
+            ),
+            "expected invalid data index, got: {:?}",
             result
         );
         Ok(())
