@@ -1,12 +1,12 @@
 use crate::binary::reader::{FromReader, Reader};
 use crate::binary::sections::{SectionEntry, SectionErrorKind};
-use crate::binary::types::TypeIdx;
+use crate::binary::types::TypeIndex;
 
 /// Function Section
-pub type FunctionSection = Vec<TypeIdx>;
+pub type FunctionSection = Vec<TypeIndex>;
 
-impl SectionEntry for TypeIdx {
+impl SectionEntry for TypeIndex {
     fn decode(reader: &mut Reader) -> std::result::Result<Self, SectionErrorKind> {
-        TypeIdx::from_reader(reader).map_err(SectionErrorKind::FunctionSection)
+        TypeIndex::from_reader(reader).map_err(SectionErrorKind::FunctionSection)
     }
 }

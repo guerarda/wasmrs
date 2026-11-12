@@ -5,11 +5,41 @@ use crate::binary::reader::{
 };
 use crate::instructions::{Instruction, InstructionError, decode_instruction};
 
-/// Indices​
-pub type TypeIdx = u32;
-pub type ElemIdx = u32;
-pub type DataIdx = u32;
-pub type LabelIdx = u32;
+/// Label Index
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LabelIndex(pub u32);
+
+impl LabelIndex {
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl<'a> FromReader<'a> for LabelIndex {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map(LabelIndex)
+    }
+}
+
+/// Type Index
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TypeIndex(pub u32);
+
+impl TypeIndex {
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl<'a> FromReader<'a> for TypeIndex {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map(TypeIndex)
+    }
+}
 
 /// Func Index
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +132,46 @@ impl<'a> FromReader<'a> for TableIndex {
 
     fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
         reader.read().map(TableIndex)
+    }
+}
+
+/// Element Index
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ElementIndex(pub(crate) u32);
+
+impl ElementIndex {
+    pub const ZERO: Self = Self(0);
+
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl<'a> FromReader<'a> for ElementIndex {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map(ElementIndex)
+    }
+}
+
+/// Data Index
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DataIndex(pub(crate) u32);
+
+impl DataIndex {
+    pub const ZERO: Self = Self(0);
+
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl<'a> FromReader<'a> for DataIndex {
+    type Error = ReadError;
+
+    fn from_reader(reader: &mut Reader<'a>) -> std::result::Result<Self, Self::Error> {
+        reader.read().map(DataIndex)
     }
 }
 
@@ -217,7 +287,7 @@ impl<'a> FromReader<'a> for ValType {
 pub enum BlockType {
     Empty,
     Value(ValType),
-    Index(TypeIdx),
+    Index(TypeIndex),
 }
 
 impl<'a> FromReader<'a> for BlockType {
@@ -250,7 +320,7 @@ impl<'a> FromReader<'a> for BlockType {
                 pos,
             ));
         }
-        Ok(BlockType::Index(idx as u32))
+        Ok(BlockType::Index(TypeIndex(idx as u32)))
     }
 }
 
@@ -421,8 +491,8 @@ impl<'a> FromReader<'a> for Limit {
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone)]
 pub struct BranchTableIdx {
-    pub labels: Vec<LabelIdx>,
-    pub default: LabelIdx,
+    pub labels: Vec<LabelIndex>,
+    pub default: LabelIndex,
 }
 
 #[derive(Debug)]

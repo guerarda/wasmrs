@@ -1,7 +1,8 @@
 use crate::binary::reader::{FromReader, InvalidEnumValueError, ReadError, Reader, VecReadError};
 use crate::binary::types::{
-    BlockType, BranchTableIdx, BranchTableIdxReadError, DataIdx, ElemIdx, FuncIndex, GlobalIndex,
-    LabelIdx, MemArg, MemArgReadError, MemIndex, RefType, TableIndex, TypeIdx, ValType,
+    BlockType, BranchTableIdx, BranchTableIdxReadError, DataIndex, ElementIndex, FuncIndex,
+    GlobalIndex, LabelIndex, MemArg, MemArgReadError, MemIndex, RefType, TableIndex, TypeIndex,
+    ValType,
 };
 
 /// Generates the enum for instruction of the form:
@@ -123,12 +124,12 @@ instructions! {
     Else : 0x05 : "else",
 
     End : 0x0b : "end",
-    Br(LabelIdx) : 0x0c : "br",
-    BrIf(LabelIdx) : 0x0d : "br_if",
+    Br(LabelIndex) : 0x0c : "br",
+    BrIf(LabelIndex) : 0x0d : "br_if",
     BrTable(BranchTableIdx) : 0x0e : "br_table",
     Return : 0x0f : "return",
     Call(FuncIndex) : 0x10 : "call",
-    CallIndirect((TypeIdx, TableIndex)) : 0x11 : "call_indirect",
+    CallIndirect((TypeIndex, TableIndex)) : 0x11 : "call_indirect",
 
     // Variable
     LocalGet(u32) : 0x20 : "local.get",
@@ -333,12 +334,12 @@ instructions! {
         I64TruncSatF32U : 0x05 : "i64_trunc_sat_f32_u",
         I64TruncSatF64S : 0x06 : "i64_trunc_sat_f64_s",
         I64TruncSatF64U : 0x07 : "i64_trunc_sat_f64_u",
-        MemoryInit((DataIdx, MemIndex)) : 0x08 : "memory.init",
-        DataDrop(DataIdx) : 0x09 : "data.drop",
+        MemoryInit((DataIndex, MemIndex)) : 0x08 : "memory.init",
+        DataDrop(DataIndex) : 0x09 : "data.drop",
         MemoryCopy((MemIndex, MemIndex)) : 0x0a : "memory.copy",
         MemoryFill(MemIndex) : 0x0b : "memory.fill",
-        TableInit((ElemIdx, TableIndex)) : 0x0c : "table.init",
-        ElemDrop(ElemIdx) : 0x0d : "elem.drop",
+        TableInit((ElementIndex, TableIndex)) : 0x0c : "table.init",
+        ElemDrop(ElementIndex) : 0x0d : "elem.drop",
         TableCopy((TableIndex, TableIndex)) : 0x0e : "table.copy",
         TableGrow(TableIndex) : 0x0f : "table.grow",
         TableSize(TableIndex) : 0x10 : "table.size",

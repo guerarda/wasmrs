@@ -1,3 +1,4 @@
+use crate::binary::types::LabelIndex;
 use crate::runtime::store::FuncAddr;
 use crate::runtime::value::Value;
 
@@ -55,8 +56,8 @@ impl Frame {
         self.labels.last().unwrap()
     }
 
-    pub fn pop_nth_label(&mut self, n: u32) -> Label {
-        let n = n as usize;
+    pub fn pop_nth_label(&mut self, n: LabelIndex) -> Label {
+        let n = n.as_usize();
         let idx = self.labels.len() - n - 1;
         let label = self.labels.swap_remove(idx);
         self.labels.truncate(idx);

@@ -1,7 +1,7 @@
 use std::ops::{BitAnd, BitOr, BitXor, Neg};
 use std::result;
 
-use crate::binary::types::{BlockType, MemIndex};
+use crate::binary::types::{BlockType, LabelIndex, MemIndex};
 use crate::instructions::Instruction;
 use crate::limits::MAX_STACK_DEPTH;
 use crate::runtime::instance::{ModuleInstance, ModuleRegistry};
@@ -357,7 +357,7 @@ impl<'a> ExecutionContext<'a> {
             BlockType::Empty => (0, 0),
             BlockType::Value(_) => (0, 1),
             BlockType::Index(idx) => {
-                let ftype = &module_inst.types[*idx as usize];
+                let ftype = &module_inst.types[idx.as_usize()];
                 (ftype.params.len() as u32, ftype.results.len() as u32)
             }
         }
@@ -366,10 +366,10 @@ impl<'a> ExecutionContext<'a> {
     fn branch(
         value_stack: &mut ValueStack,
         call_stack: &mut Vec<Frame>,
-        label_idx: &u32,
+        label_idx: &LabelIndex,
     ) -> result::Result<(), RuntimeError> {
         let frame = call_stack.last_mut().unwrap();
-        let n = *label_idx as usize;
+        let n = label_idx.as_usize();
 
         if n == frame.labels.len() {
             // function return
@@ -531,7 +531,7 @@ impl<'a> ExecutionContext<'a> {
                         let func_addr = r
                             .as_funcref()
                             .ok_or(RuntimeError::internal("assert: expected func ref"))?;
-                        let ft = &module_inst.types[*type_idx as usize];
+                        let ft = &module_inst.types[type_idx.as_usize()];
                         if self.store.functions.get(func_addr).ftype != *ft {
                             return Err(TrapErrorKind::IndirectCallTypeMismatch.into());
                         }
@@ -1109,7 +1109,7 @@ impl<'a> ExecutionContext<'a> {
                         table_inst.init(i, j, n, elem_inst)?;
                     }
                     Instruction::ElemDrop(idx) => {
-                        let ea = module_inst.elems[*idx as usize];
+                        let ea = module_inst.elems[idx.as_usize()];
                         self.store.elements.drop(ea);
                     }
                     Instruction::TableCopy((dstidx, srcidx)) => {

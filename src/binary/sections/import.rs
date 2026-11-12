@@ -7,7 +7,7 @@ use crate::binary::sections::table::TableType;
 use crate::binary::sections::{
     GlobalTypeReadError, MemTypeReadError, SectionEntry, SectionErrorKind, TableReadError,
 };
-use crate::binary::types::TypeIdx;
+use crate::binary::types::TypeIndex;
 
 /// Import Section
 pub type ImportSection = Vec<ImportEntry>;
@@ -51,7 +51,7 @@ impl<'a> FromReader<'a> for ImportDescType {
 
 #[derive(Debug)]
 pub enum ImportDesc {
-    Func(TypeIdx),
+    Func(TypeIndex),
     Table(TableType),
     Mem(MemType),
     Global(GlobalType),

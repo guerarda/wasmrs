@@ -109,7 +109,7 @@ impl Runtime {
                         let expected = module
                             .types
                             .as_ref()
-                            .and_then(|t| t.get(*idx as usize))
+                            .and_then(|t| t.get(idx.as_usize()))
                             .expect("type index within bound");
 
                         if func.ftype != *expected {
@@ -167,7 +167,7 @@ impl Runtime {
             (&module.functions, &module.codes, &module.types)
         {
             for (code, typeidx) in codesec.iter().zip(funcsec) {
-                let ftype = typesec[*typeidx as usize].clone();
+                let ftype = typesec[typeidx.as_usize()].clone();
                 let a = self.store.functions.alloc(h, ftype, code, *typeidx);
                 mi.funcs.push(a);
             }

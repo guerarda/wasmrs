@@ -14,7 +14,7 @@ pub(crate) fn validate(module: &Module) -> result::Result<(), ValidationError> {
     for (index, i) in importsec.iter().enumerate() {
         match &i.desc {
             ImportDesc::Func(idx) => {
-                if *idx as usize >= types_len {
+                if idx.as_usize() >= types_len {
                     return Err(ValidationError::Import {
                         index,
                         source: ImportValidationError::UnknownFunctionType(

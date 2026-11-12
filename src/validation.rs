@@ -15,8 +15,8 @@ use crate::binary::sections::import::ImportDesc;
 use crate::binary::sections::memory::MemType;
 use crate::binary::sections::table::TableType;
 use crate::binary::types::{
-    BlockType, DataIdx, FuncIndex, FuncType, GlobalIndex, MemArg, MemIndex, RefType, TableIndex,
-    TypeIdx, ValType,
+    BlockType, DataIndex, ElementIndex, FuncIndex, FuncType, GlobalIndex, LabelIndex, MemArg,
+    MemIndex, RefType, TableIndex, TypeIndex, ValType,
 };
 use crate::instructions::Instruction;
 use crate::limits::MAX_WASM_32BIT_MEMORY_PAGES;
@@ -267,12 +267,12 @@ impl IndexValidationError {
         }
     }
 
-    fn data(index: DataIdx, count: usize) -> Self {
-        Self::mint(IndexSpace::Data, index as usize, count)
+    fn data(index: DataIndex, count: usize) -> Self {
+        Self::mint(IndexSpace::Data, index.as_usize(), count)
     }
 
-    fn element(index: u32, count: usize) -> Self {
-        Self::mint(IndexSpace::Element, index as usize, count)
+    fn element(index: ElementIndex, count: usize) -> Self {
+        Self::mint(IndexSpace::Element, index.as_usize(), count)
     }
 
     fn function(index: FuncIndex, count: usize) -> Self {
@@ -295,8 +295,8 @@ impl IndexValidationError {
         Self::mint(IndexSpace::Table, index.as_usize(), count)
     }
 
-    fn ty(index: TypeIdx, count: usize) -> Self {
-        Self::mint(IndexSpace::Type, index as usize, count)
+    fn ty(index: TypeIndex, count: usize) -> Self {
+        Self::mint(IndexSpace::Type, index.as_usize(), count)
     }
 }
 
@@ -566,7 +566,7 @@ impl Validator {
                 let t = &module
                     .types
                     .as_ref()
-                    .and_then(|t| t.get(*idx as usize))
+                    .and_then(|t| t.get(idx.as_usize()))
                     .ok_or_else(|| IndexValidationError::ty(*idx, module.table_count()))?;
 
                 (
@@ -578,12 +578,12 @@ impl Validator {
     }
 
     /// Returns the function type at the given type index (not function index)
-    fn type_at(module: &Module, type_idx: u32) -> result::Result<&FuncType, IndexValidationError> {
+    fn type_at(module: &Module, idx: TypeIndex) -> result::Result<&FuncType, IndexValidationError> {
         module
             .types
             .as_ref()
-            .and_then(|types| types.get(type_idx as usize))
-            .ok_or_else(|| IndexValidationError::ty(type_idx, module.type_count()))
+            .and_then(|types| types.get(idx.as_usize()))
+            .ok_or_else(|| IndexValidationError::ty(idx, module.type_count()))
     }
 
     /// Returns the type for an idx in the Function Section.
@@ -700,8 +700,8 @@ impl Validator {
     }
 
     /// Returns the label_types for the nth frame from the top
-    fn label_types(n: usize, frames: &[CtrlFrame]) -> &[ValueType] {
-        let frame = &frames[frames.len() - n - 1];
+    fn label_types(n: LabelIndex, frames: &[CtrlFrame]) -> &[ValueType] {
+        let frame = &frames[frames.len() - n.as_usize() - 1];
         if matches!(frame.opcode, Instruction::Loop(_)) {
             &frame.start_types
         } else {
@@ -889,24 +889,22 @@ impl Validator {
                 self.push_vals(&frame.end_types);
             }
             Instruction::Br(n) => {
-                let n = *n as usize;
-                if self.ctrls.len() <= n {
+                if self.ctrls.len() <= n.as_usize() {
                     return Err(ValidationErrorKind::control_stack_underflow());
                 }
                 // FIXME Avoid Copy. pop_vals must be in ValueStack impl
-                let lt = Self::label_types(n, &self.ctrls).to_vec();
+                let lt = Self::label_types(*n, &self.ctrls).to_vec();
                 self.pop_vals_expect(&lt)?;
                 self.unreachable();
             }
             Instruction::BrIf(n) => {
-                let n = *n as usize;
-                if self.ctrls.len() <= n {
+                if self.ctrls.len() <= n.as_usize() {
                     return Err(ValidationErrorKind::control_stack_underflow());
                 }
                 self.pop_val_expect(ValueType::I32)?;
 
                 // FIXME Avoid Copy. pop_vals must be in ValueStack impl
-                let lt = Self::label_types(n, &self.ctrls).to_vec();
+                let lt = Self::label_types(*n, &self.ctrls).to_vec();
                 self.pop_vals_expect(&lt)?;
                 self.push_vals(&lt);
             }
@@ -914,22 +912,20 @@ impl Validator {
                 self.pop_val_expect(ValueType::I32)?;
 
                 // Verify the default target exists and get its arity
-                let m = idx.default as usize;
-                if self.ctrls.len() <= m {
+                if self.ctrls.len() <= idx.default.as_usize() {
                     return Err(ValidationErrorKind::control_stack_underflow());
                 }
-                let m_types = Self::label_types(m, &self.ctrls).to_vec();
+                let m_types = Self::label_types(idx.default, &self.ctrls).to_vec();
                 let arity = m_types.len();
 
                 for n in &idx.labels {
                     // For each possible target, verify the arity matches
                     // the default target's. And that its types are
                     // compatible with what's currently on the stack.
-                    let n = *n as usize;
-                    if self.ctrls.len() <= n {
+                    if self.ctrls.len() <= n.as_usize() {
                         return Err(ValidationErrorKind::control_stack_underflow());
                     }
-                    let n_types = Self::label_types(n, &self.ctrls).to_vec();
+                    let n_types = Self::label_types(*n, &self.ctrls).to_vec();
                     if n_types.len() != arity {
                         return Err(ValidationErrorKind::type_mismatch());
                     }
@@ -1349,7 +1345,7 @@ impl Validator {
                 if module
                     .data
                     .as_ref()
-                    .is_none_or(|data| (*dataidx as usize) >= data.len())
+                    .is_none_or(|data| dataidx.as_usize() >= data.len())
                 {
                     return Err(IndexValidationError::data(*dataidx, module.data_count()).into());
                 }
@@ -1358,7 +1354,7 @@ impl Validator {
                 if module
                     .data
                     .as_ref()
-                    .is_none_or(|data| (*idx as usize) >= data.len())
+                    .is_none_or(|data| idx.as_usize() >= data.len())
                 {
                     return Err(IndexValidationError::data(*idx, module.data_count()).into());
                 }
@@ -1392,11 +1388,10 @@ impl Validator {
                 let tabletype = Self::table_type_at(module, *tableidx)?;
 
                 // element exists
-                let index = *elemidx as usize;
                 let elems = module.elements.as_deref().unwrap_or(&[]);
                 let elem = elems
-                    .get(index)
-                    .ok_or_else(|| IndexValidationError::element(index as u32, elems.len()))?;
+                    .get(elemidx.as_usize())
+                    .ok_or_else(|| IndexValidationError::element(*elemidx, elems.len()))?;
 
                 let elemtype = match elem.items {
                     ElementSegmentItems::Functions(_) => RefType::Func,
@@ -1409,9 +1404,8 @@ impl Validator {
             }
             Instruction::ElemDrop(idx) => {
                 let count = module.elements.as_ref().map_or(0, Vec::len);
-                let index = *idx as usize;
-                if index >= count {
-                    return Err(IndexValidationError::element(index as u32, count).into());
+                if idx.as_usize() >= count {
+                    return Err(IndexValidationError::element(*idx, count).into());
                 }
             }
             Instruction::TableCopy((dstidx, srcidx)) => {
@@ -1518,7 +1512,7 @@ impl Validator {
             let functype = module
                 .types
                 .as_ref()
-                .and_then(|t| t.get(*type_idx as usize))
+                .and_then(|t| t.get(type_idx.as_usize()))
                 .ok_or_else(|| ValidationError::Function {
                     index: index + module.imported_func_count(),
                     source: FunctionValidationError::UnknownType(IndexValidationError::ty(

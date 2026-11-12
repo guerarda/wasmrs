@@ -7,7 +7,7 @@ use crate::binary::sections::data::DataSegment;
 use crate::binary::sections::global::GlobalType;
 use crate::binary::sections::memory::MemType;
 use crate::binary::sections::table::TableType;
-use crate::binary::types::{FuncType, RefType, TypeIdx, ValType};
+use crate::binary::types::{FuncType, RefType, TypeIndex, ValType};
 use crate::instructions::Instruction;
 use crate::limits::{MAX_WASM_32BIT_MEMORY_PAGES, MAX_WASM_TABLE_LEN};
 use crate::runtime::instance::ModuleHandle;
@@ -64,7 +64,7 @@ pub type HostFn = Box<dyn Fn(&[Value]) -> result::Result<Vec<Value>, RuntimeErro
 /// Wasm Function
 #[derive(Debug, Clone)]
 pub struct WasmFn {
-    pub typeidx: TypeIdx,
+    pub typeidx: TypeIndex,
     pub locals: Vec<ValType>,
     pub expr: Vec<Instruction>,
 }
@@ -466,7 +466,7 @@ impl Functions {
         module: ModuleHandle,
         ftype: FuncType,
         code: &CodeEntry,
-        typeidx: TypeIdx,
+        typeidx: TypeIndex,
     ) -> FuncAddr {
         let locals = {
             let mut v = vec![];
