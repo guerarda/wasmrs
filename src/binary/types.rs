@@ -219,8 +219,8 @@ impl<'a> FromReader<'a> for RefType {
 impl fmt::Display for RefType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Func => write!(f, "funcref"),
-            Self::Extern => write!(f, "externref"),
+            Self::Func => write!(f, "func"),
+            Self::Extern => write!(f, "extern"),
         }
     }
 }
@@ -281,6 +281,19 @@ impl<'a> FromReader<'a> for ValType {
     }
 }
 
+impl fmt::Display for ValType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            Self::Ref(rt) => write!(f, "ref.{rt}"),
+            Self::V128 => write!(f, "v128"),
+            Self::F64 => write!(f, "f64"),
+            Self::F32 => write!(f, "f32"),
+            Self::I64 => write!(f, "i64"),
+            Self::I32 => write!(f, "i32"),
+        }
+    }
+}
+
 /// Block Type
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone, Copy)]
@@ -329,6 +342,26 @@ impl<'a> FromReader<'a> for BlockType {
 pub struct FuncType {
     pub params: Vec<ValType>,
     pub results: Vec<ValType>,
+}
+
+impl fmt::Display for FuncType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(")?;
+        for (i, item) in self.params.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{item}")?;
+        }
+        write!(f, ") -> (")?;
+        for (i, item) in self.results.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{item}")?;
+        }
+        write!(f, ")")
+    }
 }
 
 /// Const Expression

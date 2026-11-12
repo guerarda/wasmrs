@@ -22,6 +22,7 @@ use crate::instructions::Instruction;
 use crate::limits::MAX_WASM_32BIT_MEMORY_PAGES;
 use crate::validation::sections::element::ElementValidationError;
 use crate::validation::sections::export::ExportValidationError;
+use crate::validation::sections::start::StartFunctionValidationError;
 
 mod const_expr;
 mod sections;
@@ -144,6 +145,7 @@ pub enum ValidationError {
         index: usize,
         source: ExportValidationError,
     },
+    StartFunction(StartFunctionValidationError),
 }
 
 impl error::Error for ValidationError {
@@ -157,6 +159,7 @@ impl error::Error for ValidationError {
             Self::Import { index: _, source } => Some(source),
             Self::Element { index: _, source } => Some(source),
             Self::Export { index: _, source } => Some(source),
+            Self::StartFunction(e) => Some(e),
         }
     }
 }
@@ -175,6 +178,7 @@ impl fmt::Display for ValidationError {
             }
 
             Self::Export { index, .. } => write!(f, "validating export at index {index}"),
+            Self::StartFunction(_) => write!(f, "invalid start function"),
         }
     }
 }
@@ -355,7 +359,6 @@ pub enum ValidationErrorKind {
     ConstantExpressionRequired,
     DuplicatExportName,
     FunctionCodeMismatch,
-    StartFunction,
     ConstExprError {
         source: Box<ConstExpressionValidationError>,
     },
@@ -388,7 +391,6 @@ impl fmt::Display for ValidationErrorKind {
             Self::ConstantExpressionRequired => write!(f, "constant expression required"),
             Self::DuplicatExportName => write!(f, "duplicate export name"),
             Self::FunctionCodeMismatch => write!(f, "function and code section mismatch"),
-            Self::StartFunction => write!(f, "start function type"),
             Self::ConstExprError { .. } => write!(f, "CONST EXPR ERROR PLACEHOLDER"),
             Self::InvalidIndex(_) => write!(f, "invalid index"),
         }
@@ -454,10 +456,6 @@ impl ValidationErrorKind {
 
     fn function_code_mismatch() -> Self {
         Self::mint(ValidationErrorKind::FunctionCodeMismatch)
-    }
-
-    fn start_function() -> Self {
-        Self::mint(ValidationErrorKind::StartFunction)
     }
 }
 
