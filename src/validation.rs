@@ -20,6 +20,7 @@ use crate::binary::types::{
 };
 use crate::instructions::Instruction;
 use crate::limits::MAX_WASM_32BIT_MEMORY_PAGES;
+use crate::validation::sections::data::DataValidationError;
 use crate::validation::sections::element::ElementValidationError;
 use crate::validation::sections::export::ExportValidationError;
 use crate::validation::sections::start::StartFunctionValidationError;
@@ -145,6 +146,10 @@ pub enum ValidationError {
         index: usize,
         source: ExportValidationError,
     },
+    Data {
+        index: usize,
+        source: DataValidationError,
+    },
     StartFunction(StartFunctionValidationError),
 }
 
@@ -159,6 +164,7 @@ impl error::Error for ValidationError {
             Self::Import { index: _, source } => Some(source),
             Self::Element { index: _, source } => Some(source),
             Self::Export { index: _, source } => Some(source),
+            Self::Data { index: _, source } => Some(source),
             Self::StartFunction(e) => Some(e),
         }
     }
@@ -174,9 +180,11 @@ impl fmt::Display for ValidationError {
             Self::Memory { index, .. } => write!(f, "validating memory at index {index}"),
             Self::Import { index, .. } => write!(f, "validating import at index {index}"),
             Self::Element { index, .. } => {
-                write!(f, "validating elements segment at index {index}")
+                write!(f, "validating element segment at index {index}")
             }
-
+            Self::Data { index, .. } => {
+                write!(f, "validating data segment at index {index}")
+            }
             Self::Export { index, .. } => write!(f, "validating export at index {index}"),
             Self::StartFunction(_) => write!(f, "invalid start function"),
         }

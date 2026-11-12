@@ -2,13 +2,13 @@ use core::{error, fmt};
 
 use crate::binary::reader::{FromReader, ReadError, ReadErrorKind, Reader, VecReadError};
 use crate::binary::sections::{SectionEntry, SectionErrorKind};
-use crate::binary::types::{ConstExpression, ConstExpressionReadError};
+use crate::binary::types::{ConstExpression, ConstExpressionReadError, MemIndex};
 
 /// Data Section
 #[derive(Debug)]
 pub enum DataSegmentMode {
     Active {
-        mem_index: u32,
+        mem_index: MemIndex,
         offset: ConstExpression,
     },
     Passive,
@@ -50,12 +50,12 @@ impl<'a> FromReader<'a> for DataSegmentMode {
 
         match flag {
             0x00 => Ok(DataSegmentMode::Active {
-                mem_index: 0,
+                mem_index: MemIndex::ZERO,
                 offset: reader.read().map_err(Self::Error::Expression)?,
             }),
             0x01 => Ok(DataSegmentMode::Passive),
             0x02 => Ok(DataSegmentMode::Active {
-                mem_index: reader.read().map_err(Self::Error::MemIndex)?,
+                mem_index: MemIndex(reader.read_u32().map_err(Self::Error::MemIndex)?),
                 offset: reader.read().map_err(Self::Error::Expression)?,
             }),
             _ => Err(Self::Error::Flag(ReadError {

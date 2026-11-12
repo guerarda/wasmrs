@@ -57,7 +57,7 @@ impl Runtime {
                         offset,
                         len: d.data.len(),
                         dataidx: i,
-                        memidx: MemIndex(*mem_index),
+                        memidx: *mem_index,
                     }),
                     DataSegmentMode::Passive => None,
                 })
